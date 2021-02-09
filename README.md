@@ -6,7 +6,7 @@ It can simulate 2D, 2D axisymmetric and 3D geometries, and works in parallel on 
 Below we give a number of example scripts that show how it can be used to simulate a number of scenarios.
 
 
-# Installation
+## Installation
 This is a julia package, so after installing julia in the usual manner, you can add the package with 
 ```
 ]
