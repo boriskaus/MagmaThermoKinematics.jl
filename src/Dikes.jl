@@ -8,92 +8,161 @@ temperature field
 module Dikes
 
 using StructArrays
-using Luxor                                     # for inpolygon
 
 export Dike, DikePoly, Tracer
-export AddDike, HostRockVelocityFromDike, CreatDikePolygon
+export AddDike, HostRockVelocityFromDike, CreatDikePolygon, volume_dike
 
+
+"""
+    Structure that holds the geometrical parameters of the dike, which are slightly different
+    depending on whether we consider a 2D or a 3D case
+
+    General form:
+        Dike(Size, Center, Angle, Type, T)
+
+        with:
+
+            Size:   dimensions of the dike area
+                    2D - [Width; Thickness]
+                    3D - [Width; Length; Thickness]
+
+            Center: center of the dike
+                    2D - [x; z]
+                    3D - [x; y; z]
+            
+            Angle:  Dip (and strike) angle of dike
+                    2D - [Dip]
+                    3D - [Strike; Dip]
+            
+            Type:   Type of dike
+                    "SquareDike"    - square dike area   
+            
+            T:      Temperature of the dike [Celcius]                              
+"""
 struct Dike    # stores info about dike 
-    W::Float64          # Width of dike/sill
-    H::Float64          # Thickness
-    T::Float64          # temperature
-    x0::Float64         # x-coordinate of center of dike
-    z0::Float64         # z-coordinate of center of dike
-    α::Float64          # Orientation of dike
-    Type::String        # Type of dike
+    Size::Vector{Float64}       # Size or aspect ratio of dike 3D: (width, length, thickness), 2D: 
+    Center::Vector{Float64}     # Center
+    Angle::Vector{Float64}      # Strike/Dip angle of dike
+    Type::String                # Type of dike
+    T::Float64                  # temperature
 end
 
-struct DikePoly    # polygon that describes the geometry of the dike (in 2D)
+struct DikePoly    # polygon that describes the geometry of the dike (only in 2D)
     x::Float64          # x-coordinates
     z::Float64          # z-coordinates
 end
 
-# Create structure that will hold the info about the passive tracers
+"""
+    Structure that has information about the tracers
+
+    General form:
+        Tracer(num, coord, T)
+
+        with:
+
+            num:   number of the tracer (integer)
+
+            coord: coordinates of the tracer
+                    2D - [x; z]
+                    3D - [x; y; z]
+            
+            T:      Temperature of the tracer [Celcius]                              
+"""
 struct Tracer
     num::Int64                  # number
-    x::Float64                  # x-coordinates
-    z::Float64                  # z-coordinates
-    #coord::Vector{Float64}     # holds coordinates [2D or 3D]
+    coord::Vector{Float64}      # holds coordinates [2D or 3D]
     T::Float64                  # temperature
 end
 
 #--------------------------------------------------------------------------
+"""
+    Host rock velocity obtained during opening of dike
+
+    General form:
+        Velocity = HostRockVelocityFromDike( Grid, dt, dike);
+
+        with:
+
+            Grid: coordinates of regular grid @ which we compute velocity
+                    2D - [X; Z]
+                    3D - [x; y; z]
+
+            dike: structure that holds info about dike
+            dt:   time in which the full dike is opened
+            
+    Note: the velocity is scaled in such a manner that the maximum dike thickness (H) is achieved
+            after time dt, so Vmax = H*dt
+
+"""
 function HostRockVelocityFromDike( Grid, dt, dike);
 
     # Prescibe the velocity field to inject the dike with given orientation
     # 
     dim = length(Grid);
     if dim==2
-        R = Grid[1];
+        X = Grid[1];
         Z = Grid[2];
 
         # Rotate and shift coordinate system into 'dike' reference frame
-        RotMat = [cosd(dike.α) -sind(dike.α); sind(dike.α) cosd(dike.α)];    # 2D rotation matrix
-        Rrot    = zeros(size(R));
-        Zrot    = zeros(size(Z));
+        α      = dike.Angle[end];
+        RotMat = [cosd(α) -sind(α); sind(α) cosd(α)];    # 2D rotation matrix
+        Xrot   = zeros(size(X));
+        Zrot   = zeros(size(Z));
         for i=1:size(Z,1)
             for j=1:size(Z,2)
-                pt          =   [R[i,j]; Z[i,j]] - [dike.x0; dike.z0];  # original point, shifted to center of dike
+                pt          =   [X[i,j]; Z[i,j]] - dike.Center;  # original point, shifted to center of dike
                 pt_rot      =   RotMat*pt;
 
-                Rrot[i,j]   =   pt_rot[1];
+                Xrot[i,j]   =   pt_rot[1];
                 Zrot[i,j]   =   pt_rot[2];
             end
         end
 
-        Vz_rot    = zeros(size(R));
-        Vr_rot    = zeros(size(Z));
-        Vz        = zeros(size(R));
-        Vr        = zeros(size(Z));
+        Vz_rot    = zeros(size(Z));
+        Vx_rot    = zeros(size(X));
+        Vz        = zeros(size(Z));
+        Vx        = zeros(size(X));
             
         if dike.Type=="SquareDike"
             # Simple square dike
-            Vint = dike.H/dt;       # open the dike in one dt
-                
-            Vz_rot[(Zrot.<0) .& (abs.(Rrot).<dike.W/2.0)] .= -Vint;
-            Vz_rot[(Zrot.>0) .& (abs.(Rrot).<dike.W/2.0)] .=  Vint;
+            H    =  dike.Size[end];
+            W    =  dike.Size[1];
+            
 
-            Vr_rot[abs.(R).<dike.W]    .=   0.0;      # set radial velocity to zero at left boundary
-            Vr_rot                     .=   Vr*10*0;
+            Vint = H/dt;       # open the dike in one dt
+                
+            Vz_rot[(Zrot.<0) .& (abs.(Xrot).<W/2.0)] .= -Vint;
+            Vz_rot[(Zrot.>0) .& (abs.(Xrot).<W/2.0)] .=  Vint;
+
+            Vx_rot[abs.(X).<W]          .=   0.0;      # set radial velocity to zero at left boundary
         else
             error("Unknown Dike type field")
         end
 
 
         # "unrotate" vector fields
-        RotMat = [cosd(-dike.α) -sind(-dike.α); sind(-dike.α) cosd(-dike.α)];    # 2D rotation matrix
+        RotMat = [cosd(-α) -sind(-α); sind(-α) cosd(-α)];    # 2D rotation matrix (in opposite direction)
         for i=1:size(Z,1)
             for j=1:size(Z,2)
-                pt          =   [Vr_rot[i,j]; Vz_rot[i,j]];  # velocities in rotated space
+                pt          =   [Vx_rot[i,j]; Vz_rot[i,j]];  # velocities in rotated space
                 pt_rot      =   RotMat*pt;
 
-                Vr[i,j]   =   pt_rot[1];
-                Vz[i,j]   =   pt_rot[2];
+                Vx[i,j]     =   pt_rot[1];
+                Vz[i,j]     =   pt_rot[2];
             end
         end
 
-        return (Vr, Vz);
+        return (Vx, Vz);
+
     else
+
+        α      = dike.Angle[end];
+        β      = dike.Angle[1];
+        RotMat_z = [cosd(α) -sind(α) 0.0; sind(α) cosd(α)      0.0;  0.0 0.0       1.0]; 
+        RotMat_x = [1.0        0.0     0.0; 0.0      cosd(β) -sind(β); 0.0 sind(β) cosd(β)]; 
+        RotMat   = RotMat_z*RotMat_x;
+
+
         error("3D implementation to be finished")
     end
 
@@ -123,22 +192,107 @@ function CreatDikePolygon(dike::Dike)
         push!(poly,poly[1]); # close polygon
 
         # scale & rotate dike
-        RotMat = [cosd(-dike.α) -sind(-dike.α); sind(-dike.α) cosd(-dike.α)];    # 2D rotation matrix
+        α      = dike.Angle[end];
+        RotMat = [cosd(-α) -sind(-α); sind(-α) cosd(-α)]; 
         for i=1:length(poly)
-            pt      = [LazyRow(poly, i).x*dike.W/2.0; LazyRow(poly, i).z*dike.H/2.0];
+            H       =  dike.Size[end];
+            W       =  dike.Size[1];
+            
+            pt      = [LazyRow(poly, i).x*W/2.0; LazyRow(poly, i).z*H/2.0];
             pt_rot  = RotMat*pt;    # rotate
             
-            LazyRow(poly, i).x = pt_rot[1] + dike.x0;   # shift
-            LazyRow(poly, i).z = pt_rot[2] + dike.z0;
+            LazyRow(poly, i).x = pt_rot[1] + dike.Center[1];   # shift
+            LazyRow(poly, i).z = pt_rot[2] + dike.Center[2];
         end
-
-    # to be added:
-    #   1) elliptical dike
-    #   2) elastic dike (aka 2D analytical elastic solution)    
-        
+    
+    elseif dike.Type=="Elliptical"
+        error("To be added")
+    
+    else
+        error("Unknown dike type $dike.Type")
     end
 
     return poly 
+end
+
+
+"""
+    in = isinside_dike(pt, dike::Dike)
+
+    Computes if a point [pt] is inside a dike area or not depending on the type of dike
+
+"""
+function isinside_dike(pt, dike::Dike)
+    # important: this is a "unit" dike, which has the center at [0,0,0] and width given by dike.Size
+    dim =   length(pt)
+    in  =   false;
+    if dike.Type=="SquareDike"
+        if  dim==2
+            if  (abs(pt[1])  < dike.Size[1]/2.0) & (abs(pt[end])< dike.Size[end]/2.0)
+                # area = dike.Size[1]*dike.Size[2]  (in 2D, in m^2)
+            
+                in = true
+            end
+        elseif dim==3
+            if  (abs(pt[1])  < dike.Size[1]/2.0) & (abs(pt[end])< dike.Size[end]/2.0) & (abs(pt[2])< dike.Size[2]/2.0)
+                # volume = dike.Size[1]*dike.Size[2]*dike.Size[3]  (in 3D, in m^3)
+                in = true
+            end
+        end
+
+    elseif dike.Type=="Ellipse"
+        
+        if dim==2
+            # area = pi*dike.Size[1]*dike.Size[2]  (in 2D, in m^2)
+            eq_ellipse = pt[1]^2.0/(dike.Size[1]/2.0)^2.0 + pt[2]^2.0/(dike.Size[2]/2.0)^2.0; # ellipse
+        else
+            # volume = 4/3*pi*dike.Size[1]*dike.Size[2]*dike.Size[3]  (in 3D, in m^3)
+            eq_ellipse = pt[1]^2.0/(dike.Size[1]/2.0)^2.0 + pt[2]^2.0/(dike.Size[2]/2.0)^2.0 + pt[3]^2.0/(dike.Size[3]/2.0)^2.0; # ellipsoid
+        end
+
+        if eq_ellipse < 1.0
+            in = true;
+        end
+
+    else
+        error("Unknown dike type $dike.Type")
+    end
+
+    return in 
+end
+
+
+"""
+    V = volume_dike(dike::Dike)
+
+    Returns the area (2D) or volume (3D) of the injected dike
+
+"""
+function volume_dike(dike::Dike)
+    # important: this is a "unit" dike, which has the center at [0,0,0] and width given by dike.Size
+    dim =   length(pt)
+    if dike.Type=="SquareDike"
+        if  dim==2
+            area = dike.Size[1]*dike.Size[2];               #  (in 2D, in m^2)
+            return area
+        elseif dim==3
+          volume = dike.Size[1]*dike.Size[2]*dike.Size[3]   # (in 3D, in m^3)
+          return volume;
+        end
+
+    elseif dike.Type=="Ellipse"
+        
+        if dim==2
+            area = pi*dike.Size[1]*dike.Size[2]             #  (in 2D, in m^2)
+            return area
+        else
+            volume = 4/3*pi*dike.Size[1]*dike.Size[2]*dike.Size[3]  # (in 3D, in m^3)
+            return volume;
+        end
+    else
+        error("Unknown dike type $dike.Type")
+    end
+
 end
 
 #--------------------------------------------------------------------------
@@ -154,22 +308,27 @@ function AddDike(T,Tr, Grid,dike, nTr_dike)
 
     dim         =   length(Grid);
     dike_poly   =   CreatDikePolygon(dike);                            # Polygon that describes the dike 
-    if dim==2
-        polygon = Point.(dike_poly.x,dike_poly.z);                  # generate polygon (to use with inside)
-    elseif dim==3
-        polygon = Point.(dike_poly.x,dike_poly.y,dike_poly.z);      # generate polygon (to use with inside)
-    end
     
+    if dim==2
+        α      = dike.Angle[end];
+        RotMat = [cosd(α) -sind(α); sind(α) cosd(α)]; 
+    elseif dim==3
+        α      = dike.Angle[end];
+        β      = dike.Angle[1];
+        RotMat_z = [cosd(α) -sind(α) 0.0; sind(α) cosd(α)      0.0;  0.0 0.0       1.0]; 
+        RotMat_x = [1.0        0.0     0.0; 0.0      cosd(β) -sind(β); 0.0 sind(β) cosd(β)]; 
+        RotMat   = RotMat_z*RotMat_x;
+    end
   
     # Add dike to temperature field
     if dim==2
         X = Grid[1];
         Z = Grid[2];
-        
-
         for ix=1:size(X,1)
             for iz=1:size(X,2)
-                in = isinside(Point.(X[ix,iz],Z[ix,iz]),                                polygon; allowonedge=true);
+                pt = [X[ix,iz];Z[ix,iz]] - dike.Center;
+                pt_rot  = RotMat*pt;          # rotate and shift
+                in = isinside_dike(pt_rot, dike);
                 if in
                     T[ix,iz] = dike.T;
                 end
@@ -178,12 +337,14 @@ function AddDike(T,Tr, Grid,dike, nTr_dike)
 
     elseif dim==3
         X = Grid[1];
-        T = Grid[2];
+        Y = Grid[2];
         Z = Grid[3];
         for ix=1:size(X,1)
             for iy=1:size(X,2)
                 for iz=1:size(X,3)
-                    in = isinside(Point.(X[ix,iy,iz],Y[ix,iy,iz],Z[ix,iy,iz]),    polygon; allowonedge=true);
+                    pt      = [X[ix,iy,iz];Y[ix,iy,iz];Z[ix,iy,iz]] - dike.Center;
+                    pt_rot  = RotMat*pt;          # rotate and shift
+                    in      = isinside_dike(pt_rot, dike);
                     if in
                         T[ix,iy,iz] = dike.T;
                     end
@@ -195,27 +356,24 @@ function AddDike(T,Tr, Grid,dike, nTr_dike)
 
     # Add new tracers to the dike area
     if dim==2
-        RotMat = [cosd(-dike.α) -sind(-dike.α); sind(-dike.α) cosd(-dike.α)];    # 2D rotation matrix
+        α      = dike.Angle[end];
+        RotMat = [cosd(-α) -sind(-α); sind(-α) cosd(-α)]; 
     elseif dim==3
-        error("Need to add 3D rotation matrix")
+        α      = dike.Angle[end];
+        β      = dike.Angle[1];
+        RotMat_z = [cosd(-α) -sind(-α) 0.0; sind(-α) cosd(-α)      0.0;  0.0 0.0       1.0]; 
+        RotMat_x = [1.0        0.0     0.0; 0.0      cosd(-β) -sind(-β); 0.0 sind(-β) cosd(-β)]; 
+        RotMat   = RotMat_z*RotMat_x;
     end
     for iTr=1:nTr_dike
        
         # 1) Randomly initialize tracers to the approximate dike area
-        if dim==2
-            pt      = (rand(2,1) .- 0.5).*[dike.W; dike.H];
-            pt_rot  = RotMat*pt + [dike.x0; dike.z0];                   # rotate and shift
-        elseif dim==3
-            pt      = (rand(3,1) .- 0.5).*[dike.W; dike.L; dike.H];
-            pt_rot  = RotMat*pt + [dike.x0; dike.y0; dike.z0];          # rotate and shift
-        end
+        pt      = rand(dim,1) .- 0.5*ones(dim,1);
+        pt      = pt.*dike.Size;
+        pt_rot  = RotMat*pt .+ dike.Center[:];          # rotate and shift
 
-        # 2) Make sure that they are inside the dike    
-        if dim==2
-            in      = isinside(Point.(pt_rot[1], pt_rot[2]),            polygon; allowonedge=true);
-        else
-            in      = isinside(Point.(pt_rot[1], pt_rot[2], pt_rot[3]), polygon; allowonedge=true);
-        end
+        # 2) Make sure that they are inside the dike area   
+        in  = isinside_dike(pt, dike);
        
         # 3) Add them to the tracers structure
         if in   # we are inside dike polygon
@@ -223,7 +381,12 @@ function AddDike(T,Tr, Grid,dike, nTr_dike)
                 error("You need to initialize the tracer array outside this routine!")
             else
                 num         =   Tr.num[end]+1;  
-                new_tracer  =   Tracer(num,pt_rot[1],pt_rot[2],dike.T);
+                if dim==2
+                    new_tracer  =   Tracer(num, [pt_rot[1]; pt_rot[2]], dike.T);
+                else
+                    new_tracer  =   Tracer(num, [pt_rot[1]; pt_rot[2]; pt_rot[3]], dike.T);
+                end
+
                 push!(Tr, new_tracer);                  # add new point to list
             end
         end
@@ -234,6 +397,8 @@ function AddDike(T,Tr, Grid,dike, nTr_dike)
 
 
 end
+
+
 
 
 end

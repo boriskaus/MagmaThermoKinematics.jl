@@ -13,8 +13,27 @@ export Interpolate_Linear, AdvectTracers, AdvectTemperature
 """
     Performs a linear interpolation, either in 2D or 3D
 
-    Data_interp = Interpolate_Linear( Grid, Spacing, Data_grid, Points_irregular)
-        
+
+    General form:
+        Data_interp = Interpolate_Linear( Grid, Spacing, Data_grid, Points_irregular)
+
+        with:
+
+            Grid:   regular grid in which the parameters to be interpolated are defined
+                    2D - (X,Z)
+                    3D - (X,Y,Z)
+
+            Spacing: (constant) spacing of grid
+                    2D - (dx,dz)
+                    3D - (dx,dy,dz)
+            
+            DataGrid:   Data that is defined on the grid. Can have 1 field or 2 (2D), respectively 3 (3D) fields 
+    
+            Points_irregular:   coordinates of irregular points on which we want to interpolate the data
+                    2D - (x,z)
+                    3D - (x,y,z)
+    
+            Data_interp:   interpolated data field(s) on the irregular points. Same number of fields as Data_grid                          
 """
 function Interpolate_Linear( Grid, Spacing, Data_grid, Points_irregular);
 
@@ -34,7 +53,6 @@ function Interpolate_Linear( Grid, Spacing, Data_grid, Points_irregular);
     return Data_interp
 
 end
-
 
 
 
@@ -344,12 +362,7 @@ end
         Method: can be "Euler","RK2" or "RK4", for 1th, 2nd or 4th order explicit advection scheme, respectively. 
 """
 function AdvectTemperature(T::Array,Grid, Velocity, Spacing, dt, Method="RK4");
-    # This uses a semi-lagrangian advection scheme to advect temperature 
-    # by 1 timestep, using a 2nd order Runga Kutta method
-    #
-    # Note, this implementaion works for 2D and 3D
-
-
+    
     # 1) Use semi-lagrangian advection to advect temperature
     # Advect regular grid backwards in time
     PointsAdv = Grid;
@@ -360,6 +373,7 @@ function AdvectTemperature(T::Array,Grid, Velocity, Spacing, dt, Method="RK4");
 
     return Tnew[1];
 end
+
 
 """
         Tnew = AdvectTracers(Tracers, T::Array,Grid, Velocity, Spacing, dt, Method="RK4");
@@ -374,24 +388,26 @@ function AdvectTracers(Tracers, T::Array,Grid, Velocity, Spacing, dt, Method="RK
     
     dim = length(Grid);
 
-    x   = Tracers.x;
-    z   = Tracers.z;
+    coord = Tracers.coord; coord = hcat(coord...)';       # extract array with coordinates of tracers
+    
+    x   = coord[:,1];
+    z   = coord[:,end];
     if dim==2
         Points_new  =   AdvectPoints((x,z),    Grid,Velocity,Spacing, dt,Method);     # Advect tracers
     else
-        y           =   Tracers.y;
+        y           =   coord[:,2];
         Points_new  =   AdvectPoints((x,y,z),  Grid,Velocity,Spacing, dt,Method);     # Advect tracers
     end
     T           =   Interpolate_Linear(Grid, Spacing, tuple(T), Points_new);   # Interpolate T on tracers   
  
     for iT = 1:length(Tracers)
-        LazyRow(Tracers, iT).x = Points_new[1][iT];
-        LazyRow(Tracers, iT).z = Points_new[2][iT];
         LazyRow(Tracers, iT).T = T[1][iT];
 
-        if dim==3
-            LazyRow(Tracers, iT).y = Points_new[2][iT];
-            LazyRow(Tracers, iT).z = Points_new[3][iT];
+        if dim==2
+            LazyRow(Tracers, iT).coord = [Points_new[1][iT]; Points_new[2][iT]];
+       
+        elseif dim==3
+            LazyRow(Tracers, iT).coord = [Points_new[1][iT]; Points_new[2][iT]; Points_new[3][iT]];
         end
     end
 
