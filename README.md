@@ -45,13 +45,13 @@ DikeType                =   "SquareDike"                        # Type to be inj
 #(...) 
 
 # Set up initial temperature structure
-T                       .=   -Z./1e3.*GeoT;                                             # initial (linear) temperature profile
+T                       .=   -Z./1e3.*GeoT;                     # initial (linear) temperature profile
 
 # Add initial dike
-dike                    =   Dike([W_in;H_in],[x_in;z_in],[0], DikeType,T_in);           # Specify dike 
-T, Tracers, InjectVol   =   InjectDike([], T, Grid, Spacing, dike, nTr_dike);           # Inject first dike
-Phi,dPhi_dt             =   SolidFraction(T, Phi_o, dt);                                # Compute solid fraction
-Tnew                    .=  T;                                                          # To get correct boundary conditions.
+dike                    =   Dike([W_in;H_in],[x_in;z_in],[0], DikeType,T_in); # Specify dike 
+T, Tracers, InjectVol   =   InjectDike([], T, Grid, Spacing, dike, nTr_dike); # Inject first dike
+Phi,dPhi_dt             =   SolidFraction(T, Phi_o, dt);                      # Compute solid fraction
+Tnew                    .=  T;                                         
 
 # Preparation of visualisation
 #(...)
@@ -61,7 +61,7 @@ for it = 1:nt   # Time loop
 
     # Add new dike every X years
     if floor(time_kyrs/InjectionInterval_kyrs)> dike_inj                                                 
-        dike_inj            =   floor(time_kyrs/InjectionInterval_kyrs)                                     # Keeps track on whether we injected already
+        dike_inj            =   floor(time_kyrs/InjectionInterval_kyrs)     # book-keeping
         
         # Vary center of injected dike randomly & generate new dike
         cen                 =   [W/2.; -H/2.]; center = (rand(2,1) .- 0.5).*[W_ran;H_ran] + cen;            
@@ -69,7 +69,7 @@ for it = 1:nt   # Time loop
 
         # Inject new dike to domain 
         T, Tracers, Vol     =   InjectDike(Tracers, T, Grid, Spacing, dike, nTr_dike);                     
-        InjectVol           +=  Vol                                                                         # Keep track of injected volume
+        InjectVol           +=  Vol                                         # Total injected volume
         println("Added new dike; total injected magma volume = $(InjectVol/1e9) km^3; rate Q=$(InjectVol/(time_kyrs*1e3*SecYear)) m^3/s")
     end
 
@@ -78,7 +78,7 @@ for it = 1:nt   # Time loop
     
     # Perform a diffusion step
     @parallel diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, dt, dx, dz,  L, dPhi_dt);  
-    @parallel (1:size(T,2)) bc2D_x!(Tnew);                                  # set lateral boundary conditions (flux-free)
+    @parallel (1:size(T,2)) bc2D_x!(Tnew);                                  # lateral boundaries (flux-free)
     T[:,1] .= GeoT*H; T[:,end] .= 0.0;                                      # bottom & top temperature (constant)
   
     Tracers         =   UpdateTracers(Tracers, Grid, Spacing, Tnew, Phi);   # Update info on tracers 
@@ -87,7 +87,7 @@ for it = 1:nt   # Time loop
     println(" Timestep $it = $(round(time/SecYear)/1e3) kyrs")
 
     if mod(it,20)==0  # Visualisation
-        Phi_melt    =   1.0 .- Phi;             
+        Phi_melt    =   1.0 .- Phi;                                         # Melt fraction
         x_km, z_km  =   x./1e3, z./1e3;
  
         p1          =   heatmap(x_km, z_km, T',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="Temperature, $(round(time_kyrs)) kyrs", dpi=300)
