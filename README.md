@@ -37,7 +37,7 @@ W_in, H_in              =   5e3,    5e2;                        # Width and thic
 T_in                    =   900;                                # intrusion temperature
 InjectionInterval_kyrs  =   0.2;                                # inject a new dike every X years
 maxTime_kyrs            =   10;                                 # Maximum simulation time in kyrs
-H_ran, W_ran, Angle_ran =   H/4.0, W/4.0, 40.0;                 # size of domain amdin which we randomly place dikes and range of angles   
+H_ran, W_ran, Angle_ran =   H/4.0, W/4.0, 40.0;                 # Size of area of dike injection & angle variation   
 DikeType                =   "SquareDike"                        # Type to be injected
 
 #(...) 
