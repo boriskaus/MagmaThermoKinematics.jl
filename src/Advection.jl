@@ -49,15 +49,12 @@ function Interpolate_Linear( Grid, Spacing, Data_grid, Points_irregular);
 end
 
 
-
-
 #--------------------------------------------------------------------------
 function Interpolate_2D(Spacing,   Grid,    Data_grid,  Points_irregular);
     # This performs a 2D bilinear interpolation from a regular grid with constant
     # spacing (dx, dz) to irregular points [X_irr, Z_irr]. 
     #
 
-    # NOTE: can potentially be parallelized (need to see how to best go about that)
     dx          =   Spacing[1];
     dz          =   Spacing[2];
     X           =   Grid[1];
@@ -67,9 +64,7 @@ function Interpolate_2D(Spacing,   Grid,    Data_grid,  Points_irregular);
     X_irr       =   Points_irregular[1];
     Z_irr       =   Points_irregular[2];
     
-    nX          =   size(X_irr,1); 
-    nZ          =   size(X_irr,2);
-
+    
     nField      = length(Data_grid);
     Data_reg1   = Data_grid[1];
     if nField==1
@@ -78,97 +73,48 @@ function Interpolate_2D(Spacing,   Grid,    Data_grid,  Points_irregular);
         Data_irr    = (zeros(size(X_irr)), zeros(size(X_irr)));
         Data_reg2   = Data_grid[2];
     end
+    nX          =   size(X,1); 
+    nZ          =   size(X,2);
 
-    if 1==1 # vectorized code
+    for ix=1:size(X_irr,1)
+        for iz=1:size(X_irr,2)
+                
+            ix1     = floor(Int64, (X_irr[ix,iz] - minX)/dx) + 1;   
+            iz1     = floor(Int64, (Z_irr[ix,iz] - minZ)/dz) + 1;    
+            if (ix1 >= nX); ix1 = nX-1;   end
+            if (iz1 >= nZ); iz1 = nZ-1;   end
+            if (ix1< 1);  ix1 = 1;      end
+            if (iz1< 1);  iz1 = 1;      end
 
-        ix1 = floor.(Int64, (X_irr[:] .- minX)./dx) .+ 1;    ix1[ix1.>=nX] .= nX-1; ix1[ix1.<1] .= 1;
-        iz1 = floor.(Int64, (Z_irr[:] .- minZ)./dz) .+ 1;    iz1[iz1.>=nZ] .= nZ-1; iz1[iz1.<1] .= 1;
+            ind1    = LinearIndices(Data_reg1)[ix1  , iz1  ]; 
+            ind2    = LinearIndices(Data_reg1)[ix1+1, iz1  ]; 
+            ind3    = LinearIndices(Data_reg1)[ix1  , iz1+1]; 
+            ind4    = LinearIndices(Data_reg1)[ix1+1, iz1+1]; 
 
-        ind1 = zeros(Int64, nX*nZ,1);
-        ind2 = zeros(Int64, nX*nZ,1);
-        ind3 = zeros(Int64, nX*nZ,1);
-        ind4 = zeros(Int64, nX*nZ,1);
+            x1      = (X_irr[ix,iz] .- X[ix1,iz1])./dx;   
+            z1      = (Z_irr[ix,iz] .- Z[ix1,iz1])./dz;   
+            α       = [(1.0-x1)*(1.0-z1), (    x1)*(1.0-z1), (1.0-x1)*(    z1),   (    x1)*(    z1)     ];
+            f1      = [Data_reg1[ind1],     Data_reg1[ind2],   Data_reg1[ind3],       Data_reg1[ind4]   ];
 
-        for i=1:length(ix1); 
-            ind1[i] = LinearIndices(X)[ix1[i]  ,iz1[i]  ]; 
-            ind2[i] = LinearIndices(X)[ix1[i]+1,iz1[i]  ]; 
-            ind3[i] = LinearIndices(X)[ix1[i]  ,iz1[i]+1]; 
-            ind4[i] = LinearIndices(X)[ix1[i]+1,iz1[i]+1]; 
-        end
+            Data_irr[1][ix,iz]  = 0.0;
+            for i=1:4; Data_irr[1][ix,iz]  =  Data_irr[1][ix,iz] + α[i].*f1[i]; end
 
-        x1          = (X_irr[:] .- X[ind1])./dx;   
-        z1          = (Z_irr[:] .- Z[ind1])./dz;   
-        α           = [(1.0.-x1).*(1.0.-z1), (    x1).*(1.0.-z1), (1.0.-x1).*(    z1),   (    x1).*(    z1)  ];
-
-        f1          = [Data_reg1[ind1],      Data_reg1[ind2],     Data_reg1[ind3],       Data_reg1[ind4]     ];
-
-        Data_irr1_v  =  zeros(Float64, nX*nZ,1);
-        Data_irr1_v  =  α[1].*f1[1] + α[2].*f1[2] + α[3].*f1[3] + α[4].*f1[4];
-        if nZ>1
-            Data_irr[1]     .=  reshape(Data_irr1_v, (nX,nZ));
-        else
-            Data_irr[1][:]   =  Data_irr1_v;
-        end
-
-        if nField==2
-            f2          =   [Data_reg2[ind1],      Data_reg2[ind2],     Data_reg2[ind3],       Data_reg2[ind4]     ];        
-            Data_irr2_v =   α[1].*f2[1] + α[2].*f2[2] + α[3].*f2[3] + α[4].*f2[4];
-            if nZ>1
-                Data_irr[2]     .=  reshape(Data_irr2_v, (nX,nZ));
-            else
-
-                Data_irr[2][:]   =  Data_irr2_v;
+            if nField==2
+                f2                  =   [Data_reg2[ind1],      Data_reg2[ind2],     Data_reg2[ind3],       Data_reg2[ind4]     ];        
+                Data_irr[2][ix,iz]  =   0.0;
+                for i=1:4; Data_irr[2][ix,iz]  =  Data_irr[2][ix,iz] + α[i].*f2[i]; end
             end
+
         end
-    end
-
-    if 1==0         # same with a loop
-
-        for ix=1:nX
-            for iz=1:nZ
-            
-                ix1 = floor(Int64, (X_irr[ix,iz] - minX)/dx) + 1;   
-                iz1 = floor(Int64, (Z_irr[ix,iz] - minZ)/dz) + 1;    
-                if (ix1>=nX); ix1 = nX-1;   end
-                if (iz1>=nZ); iz1 = nZ-1;   end
-                if (ix1< 1);  ix1 = 1;      end
-                if (iz1< 1);  iz1 = 1;      end
-
-                i    = 1;
-                ind1 = LinearIndices(Data_reg1)[ix1[1]  , iz1[1]  ]; 
-                ind2 = LinearIndices(Data_reg1)[ix1[1]+1, iz1[1]  ]; 
-                ind3 = LinearIndices(Data_reg1)[ix1[1]  , iz1[1]+1]; 
-                ind4 = LinearIndices(Data_reg1)[ix1[1]+1, iz1[1]+1]; 
-
-                x1                  = (X_irr[ix,iz] .- X[ix1,iz1])./dx;   
-                z1                  = (Z_irr[ix,iz] .- Z[ix1,iz1])./dz;   
-                α                   = [(1.0-x1)*(1.0-z1), (    x1)*(1.0-z1), (1.0-x1)*(    z1),   (    x1)*(    z1)  ];
-                f1                  = [Data_reg1[ind1],      Data_reg1[ind2],     Data_reg1[ind3],       Data_reg1[ind4]     ];
-
-                Data_irr[1][ix,iz]  = 0.0;
-                for i=1:4; Data_irr[1][ix,iz]  =  Data_irr[1][ix,iz] + α[i].*f1[i]; end
-
-                if nField==2
-                    f2                  =   [Data_reg2[ind1],      Data_reg2[ind2],     Data_reg2[ind3],       Data_reg2[ind4]     ];        
-                    Data_irr[2][ix,iz]  =   0.0;
-                    for i=1:4; Data_irr[2][ix,iz]  =  Data_irr[2][ix,iz] + α[i].*f1[i]; end
-
-                end
-
-            end
-        end
-
     end
 
     return Data_irr
-
 end
 
 
 #--------------------------------------------------------------------------
 function Interpolate_3D(Spacing,   Grid,    Data_grid,  Points_irregular);
 
-    # NOTE: can potentially be parallelized (need to see how to best go about that)
     dx          =   Spacing[1];
     dy          =   Spacing[2];
     dz          =   Spacing[3];
@@ -182,9 +128,9 @@ function Interpolate_3D(Spacing,   Grid,    Data_grid,  Points_irregular);
     Y_irr       =   Points_irregular[2];
     Z_irr       =   Points_irregular[3];
     
-    nX          =   size(X_irr,1); 
-    nY          =   size(X_irr,2); 
-    nZ          =   size(X_irr,3);
+    nX          =   size(X,1); 
+    nY          =   size(X,2); 
+    nZ          =   size(X,3);
 
     nField      = length(Data_grid);
     Data_reg1   = Data_grid[1];
@@ -200,9 +146,9 @@ function Interpolate_3D(Spacing,   Grid,    Data_grid,  Points_irregular);
     end
 
 
-    for ix=1:nX
-        for iy=1:nY
-            for iz=1:nZ
+    for ix=1:size(X_irr,1)
+        for iy=1:size(X_irr,2)
+            for iz=1:size(X_irr,3)
             
                 ix1 = floor(Int64, (X_irr[ix,iy,iz] - minX)/dx) + 1;   
                 iy1 = floor(Int64, (Y_irr[ix,iy,iz] - minY)/dy) + 1;   

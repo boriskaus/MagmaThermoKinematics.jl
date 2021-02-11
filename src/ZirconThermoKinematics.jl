@@ -10,7 +10,7 @@ module ZirconThermoKinematics
 # list required modules
 using Random                                    # random numbers
 using StructArrays                              # for tracers and dike polygon
-
+using Parameters                                # More flexible definition of parameters
 
 
 ## Alphabetical include of computation-submodules (must be at end as needs to import from ParallelStencil, .e.g. INDICES).

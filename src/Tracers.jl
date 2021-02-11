@@ -33,12 +33,16 @@ function UpdateTracers(Tracers, Grid, Spacing, T, Phi);
     
         x   = coord[:,1];
         z   = coord[:,end];
-        if dim==2;                      Points_irregular = (x,z)
-        else;       y   = coord[:,2];   Points_irregular = (x,y,z);  end
+        if dim==2;                      
+            Points_irregular = (x,z);
+        else       
+            y   = coord[:,2];   
+            Points_irregular = (x,y,z);  
+        end
 
         # Correct coordinates (to stay withoin bounds of models)
         Points_irregular = CorrectBounds(Points_irregular, Grid);
-
+ 
         # Interpolate on tracers
         T_tracers = Interpolate_Linear( Grid, Spacing, tuple(T), Points_irregular);
 
