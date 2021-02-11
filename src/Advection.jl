@@ -81,8 +81,8 @@ function Interpolate_2D(Spacing,   Grid,    Data_grid,  Points_irregular);
 
     if 1==1 # vectorized code
 
-        ix1 = floor.(Int64, (X_irr[:] .- minX)./dx) .+ 1;    ix1[ix1.==nX] .= nX-1;
-        iz1 = floor.(Int64, (Z_irr[:] .- minZ)./dz) .+ 1;    iz1[iz1.==nZ] .= nZ-1;
+        ix1 = floor.(Int64, (X_irr[:] .- minX)./dx) .+ 1;    ix1[ix1.>=nX] .= nX-1; ix1[ix1.<1] .= 1;
+        iz1 = floor.(Int64, (Z_irr[:] .- minZ)./dz) .+ 1;    iz1[iz1.>=nZ] .= nZ-1; iz1[iz1.<1] .= 1;
 
         ind1 = zeros(Int64, nX*nZ,1);
         ind2 = zeros(Int64, nX*nZ,1);
@@ -127,10 +127,12 @@ function Interpolate_2D(Spacing,   Grid,    Data_grid,  Points_irregular);
         for ix=1:nX
             for iz=1:nZ
             
-                ix1 = floor(Int64, (X_irr[ix,iz] - minX)/dx) + 1;    #ix1[ix1.==nX] .= nX-1;
-                iz1 = floor(Int64, (Z_irr[ix,iz] - minZ)/dz) + 1;    #iz1[iz1.==nZ] .= nZ-1;
-                if (ix1==nX); ix1 = nX-1;   end
-                if iz1==nZ; iz1 = nZ-1;     end
+                ix1 = floor(Int64, (X_irr[ix,iz] - minX)/dx) + 1;   
+                iz1 = floor(Int64, (Z_irr[ix,iz] - minZ)/dz) + 1;    
+                if (ix1>=nX); ix1 = nX-1;   end
+                if (iz1>=nZ); iz1 = nZ-1;   end
+                if (ix1< 1);  ix1 = 1;      end
+                if (iz1< 1);  iz1 = 1;      end
 
                 i    = 1;
                 ind1 = LinearIndices(Data_reg1)[ix1[1]  , iz1[1]  ]; 
@@ -205,9 +207,12 @@ function Interpolate_3D(Spacing,   Grid,    Data_grid,  Points_irregular);
                 ix1 = floor(Int64, (X_irr[ix,iy,iz] - minX)/dx) + 1;   
                 iy1 = floor(Int64, (Y_irr[ix,iy,iz] - minY)/dy) + 1;   
                 iz1 = floor(Int64, (Z_irr[ix,iy,iz] - minZ)/dz) + 1;   
-                if ix1==nX; ix1 = nX-1;   end
-                if iy1==nY; iy1 = nY-1;   end
-                if iz1==nZ; iz1 = nZ-1;   end
+                if ix1>=nX; ix1 = nX-1;   end
+                if iy1>=nY; iy1 = nY-1;   end
+                if iz1>=nZ; iz1 = nZ-1;   end
+                if (ix1< 1);  ix1 = 1;    end
+                if (iy1< 1);  iy1 = 1;    end
+                if (iz1< 1);  iz1 = 1;    end
 
                 ind1 = LinearIndices(Data_reg1)[ix1[1]  , iy1[1]  , iz1[1]  ]; 
                 ind2 = LinearIndices(Data_reg1)[ix1[1]+1, iy1[1]  , iz1[1]  ]; 
@@ -271,49 +276,49 @@ function AdvectPoints(AdvPoints0, Grid,Velocity,Spacing,dt, Method="RK4");
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt;  
         end
-        AdvPoints  =   CorrectBounds!( AdvPoints , Grid);
+        AdvPoints  =   CorrectBounds( AdvPoints , Grid);
         
     elseif Method=="RK2"
         Velocity_int = Interpolate_Linear( Grid, Spacing, Velocity, AdvPoints0);    
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt/2.0;  
         end    
-        AdvPoints  =   CorrectBounds!( AdvPoints , Grid);                               # step k1
+        AdvPoints  =   CorrectBounds( AdvPoints , Grid);                               # step k1
         
         # Interpolate velocity values on deformed grid
         Velocity_int = Interpolate_Linear( Grid, Spacing, Velocity, AdvPoints);    
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt;  
         end    
-        AdvPoints  =   CorrectBounds!( AdvPoints , Grid);                               # step k2
+        AdvPoints  =   CorrectBounds( AdvPoints , Grid);                               # step k2
 
     elseif Method=="RK4"
         Velocity_int = Interpolate_Linear( Grid, Spacing, Velocity, AdvPoints0);    
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt/2.0;  
         end    
-        AdvPoints  =   CorrectBounds!( AdvPoints , Grid);                               # step k1
+        AdvPoints  =   CorrectBounds( AdvPoints , Grid);                               # step k1
         
         # Interpolate velocity values on deformed grid
         Velocity_int = Interpolate_Linear( Grid, Spacing, Velocity, AdvPoints0);    
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt/2.0;  
         end    
-        AdvPoints  =   CorrectBounds!( AdvPoints , Grid);                               # step k2
+        AdvPoints  =   CorrectBounds( AdvPoints , Grid);                               # step k2
         
         # Interpolate velocity values on deformed grid
         Velocity_int = Interpolate_Linear( Grid, Spacing, Velocity, AdvPoints0);    
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt/2.0;  
         end    
-        AdvPoints  =   CorrectBounds!( AdvPoints , Grid);                               # step k3
+        AdvPoints  =   CorrectBounds( AdvPoints , Grid);                               # step k3
 
         # Interpolate velocity values on deformed grid
         Velocity_int = Interpolate_Linear( Grid, Spacing, Velocity, AdvPoints0);    
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt;  
         end             
-        AdvPoints  =   CorrectBounds!( AdvPoints , Grid);                               # step k4
+        AdvPoints  =   CorrectBounds( AdvPoints , Grid);                               # step k4
         
     end
 
@@ -323,13 +328,13 @@ function AdvectPoints(AdvPoints0, Grid,Velocity,Spacing,dt, Method="RK4");
 end
 
 """
-    Points_new = CorrectBounds!(Points, Grid);
+    Points_new = CorrectBounds(Points, Grid);
     
 Ensures that the coordinates of Points stay within the bounds
 of the regular grid Grid, which is a tuple of 2 or 3 field (for 2D/3D)
 
-"""
-function CorrectBounds!(Points, Grid);
+ """
+function CorrectBounds(Points, Grid);
 
     Points_new  = map(x->x.*0, Points) ; # initialize to 0
     for i=1:length(Grid);
@@ -386,12 +391,18 @@ function AdvectTracers(Tracers, T::Array,Grid, Velocity, Spacing, dt, Method="RK
     x   = coord[:,1];
     z   = coord[:,end];
     if dim==2
-        Points_new  =   AdvectPoints((x,z),    Grid,Velocity,Spacing, dt,Method);     # Advect tracers
+        Points_irregular    =   (x,z);
     else
-        y           =   coord[:,2];
-        Points_new  =   AdvectPoints((x,y,z),  Grid,Velocity,Spacing, dt,Method);     # Advect tracers
+        y                   =   coord[:,2];
+        Points_irregular    =   (x,y,z);
     end
- 
+    
+    # Correct coordinates (to stay withoin bounds of models)
+    Points_irregular    =   CorrectBounds(Points_irregular, Grid);
+
+    # Advect
+    Points_new          =   AdvectPoints(Points_irregular,  Grid,Velocity,Spacing, dt,Method);     # Advect tracers
+
     for iT = 1:length(Tracers)
         if dim==2
             LazyRow(Tracers, iT).coord = [Points_new[1][iT]; Points_new[2][iT]];
