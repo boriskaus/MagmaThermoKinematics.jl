@@ -16,6 +16,7 @@ Below we give a number of example scripts that show how it can be used to simula
 A simple example that simulates the emplacement of dikes within the crust over a period of 10'000 years is shown below. 
 
 ![2-D dike intrusion](examples/movies/Example2D.gif)
+
 The code to simulate this, including visualization, is only 100 lines and the key parts of it are shown below
 ```
 # Load required packages
