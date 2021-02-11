@@ -6,22 +6,23 @@ This easy to use and versatile package simulates the thermal evolution of magmat
 
 Below we give a number of example scripts that show how it can be used to simulate a number of scenarios.
 
+
+## Contents
+  - [100-lines 2D example](#100-lines-2d-example)
+  - [Dependencies](#dependencies)
+  - [Installation](#installation)
+
+
 ## 100-lines 2D example
 A simple example that simulates the emplacement of dikes within the crust over a period of 10'000 years is shown below. 
 
-![2-D dike intrusion](examples/movies/Example2D.gif)
+![2-D dike intrusion](examples/movies/example2D.gif)
 
 
-The code to simulate this, including visualization, is 100 lines and is shown below 
+The code to simulate this, including visualization, is only 100 lines and the key parts of it are shown below
 ```
-using ZirconThermoKinematics
-using ZirconThermoKinematics.Diffusion2D
-using ParallelStencil
-using ParallelStencil.FiniteDifferences2D
-using Plots                                     # plotting; install with ], add Plots
-
-# Initialize 
-@init_parallel_stencil(Threads, Float64, 2);    # initialize parallel stencil in 2D
+# Load required packages
+#(...) 
 
 #------------------------------------------------------------------------------------------
 @views function MainCode_2D();
@@ -41,29 +42,11 @@ maxTime_kyrs            =   10;                                 # Maximum simula
 H_ran, W_ran, Angle_ran =   H/4.0, W/4.0, 40.0;                 # size of domain amdin which we randomly place dikes and range of angles   
 DikeType                =   "SquareDike"                        # Type to be injected
 
-Nx, Nz                  =   500, 500;                           # resolution
-dx                      =   W/(Nx-1)*1e3; dz = H*1e3/(Nz-1);    # grid size [m]
-κ                       =   k_rock./(ρ*cp);                     # thermal diffusivity   
-dt                      =   min(dx^2, dz^2)./κ/20;              # stable timestep (required for explicit FD)
-nt                      =   floor(maxTime_kyrs*1e3*SecYear/dt); # number of required timesteps
-nTr_dike                =   1000;                               # number of tracers inserted per dike
+#(...) 
+# Initialize numerical parameters and arrays
+#(...) 
 
-# Array initializations (1 - main arrays on which we can initialize properties)
-T                       =   @zeros(Nx,   Nz);                    
-K                       =   @ones(Nx,    Nz)*k_rock;
-Rho                     =   @ones(Nx,    Nz)*ρ;       
-Cp                      =   @ones(Nx,    Nz)*cp;
-
-# Work array initialization
-Tnew, qx,qz, Kx, Kz     =   @zeros(Nx,   Nz), @zeros(Nx-1, Nz), @zeros(Nx,   Nz-1), @zeros(Nx-1, Nz), @zeros(Nx,   Nz-1)    # thermal solver
-X,Xc,Z                  =   @zeros(Nx,   Nz), @zeros(Nx-1, Nz-1),   @zeros(Nx,   Nz)                                        # 2D gridpoints
-Phi_o, Phi, dPhi_dt     =   @zeros(Nx,   Nz), @zeros(Nx,   Nz  ),   @zeros(Nx,   Nz)                                        # solid fraction
-
-# Set up model geometry & initial T structure
-x,z                     =   0:dx:W*1e3, -H*1e3:dz:(-H*1e3+(Nz-1)*dz);
-X,Z                     =   ones(Nz)' .* x, z' .* ones(Nx);                             # 2D coordinate grids
-Xc                      =   (X[2:Nx,:] + X[1:Nx-1,:])/2.0;
-Grid, Spacing           =   (X,Z), (dx,dz);
+# Set up initial temperature structure
 T                       .=   -Z./1e3.*GeoT;                                             # initial (linear) temperature profile
 
 # Add initial dike
@@ -73,31 +56,36 @@ Phi,dPhi_dt             =   SolidFraction(T, Phi_o, dt);                        
 Tnew                    .=  T;                                                          # To get correct boundary conditions.
 
 # Preparation of visualisation
-ENV["GKSwstype"]="nul"; if isdir("viz2D_out")==false mkdir("viz2D_out") end; loadpath = "./viz2D_out/"; anim = Animation(loadpath,String[])
-println("Animation directory: $(anim.dir)")
+#(...)
 
 time,time_kyrs, dike_inj = 0.0, 0.0, 0.0;
 for it = 1:nt   # Time loop
 
-    if floor(time_kyrs/InjectionInterval_kyrs)> dike_inj                                                    # Add new dike every X years
+    # Add new dike every X years
+    if floor(time_kyrs/InjectionInterval_kyrs)> dike_inj                                                 
         dike_inj            =   floor(time_kyrs/InjectionInterval_kyrs)                                     # Keeps track on whether we injected already
-        cen                 =   [W/2.; -H/2.]; center = (rand(2,1) .- 0.5).*[W_ran;H_ran] + cen;            # Random variation of location (over a distance )
-        dike                =   Dike([W_in;H_in], center[:]*1e3 ,(rand(1).-0.5).*Angle_ran, DikeType,T_in); # Specify dike with random location/angle but fixed size 
-        T, Tracers, Vol     =   InjectDike(Tracers, T, Grid, Spacing, dike, nTr_dike);                      # Add dike, move hostrocks
+        
+        # Vary center of injected dike randomly & generate new dike
+        cen                 =   [W/2.; -H/2.]; center = (rand(2,1) .- 0.5).*[W_ran;H_ran] + cen;            
+        dike                =   Dike([W_in;H_in], center[:]*1e3 ,(rand(1).-0.5).*Angle_ran, DikeType,T_in); 
+
+        # Inject new dike to domain 
+        T, Tracers, Vol     =   InjectDike(Tracers, T, Grid, Spacing, dike, nTr_dike);                     
         InjectVol           +=  Vol                                                                         # Keep track of injected volume
         println("Added new dike; total injected magma volume = $(InjectVol/1e9) km^3; rate Q=$(InjectVol/(time_kyrs*1e3*SecYear)) m^3/s")
     end
 
-    Phi,dPhi_dt     =   SolidFraction(T, Phi_o, dt);                                            # Compute solid fraction
-    K               .=  Phi.*k_rock .+ (1 .- Phi).*k_magma;                                     # Thermal conductivity
+    Phi,dPhi_dt     =   SolidFraction(T, Phi_o, dt);                        # Compute solid fraction
+    K               .=  Phi.*k_rock .+ (1 .- Phi).*k_magma;                 # Thermal conductivity
+    
     # Perform a diffusion step
     @parallel diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, dt, dx, dz,  L, dPhi_dt);  
-    @parallel (1:size(T,2)) bc2D_x!(Tnew);                                                      # set lateral boundary conditions (flux-free)
-    T[:,1] .= GeoT*H; T[:,end] .= 0.0;                                                          # bottom & top temperature (constant)
+    @parallel (1:size(T,2)) bc2D_x!(Tnew);                                  # set lateral boundary conditions (flux-free)
+    T[:,1] .= GeoT*H; T[:,end] .= 0.0;                                      # bottom & top temperature (constant)
   
-    Tracers         =   UpdateTracers(Tracers, Grid, Spacing, Tnew, Phi);                       # Update info on tracers 
-    T, Tnew         =   Tnew, T;                                                                # Update temperature
-    time, time_kyrs =   time + dt, time/SecYear/1e3;                                            # Keep track of evolved time
+    Tracers         =   UpdateTracers(Tracers, Grid, Spacing, Tnew, Phi);   # Update info on tracers 
+    T, Tnew         =   Tnew, T;                                            # Update temperature
+    time, time_kyrs =   time + dt, time/SecYear/1e3;                        # Keep track of evolved time
     println(" Timestep $it = $(round(time/SecYear)/1e3) kyrs")
 
     if mod(it,20)==0  # Visualisation
