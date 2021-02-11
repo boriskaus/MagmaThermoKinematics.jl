@@ -132,7 +132,6 @@ function Interpolate_2D(Spacing,   Grid,    Data_grid,  Points_irregular);
                 if (ix1==nX); ix1 = nX-1;   end
                 if iz1==nZ; iz1 = nZ-1;     end
 
-
                 i    = 1;
                 ind1 = LinearIndices(Data_reg1)[ix1[1]  , iz1[1]  ]; 
                 ind2 = LinearIndices(Data_reg1)[ix1[1]+1, iz1[1]  ]; 
@@ -145,12 +144,12 @@ function Interpolate_2D(Spacing,   Grid,    Data_grid,  Points_irregular);
                 f1                  = [Data_reg1[ind1],      Data_reg1[ind2],     Data_reg1[ind3],       Data_reg1[ind4]     ];
 
                 Data_irr[1][ix,iz]  = 0.0;
-                for i=1:4; Data_irr[1][ix,iz]  =  Data_irr[1][ix,iy,iz] + α[i].*f1[i]; end
+                for i=1:4; Data_irr[1][ix,iz]  =  Data_irr[1][ix,iz] + α[i].*f1[i]; end
 
                 if nField==2
                     f2                  =   [Data_reg2[ind1],      Data_reg2[ind2],     Data_reg2[ind3],       Data_reg2[ind4]     ];        
                     Data_irr[2][ix,iz]  =   0.0;
-                    for i=1:4; Data_irr[2][ix,iz]  =  Data_irr[2][ix,iy,iz] + α[i].*f1[i]; end
+                    for i=1:4; Data_irr[2][ix,iz]  =  Data_irr[2][ix,iz] + α[i].*f1[i]; end
 
                 end
 

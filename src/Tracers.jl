@@ -33,17 +33,11 @@ function UpdateTracers(Tracers, Grid, Spacing, T, Phi);
     
         x   = coord[:,1];
         z   = coord[:,end];
-        
-        # Interpolate on tracers
-        if dim==2
-            T_tracers   = Interpolate_Linear( Grid, Spacing, T, (x,z));
-        else
-            y           = coord[:,2];
-            T_tracers   = Interpolate_Linear( Grid, Spacing, T, (x,y,z));
-        end
+        if dim==2;                      Points_irregular = (x,z)
+        else;       y   = coord[:,2];   Points_irregular = (x,y,z);  end
 
-       
-        #T_tracers = Interpolate_Linear( Grid, Spacing, T, Points_irregular);
+        # Interpolate on tracers
+        T_tracers = Interpolate_Linear( Grid, Spacing, tuple(T), Points_irregular);
 
         # Update info on tracers
         for iT = 1:length(Tracers)
