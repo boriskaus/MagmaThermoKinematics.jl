@@ -18,7 +18,6 @@ include("Diffusion.jl")
 export Diffusion2D, Diffusion3D
 
 include("MeltingRelationships.jl")
-using .MeltingRelationships
 export SolidFraction
 
 # Export functions that will be available outside this module
@@ -29,19 +28,17 @@ export Interpolate_Linear,  AdvectTemperature, AdvectTracers
 const SecYear =   3600*24*365.25;                      # seconds/year
 export SecYear
 
-
-include("Dikes.jl")
-using .Dikes
-export Dike, DikePoly, Tracer
-export AddDike, HostRockVelocityFromDike, CreatDikePolygon
-
 # routines related to advection 
 include("Advection.jl")
-using .Advection
 export Interpolate_Linear, AdvectTracers, AdvectTemperature
 
+include("Dikes.jl")
+export Dike, DikePoly, Tracer
+export AddDike, HostRockVelocityFromDike, CreatDikePolygon, volume_dike, InjectDike
 
-
+# Routines that deal with tracers
+include("Tracers.jl")
+export UpdateTracers
 
 
 end # module

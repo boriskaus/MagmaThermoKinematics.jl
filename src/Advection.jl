@@ -2,12 +2,6 @@
 This contains routines related to advection of temperature and tracers
 
 """
-module Advection
-
-using StructArrays
-
-
-export Interpolate_Linear, AdvectTracers, AdvectTemperature
 
 
 """
@@ -39,10 +33,10 @@ function Interpolate_Linear( Grid, Spacing, Data_grid, Points_irregular);
 
     dim = length(Grid);
                             
-    if dim==2
+    if      dim==2
         Data_interp = Interpolate_2D(Spacing, Grid, Data_grid, Points_irregular);
 
-    elseif dim==3
+    elseif  dim==3
         Data_interp = Interpolate_3D(Spacing, Grid, Data_grid, Points_irregular);
 
     else
@@ -398,11 +392,8 @@ function AdvectTracers(Tracers, T::Array,Grid, Velocity, Spacing, dt, Method="RK
         y           =   coord[:,2];
         Points_new  =   AdvectPoints((x,y,z),  Grid,Velocity,Spacing, dt,Method);     # Advect tracers
     end
-    T           =   Interpolate_Linear(Grid, Spacing, tuple(T), Points_new);   # Interpolate T on tracers   
  
     for iT = 1:length(Tracers)
-        LazyRow(Tracers, iT).T = T[1][iT];
-
         if dim==2
             LazyRow(Tracers, iT).coord = [Points_new[1][iT]; Points_new[2][iT]];
        
@@ -412,7 +403,4 @@ function AdvectTracers(Tracers, T::Array,Grid, Velocity, Spacing, dt, Method="RK
     end
 
     return Tracers
-end
-
-
 end

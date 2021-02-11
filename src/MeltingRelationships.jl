@@ -1,8 +1,3 @@
-module MeltingRelationships
-
-
-export SolidFraction
-
 
 """
     SolidFraction computes the solid fraction (= (1-phi) as a function of T
@@ -20,8 +15,4 @@ function SolidFraction(T::Array, Phi_o::Array, dt::Float64)
     Phi_o     .=   Phi;
 
     return Phi, dPhi_dt
-end
-
-
-
 end
