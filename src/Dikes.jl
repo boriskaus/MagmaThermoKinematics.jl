@@ -11,39 +11,58 @@ temperature field
     depending on whether we consider a 2D or a 3D case
 
     General form:
-        Dike(Size=[], Center=[], Angle=[], Type="..", T=)
+        Dike(Width=.., Thickness=.., Center=[], Angle=[], Type="..", T=.., ΔP=.., E=.., ν=.., Q=..)
 
         with:
 
-            Size:   dimensions of the dike area
-                    2D - [Width; Thickness]
-                    3D - [Width; Length; Thickness]
+            [Width]:      width of dike  (optional, will be computed automatically if ΔP and Q are specified)
 
-            Center: center of the dike
-                    2D - [x; z]
-                    3D - [x; y; z]
+            [Thickness]:  (maximum) thickness of dike (optional, will be computed automatically if ΔP and Q are specified)
+    
+            Center:     center of the dike
+                            2D - [x; z]
+                            3D - [x; y; z]
             
-            Angle:  Dip (and strike) angle of dike
-                    2D - [Dip]
-                    3D - [Strike; Dip]
+            Angle:      Dip (and strike) angle of dike
+                            2D - [Dip]
+                            3D - [Strike; Dip]
             
-            Type:   Type of dike
-                    "SquareDike"    - square dike area   
+            Type:           Type of dike
+                            "SquareDike"    -   square dike area   
+                            "ElasticDike"   -   penny-shaped elastic dike in elastic halfspace
             
-            T:      Temperature of the dike [Celcius]   
+            T:          Temperature of the dike [Celcius]   
             
+            ν:          Poison ratio of host rocks
+            
+            E:          Youngs modulus of host rocks [Pa]
+            
+            [ΔP]:       Overpressure of dike w.r.t. host rock [Pa], (optional in case we want to compute width/length directly)
+
+            [Q]:        Volume of magma within dike [m^3], 
+            
+           
     All parameters can be specified through keywords as shown above. 
-    If keywords are not given, default parameters are employed         
+    If keywords are not given, default parameters are employed.
+    
+ The 
+    
 """
 @with_kw struct Dike    # stores info about dike
     # Note: since we utilize the "Parameters.jl" package, we can add more keywords here w/out breaking the rest of the code 
-    Size    ::  Vector{Float64} = [1000.; 2000.]          # Size or aspect ratio of dike 3D: (width, length, thickness), 2D: 
-    Center  ::  Vector{Float64} = [20e3 ; -10e3]          # Center
-    Angle   ::  Vector{Float64} = [0.]                    # Strike/Dip angle of dike
-    Type    ::  String          = "SquareDike"            # Type of dike
-    T       ::  Float64         = 950.0                   # Temperature of dike
-    E       ::  Float64         = 1.5e10                  # Youngs modulus (only required for elastic dikes)
-    ν       ::  Float64         = 0.3                     # Poison ratio of host rocks
+    #
+    # We can also define only a few parameters here (like Q and ΔP) and compute Width/Thickness from that
+    # Or we can define thickness 
+    Angle       ::  Vector{Float64} =   [0.]                                  # Strike/Dip angle of dike
+    Type        ::  String          =   "SquareDike"                          # Type of dike
+    T           ::  Float64         =   950.0                                 # Temperature of dike
+    E           ::  Float64         =   1.5e10                                # Youngs modulus (only required for elastic dikes)
+    ν           ::  Float64         =   0.3                                   # Poison ratio of host rocks
+    ΔP          ::  Float64         =   1e6;                                  # Overpressure of elastic dike
+    Q           ::  Float64         =   1000;                                 # Volume of elastic dike
+    Width       ::  Float64         =   (3*E*Q/(16*(1-ν^2)*ΔP))^(1.0/3.0);    # Width of dike/sill   
+    Thickness   ::  Float64         =   8*(1-ν^2)*ΔP*Width/(π*E);              # (maximum) Thickness of dike/sill
+    Center      ::  Vector{Float64} =   [20e3 ; -10e3]                        # Center
 end
 
 struct DikePoly    # polygon that describes the geometry of the dike (only in 2D)
@@ -105,8 +124,8 @@ function InjectDike(Tracers, T, Grid, Spacing, dike, nTr_dike )
     #   For computational reasons, we do not open the dike at once, but in sufficiently small pseudo timesteps
     #   Sufficiently small implies that the motion per "pseudotimestep" cannot be more than 0.5*{dx|dy|dz}
     
-    @unpack Size = dike
-    H           =    Size[end];                                         # thickness of dike
+    @unpack Width,Thickness = dike
+    H           =    Thickness;                                         # thickness of dike
     d           =    minimum(Spacing)*0.5;                              # maximum distance the dike can open per pseudotimestep 
 
     nsteps      =   maximum([ceil(H/d), 10]);                           # the number of steps (>=10)
@@ -184,18 +203,36 @@ function HostRockVelocityFromDike( Grid, Δ, dt, dike::Dike)
         Vx, Vz          = zeros(size(X)), zeros(size(Z));
             
         if Type=="SquareDike"
-            @unpack Size = dike
-            W, H    =  Size[1], Size[end];              # Dimensions of square dike
-            Vint    =  Δ/dt;                            # open the dike by a maximum amount of Δ in one dt
+            @unpack Thickness,Width = dike
+            W, H    =  Width, Thickness;                # Dimensions of square dike
+            Vint    =  Δ/dt/2.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
                 
             Vz_rot[(Zrot.<0) .& (abs.(Xrot).<W/2.0)] .= -Vint;
             Vz_rot[(Zrot.>0) .& (abs.(Xrot).<W/2.0)] .=  Vint;
 
             Vx_rot[abs.(X).<W]          .=   0.0;      # set radial velocity to zero at left boundary
+
+        elseif Type=="ElasticDike"
+                @unpack Thickness,Width = dike
+                W, H    =  Width, Thickness;                # Dimensions of square dike
+                Vint    =  Δ/dt/2.0;                        # open the dike by a maximum amount of Δ in one dt
+                    
+                for ix=1:size(Vz_rot,1)
+                    for iz=1:size(Vz_rot,2)
+                        
+                        # use elastic dike solution to compute displacement
+                        Displacement, Bmax = DisplacementAroundPennyShapedDike(dike, [Xrot[ix,iz]; Zrot[ix,iz]]);
+
+                        Displacement .=  Displacement/Bmax;     # normalize such that 1 is the maximum
+                        
+                        Vz_rot[ix,iz] = Vint.*Displacement[2];
+                        Vx_rot[ix,iz] = Vint.*Displacement[1];      
+                    end
+                end
+
         else
             error("Unknown Dike Type: $Type")
         end
-
 
         # "unrotate" vector fields
         RotMat = [cosd(-α) -sind(-α); sind(-α) cosd(-α)];    # 2D rotation matrix (in opposite direction)
@@ -224,9 +261,6 @@ function HostRockVelocityFromDike( Grid, Δ, dt, dike::Dike)
 
 end
 
-
-
-
 """
     dike_poly = CreatDikePolygon(dike::Dike)
 
@@ -252,9 +286,9 @@ function CreatDikePolygon(dike::Dike)
         α      = Angle[end];
         RotMat = [cosd(-α) -sind(-α); sind(-α) cosd(-α)]; 
         for i=1:length(poly)
-            @unpack Size, Center = dike;   
-            H       =  Size[end];
-            W       =  Size[1];
+            @unpack Width, Thickness, Center = dike;   
+            H       =  Thickness;
+            W       =  Width;
             
             pt      = [LazyRow(poly, i).x*W/2.0; LazyRow(poly, i).z*H/2.0];
             pt_rot  = RotMat*pt;    # rotate
@@ -263,7 +297,7 @@ function CreatDikePolygon(dike::Dike)
             LazyRow(poly, i).z = pt_rot[2] + Center[2];
         end
     
-    elseif Type=="Elliptical"
+    elseif Type=="ElasticDike"
         error("To be added")
     
     else
@@ -284,24 +318,24 @@ function isinside_dike(pt, dike::Dike)
     # important: this is a "unit" dike, which has the center at [0,0,0] and width given by dike.Size
     dim =   length(pt)
     in  =   false;
-    @unpack Type,Size = dike;
+    @unpack Type,Width,Thickness = dike;
     if Type=="SquareDike"
         if  dim==2
-            if  (abs(pt[1])  < Size[1]/2.0) & (abs(pt[end])< Size[end]/2.0)
+            if  (abs(pt[1])  < Width/2.0) & (abs(pt[end])< Thickness/2.0)
                 in = true
             end
         elseif dim==3
-            if  (abs(pt[1])  < Size[1]/2.0) & (abs(pt[end])< Size[end]/2.0) & (abs(pt[2])< Size[2]/2.0)
+            if  (abs(pt[1])  < Width/2.0) & (abs(pt[end])< Thickness/2.0) & (abs(pt[2])< Width/2.0)
                 in = true
             end
         end
 
-    elseif Type=="Ellipse"
+    elseif Type=="ElasticDike"
         
         if dim==2
-            eq_ellipse = pt[1]^2.0/(Size[1]/2.0)^2.0 + pt[2]^2.0/(Size[2]/2.0)^2.0; # ellipse
+            eq_ellipse = pt[1]^2.0/(Width/2.0)^2.0 + pt[2]^2.0/(Thickness/2.0)^2.0; # ellipse
         else
-            eq_ellipse = pt[1]^2.0/(Size[1]/2.0)^2.0 + pt[2]^2.0/(Size[2]/2.0)^2.0 + pt[3]^2.0/(Size[3]/2.0)^2.0; # ellipsoid
+            eq_ellipse = pt[1]^2.0/(Width/2.0)^2.0 + pt[2]^2.0/(Thickness/2.0)^2.0 + pt[3]^2.0/(Width/2.0)^2.0; # ellipsoid
         end
 
         if eq_ellipse < 1.0
@@ -327,27 +361,15 @@ end
 """
 function volume_dike(dike::Dike)
     # important: this is a "unit" dike, which has the center at [0,0,0] and width given by dike.Size
-    @unpack Size, Type =dike
-    dim = length(Size)
-    if Type=="SquareDike"
-        if  dim==2
-            area    = Size[1]*Size[2];                        #  (in 2D, in m^2)
-            volume  = Size[1]*Size[1]*Size[2];           #  (equivalent 3D volume, in m^3)
-     
-        elseif dim==3
-            area    = Size[1]*Size[3]                         #   (cross-sectional area, in m^2)
-            volume  = Size[1]*Size[2]*Size[3]            #   (in 3D, in m^3)
-        end
+    @unpack Width, Thickness, Type =dike
 
-    elseif Type=="Ellipse"
-        
-        if dim==2
-            area    = pi*Size[1]*Size[2]                      #   (in 2D, in m^2)
-            volume  = 4/3*pi*Size[1]*Size[1]*Size[2]     #   (equivalent 3D volume, in m^3)
-        else
-            area    = pi*Size[1]*Size[3]                      #   (cross-sectional area, in m^2)
-            volume  = 4/3*pi*Size[1]*Size[2]*Size[3]     #   (in 3D, in m^3)
-        end
+    if Type=="SquareDike"
+        area    = Width*Thickness;                  #  (in 2D, in m^2)
+        volume  = Width*Width*Thickness;            #  (equivalent 3D volume, in m^3)
+    elseif Type=="ElasticDike"
+        area    = pi*Width*Thickness                #   (in 2D, in m^2)
+        volume  = 4/3*pi*Width*Width*Thickness      #   (equivalent 3D volume, in m^3)
+   
     else
         error("Unknown dike type $Type")
     end
@@ -368,8 +390,8 @@ tracers array Tracers.
 function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
 
     dim         =   length(Grid);
-    dike_poly   =   CreatDikePolygon(dike);                            # Polygon that describes the dike 
-    @unpack Angle,Center,Size,T = dike;
+    #dike_poly   =   CreatDikePolygon(dike);                            # Polygon that describes the dike 
+    @unpack Angle,Center,Width,Thickness,T = dike;
     
     if dim==2
         α           =    Angle[end];
@@ -428,6 +450,12 @@ function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
        
         # 1) Randomly initialize tracers to the approximate dike area
         pt      = rand(dim,1) .- 0.5*ones(dim,1);
+        if dim==2
+            Size = [Width; Thickness];
+        else
+            Size = [Width; Width; Thickness];
+        end
+
         pt      = pt.*Size;
         pt_rot  = RotMat*pt .+ Center[:];          # rotate and shift
 
@@ -447,14 +475,114 @@ function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
             if length(Tr)==0
                 Tr      =   StructArray([new_tracer]);          # Create tracer array
             else
-                push!(Tr, new_tracer);                              # Add new point to existing array
+                push!(Tr, new_tracer);                          # Add new point to existing array
             end
         end
 
     end
 
-    return Tfield, Tr, dike_poly;
+    return Tfield, Tr;
 
 
 end
 
+
+
+
+"""
+    This computes the displacement around a fluid-filled penny-shaped sill that is 
+    inserted inside in an infinite elastic halfspace.
+
+    Displacement, Bmax, p = DisplacementAroundPennyShapedDike(dike, CartesianPoint)
+
+    with:
+
+            dike:           Dike structure, containing info about the dike
+
+            CartesianPoint: Coordinate of the point @ which we want to compute displacments
+                        2D - [dx;dz]
+                        3D - [dx;dy;dz]
+            
+            Displacement:   Displacements of that point  
+                        2D - [Ux;Uz]
+                        3D - [Ux;Uy;Uz]
+
+            Bmax:           Max. opening of the dike 
+            p:              Overpressure of dike
+    
+    Reference: 
+        Sun, R.J., 1969. Theoretical size of hydraulically induced horizontal fractures and 
+        corresponding surface uplift in an idealized medium. J. Geophys. Res. 74, 5995–6011. 
+        https://doi.org/10.1029/JB074i025p05995
+
+        Notes:    
+            - We employ equations 7a and 7b from that paper, which assume that the dike is in a 
+                horizontal (sill-like) position; rotations have to be performed outside this routine
+            
+            - The center of the dike should be at [0,0,0]
+            
+            - This does not account for the presence of a free surface. 
+            
+            - The values are in absolute displacements; this may have to be normalized
+
+"""
+function DisplacementAroundPennyShapedDike(dike::Dike, CartesianPoint)
+
+    dim = length(CartesianPoint);
+
+    # extract required info from dike structure
+    @unpack ν,E,Width, Thickness = dike;
+
+    # Compute r & z; note that the Sun solution is defined for z>=0 (vertical)
+    if      dim==2; r = sqrt(CartesianPoint[1]^2);                       z = abs(CartesianPoint[2]); 
+    elseif  dim==3; r = sqrt(CartesianPoint[1]^2 + CartesianPoint[2]^2); z = abs(CartesianPoint[3]); end
+
+    if r==0; r=1e-3; end
+
+    B   =  Thickness;                         # maximum thickness of dike
+    a   =  Width/2.0;                     # radius
+
+    # note, we can either specify B and a, and compute pressure p and injected volume Q
+    # Alternatively, it is also possible to:
+    #       - specify p and a, and compute B and Q 
+    #       - specify volume Q & p and compute radius and B 
+    #
+    # What is best to do is to be decided later (and doesn't change the code below) 
+    Q   =   B*(2pi*a.^2)/3.0;               # volume of dike (follows from eq. 9 and 10a)
+    p   =   3E*Q/(16.0*(1.0 - ν^2)*a^3);    # overpressure of dike (from eq. 10a) = 3E*pi*B/(8*(1-ν^2)*a)
+
+    # Compute displacement, using complex functions
+    R1  =   sqrt(r^2. + (z - im*a)^2);
+    R2  =   sqrt(r^2. + (z + im*a)^2);
+
+    # equation 7a:
+    U   =   im*p*(1+ν)*(1-2ν)/(2pi*E)*( r*log( (R2+z+im*a)/(R1 +z- im*a)) 
+                                                - r/2*((im*a-3z-R2)/(R2+z+im*a) 
+                                                + (R1+3z+im*a)/(R1+z-im*a)) 
+                                                - (2z^2 * r)/(1 -2ν)*(1/(R2*(R2+z+im*a)) -1/(R1*(R1+z-im*a))) 
+                                                + (2*z*r)/(1-2ν)*(1/R2 - 1/R1) );
+    # equation 7b:
+    W   =       2*im*p*(1-ν^2)/(pi*E)*( z*log( (R2+z+im*a)/(R1+z-im*a)) 
+                                                - (R2-R1) 
+                                                - 1/(2*(1-ν))*( z*log( (R2+z+im*a)/(R1+z-im*a)) - im*a*z*(1/R2 + 1/R1)) );
+
+    # Displacements are the real parts of U and W. 
+    #  Note that this is the total required elastic displacement (in m) to open the dike.
+    #  If we only want to open the dike partially, we will need to normalize these values accordingly (done externally)  
+    Uz   =  real(W);  # vertical displacement should be corrected for z<0
+    Ur   =  real(U);
+    if (CartesianPoint[end]<0); Uz = -Uz; end
+    if (CartesianPoint[1]  <0); Ur = -Ur; end
+    
+    if      dim==2
+        Displacement = [Ur;Uz] 
+    elseif  dim==3
+        # Ur denotes the radial displacement; in 3D we have to decompose this in x and y components
+        x   = abs(CartesianPoint[1]); y = abs(CartesianPoint[2]);
+        Ux  = x/r*Ur; Uy = y/r*Ur;
+
+        Displacement = [Ux;Uy;Uz] 
+    end
+
+    return Displacement, B, p   
+end

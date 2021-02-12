@@ -40,5 +40,7 @@ export AddDike, HostRockVelocityFromDike, CreatDikePolygon, volume_dike, InjectD
 include("Tracers.jl")
 export UpdateTracers
 
+# Routines related to Parameters.jl, which come in handy in the main routine
+export @unpack
 
 end # module

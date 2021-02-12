@@ -114,3 +114,10 @@ This is a julia package, so after installing julia in the usual manner, you can 
 julia>]
   pkg> add https://github.com/boriskaus/ZirconThermoKinematics.jl
 ```
+Next, you can download one of the code above, put it in the directory you are and start it with
+```
+julia> include("Example2D.jl")
+```
+
+
+
