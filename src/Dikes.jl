@@ -70,27 +70,7 @@ struct DikePoly    # polygon that describes the geometry of the dike (only in 2D
     z::Float64          # z-coordinates
 end
 
-"""
-    Structure that has information about the tracers
 
-    General form:
-        Tracer(num, coord, T)
-
-        with:
-
-            num:   number of the tracer (integer)
-
-            coord: coordinates of the tracer
-                    2D - [x; z]
-                    3D - [x; y; z]
-            
-            T:      Temperature of the tracer [Celcius]                              
-"""
-struct Tracer
-    num::Int64                  # number
-    coord::Vector{Float64}      # holds coordinates [2D or 3D]
-    T::Float64                  # temperature
-end
 
 """
     This injects a dike in the computational domain in an instantaneous manner,
@@ -468,14 +448,14 @@ function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
             if      dim==2; pt_new = [pt_rot[1]; pt_rot[2]];
             elseif  dim==3; pt_new = [pt_rot[1]; pt_rot[2]; pt_rot[3]]; end
             
-            if length(Tr)==0;   num     =   1;
-            else                num     =   Tr.num[end]+1;  end
+            if length(Tr)==0;   number  =   1;
+            else                number  =   Tr.num[end]+1;  end
 
-            new_tracer  =   Tracer(num, pt_new, T);            # Create new tracer
+            new_tracer  =   Tracer(num=number, coord=pt_new, T=T);          # Create new tracer
             if length(Tr)==0
-                Tr      =   StructArray([new_tracer]);          # Create tracer array
+                Tr      =   StructArray([new_tracer]);                      # Create tracer array
             else
-                push!(Tr, new_tracer);                          # Add new point to existing array
+                push!(Tr, new_tracer);                                      # Add new point to existing array
             end
         end
 

@@ -1,5 +1,31 @@
 # This includes routines that deal with tracers
 
+
+"""
+    Structure that has information about the tracers
+
+    General form:
+        Tracer(num, coord, T)
+
+        with:
+
+            num:   number of the tracer (integer)
+
+            coord: coordinates of the tracer
+                    2D - [x; z]
+                    3D - [x; y; z]
+            
+            T:      Temperature of the tracer [Celcius]                              
+"""
+@with_kw struct Tracer
+    num         ::  Int64                   # number
+    coord       ::  Vector{Float64}         # holds coordinates [2D or 3D]
+    T           ::  Float64                 # temperature
+    Phase       ::  Int64  = 0              # Phase (e.g., host rock vs injected melt)
+    Chemistry   ::  Vector{Float64} = []    # Could @ some stage hold the evolving chemistry of the magma
+end
+
+
 """
     
     Function that updates properties on tracers
@@ -22,7 +48,7 @@
             
             T:      Temperature that is defined on the grid. 
 
-            Phi:    Solid fraction defined on grid 
+            Phi:    Solid fraction defined on grid   
 """
 function UpdateTracers(Tracers, Grid, Spacing, T, Phi);
 
