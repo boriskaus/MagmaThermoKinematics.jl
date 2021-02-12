@@ -58,7 +58,7 @@ T                       .=   -Z./1e3.*GeoT;                     # initial (linea
 # Add initial dike
 dike                    =   Dike(Width=W_in, Thickness=H_in,Center=[x_in;z_in],Angle=[45],Type=DikeType,T=T_in);  # Specify dike 
 T, Tracers, InjectVol   =   InjectDike([], T, Grid, Spacing, dike, nTr_dike);           # Inject first dike
-Phi,dPhi_dt             =   SolidFraction(T, Phi_o, dt);                                # Compute solid fraction
+SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt);                                             # Compute solid fraction
 Tnew                    .=  T;                                                          # To get correct boundary conditions.
 
 # Preparation of visualisation
@@ -76,7 +76,7 @@ for it = 1:nt   # Time loop
         println("Added new dike; total injected magma volume = $(InjectVol/1e9) km^3; rate Q=$(InjectVol/(time_kyrs*1e3*SecYear)) m^3/s")
     end
 
-    Phi,dPhi_dt     =   SolidFraction(T, Phi_o, dt);                                            # Compute solid fraction
+    SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt);                                                 # Compute solid fraction
     K               .=  Phi.*k_rock .+ (1 .- Phi).*k_magma;                                     # Thermal conductivity
 
     # Perform a diffusion step

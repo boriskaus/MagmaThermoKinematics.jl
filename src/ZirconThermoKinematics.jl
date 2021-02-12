@@ -18,7 +18,7 @@ include("Diffusion.jl")
 export Diffusion2D, Diffusion3D
 
 include("MeltingRelationships.jl")
-export SolidFraction
+export SolidFraction!
 
 # Export functions that will be available outside this module
 export StructArray
