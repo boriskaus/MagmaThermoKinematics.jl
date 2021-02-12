@@ -218,7 +218,10 @@ function AdvectPoints(AdvPoints0, Grid,Velocity,Spacing,dt, Method="RK4");
 
     # Different advection schemes can be used
     if Method=="Euler"
+
         Velocity_int = Interpolate_Linear( Grid, Spacing, Velocity, AdvPoints0);    
+        
+        
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt;  
         end
@@ -305,7 +308,7 @@ end
 
         Method: can be "Euler","RK2" or "RK4", for 1th, 2nd or 4th order explicit advection scheme, respectively. 
 """
-function AdvectTemperature(T::Array,Grid, Velocity, Spacing, dt, Method="RK4");
+function AdvectTemperature(T::Array,Grid, Velocity, Spacing, dt, Method="RK2");
     
     # 1) Use semi-lagrangian advection to advect temperature
     # Advect regular grid backwards in time
