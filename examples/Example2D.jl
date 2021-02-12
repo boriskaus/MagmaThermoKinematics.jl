@@ -30,7 +30,7 @@ dx                      =   W/(Nx-1)*1e3; dz = H*1e3/(Nz-1);    # grid size [m]
 κ                       =   k_rock./(ρ*cp);                     # thermal diffusivity   
 dt                      =   min(dx^2, dz^2)./κ/20;              # stable timestep (required for explicit FD)
 nt                      =   floor(maxTime_kyrs*1e3*SecYear/dt); # number of required timesteps
-nTr_dike                =   1000;                               # number of tracers inserted per dike
+nTr_dike                =   100;                               # number of tracers inserted per dike
 
 # Array initializations (1 - main arrays on which we can initialize properties)
 T                       =   @zeros(Nx,   Nz);                    
@@ -53,7 +53,7 @@ T                       .=   -Z./1e3.*GeoT;                                     
 # Add initial dike
 dike                    =   Dike(Width=W_in, Thickness=H_in,Center=[x_in;z_in],Angle=[45],Type=DikeType,T=T_in);  # Specify dike 
 T, Tracers, InjectVol   =   InjectDike([], T, Grid, Spacing, dike, nTr_dike);           # Inject first dike
-Phi,dPhi_dt             =   SolidFraction(T, Phi_o, dt);                                # Compute solid fraction
+SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt);                                             # Compute solid fraction
 Tnew                    .=  T;                                                          # To get correct boundary conditions.
 
 # Preparation of visualisation
@@ -67,12 +67,12 @@ for it = 1:nt   # Time loop
         dike_inj            =   floor(time_kyrs/InjectionInterval_kyrs)                                     # Keeps track on whether we injected already
         cen                 =   [W/2.; -H/2.]; center = (rand(2,1) .- 0.5).*[W_ran;H_ran] + cen;            # Random variation of location (over a distance )
         dike                =   Dike(Width=W_in, Thickness=H_in,Center=center[:]*1e3,Angle=(rand(1).-0.5).*Angle_ran,Type=DikeType,T=T_in); # Specify dike with random location/angle but fixed size 
-        T, Tracers, Vol     =   InjectDike(Tracers, T, Grid, Spacing, dike, nTr_dike);                      # Add dike, move hostrocks
+        @time      T, Tracers, Vol     =   InjectDike(Tracers, T, Grid, Spacing, dike, nTr_dike);                      # Add dike, move hostrocks
         InjectVol           +=  Vol                                                                         # Keep track of injected volume
-        println("Added new dike; total injected magma volume = $(InjectVol/1e9) km^3; rate Q=$(InjectVol/(time_kyrs*1e3*SecYear)) m^3/s")
+        println("Added new dike; total injected magma volume = $(InjectVol/1e9) km³; rate Q=$(InjectVol/(time_kyrs*1e3*SecYear)) m³/s")
     end
 
-    Phi,dPhi_dt     =   SolidFraction(T, Phi_o, dt);                                            # Compute solid fraction
+    SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt);                                                 # Compute solid fraction
     K               .=  Phi.*k_rock .+ (1 .- Phi).*k_magma;                                     # Thermal conductivity
 
     # Perform a diffusion step
