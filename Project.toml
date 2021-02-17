@@ -1,7 +1,7 @@
 name = "ZirconThermoKinematics"
 uuid = "e7fe3d1a-f102-40b5-a66b-64b14986c4c8"
 authors = ["Boris Kaus <kaus@uni-mainz.de>"]
-version = "0.1.1"
+version = "0.1.2"
 
 [deps]
 ParallelStencil = "94395366-693c-11ea-3b26-d9b7aac5d958"
@@ -12,3 +12,11 @@ StructArrays = "09ab397b-f2b6-538f-b94a-2f83cf4a842a"
 
 [compat]
 julia = "1.5.0"
+
+[extras]
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test", "SpecialFunctions", "LinearAlgebra"]

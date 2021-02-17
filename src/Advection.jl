@@ -330,7 +330,7 @@ end
 
         Method: can be "Euler","RK2" or "RK4", for 1th, 2nd or 4th order explicit advection scheme, respectively. 
 """
-function AdvectTracers(Tracers, T::Array,Grid, Velocity, Spacing, dt, Method="RK4");
+function AdvectTracers(Tracers, T::Array, Grid, Velocity, Spacing, dt, Method="RK4");
     # Advect tracers forward in time & interpolate T on them 
     
     dim = length(Grid);

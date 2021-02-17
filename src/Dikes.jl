@@ -71,6 +71,29 @@ struct DikePoly    # polygon that describes the geometry of the dike (only in 2D
 end
 
 
+"""
+    Structure that has information about the tracers
+
+    General form:
+        Tracer(num, coord, T)
+
+        with:
+
+            num:   number of the tracer (integer)
+
+            coord: coordinates of the tracer
+                    2D - [x; z]
+                    3D - [x; y; z]
+            
+            T:      Temperature of the tracer [Celcius]                              
+"""
+struct Tracer
+    num         ::  Int64                   # number
+    coord       ::  Vector{Float64}         # holds coordinates [2D or 3D]
+    T           ::  Float64                 # temperature
+end
+#    Phase       ::  Int64  = 0              # Phase (e.g., host rock vs injected melt)
+#    Chemistry   ::  Vector{Float64} = []    # Could @ some stage hold the evolving chemistry of the magma
 
 """
     This injects a dike in the computational domain in an instantaneous manner,
@@ -98,7 +121,7 @@ end
 
 """
 
-function InjectDike(Tracers, T, Grid, Spacing, dike, nTr_dike )
+function InjectDike(Tracers, T::Array, Grid, Spacing, dike::Dike, nTr_dike::Int64 )
 
     # Some notes on the algorithm:
     #   For computational reasons, we do not open the dike at once, but in sufficiently small pseudo timesteps
@@ -113,25 +136,25 @@ function InjectDike(Tracers, T, Grid, Spacing, dike, nTr_dike )
     # Compute velocity required to create space for dike
     Δ           =   H/(nsteps);
     dt          =   1.0
-    Velocity    =   HostRockVelocityFromDike(Grid,Δ, dt,dike);          # compute velocity field
+
+    @time Velocity    =   HostRockVelocityFromDike(Grid,Δ, dt,dike);          # compute velocity field
    
     # Move hostrock & already existing tracers to the side to create space for new dike
     Tnew        =   zeros(size(T))
     for ipseudotime=1:nsteps
         Tnew    =   AdvectTemperature(T,        Grid,  Velocity,   Spacing,    dt);    
-        if length(Tracers)>0
+        if isassigned(Tracers,1)
             Tracers =   AdvectTracers(Tracers, T,   Grid,  Velocity,   Spacing,    dt);
         end
-        T       =   Tnew;
+        T      .=   Tnew;
     end
 
     # Insert dike in T profile and add new tracers
     T,Tracers   =   AddDike(T, Tracers, Grid,dike, nTr_dike);                 # Add dike to T-field & insert tracers within dike
-    
     # Compute volume of newly injected magma
     Area,InjectedVolume =   volume_dike(dike)
 
-    return T, Tracers, InjectedVolume, Velocity
+    return Tracers, InjectedVolume, Velocity
 
 end
 
@@ -167,17 +190,22 @@ function HostRockVelocityFromDike( Grid, Δ, dt, dike::Dike)
         # Rotate and shift coordinate system into 'dike' reference frame
         @unpack Angle,Type = dike
         α           =   Angle[end];
+
         RotMat      =   [cosd(α) -sind(α); sind(α) cosd(α)];    # 2D rotation matrix
         Xrot,Zrot   =   zeros(size(X)), zeros(size(Z));
 
-        for i=1:size(Z,1)
-            for j=1:size(Z,2)
-                pt                      =   [X[i,j]; Z[i,j]] - dike.Center;  # original point, shifted to center of dike
-                pt_rot                  =   RotMat*pt;
+        #pt          = zeros(Float64,2); 
+        #pt_rot      = pt;
+        #for i in eachindex(X) # linear indexing
+        #    pt                 .=   [X[i]; Z[i]] - dike.Center;  # original point, shifted to center of dike
+        #    pt_rot             .=   RotMat*pt;
 
-                Xrot[i,j], Zrot[i,j]    =   pt_rot[1],  pt_rot[2];
-            end
-        end
+        #    Xrot[i], Zrot[i]    =   pt_rot[1],  pt_rot[2];
+        #end
+
+        X .= X .- dike.Center[1];
+        Z .= Z .- dike.Center[2];
+        @time RotatePoints!(Xrot,Zrot, X,Z, RotMat)
 
         Vx_rot, Vz_rot  = zeros(size(X)), zeros(size(Z));
         Vx, Vz          = zeros(size(X)), zeros(size(Z));
@@ -187,8 +215,8 @@ function HostRockVelocityFromDike( Grid, Δ, dt, dike::Dike)
             W, H    =  Width, Thickness;                # Dimensions of square dike
             Vint    =  Δ/dt/2.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
                 
-            Vz_rot[(Zrot.<0) .& (abs.(Xrot).<W/2.0)] .= -Vint;
-            Vz_rot[(Zrot.>0) .& (abs.(Xrot).<W/2.0)] .=  Vint;
+            Vz_rot[(Zrot.<0) .& (abs.(Xrot).<W/2.0)]  = -Vint;
+            Vz_rot[(Zrot.>0) .& (abs.(Xrot).<W/2.0)]  =  Vint;
 
             Vx_rot[abs.(X).<W]          .=   0.0;      # set radial velocity to zero at left boundary
 
@@ -216,14 +244,12 @@ function HostRockVelocityFromDike( Grid, Δ, dt, dike::Dike)
 
         # "unrotate" vector fields
         RotMat = [cosd(-α) -sind(-α); sind(-α) cosd(-α)];    # 2D rotation matrix (in opposite direction)
-        for i=1:size(Z,1)
-            for j=1:size(Z,2)
-                pt          =   [Vx_rot[i,j]; Vz_rot[i,j]];  # velocities in rotated space
-                pt_rot      =   RotMat*pt;
+        for i in eachindex(Z) 
+            pt          =   [Vx_rot[i]; Vz_rot[i]];  # velocities in rotated space
+            pt_rot      =   RotMat*pt;
 
-                Vx[i,j]     =   pt_rot[1];
-                Vz[i,j]     =   pt_rot[2];
-            end
+            Vx[i]     =   pt_rot[1];
+            Vz[i]     =   pt_rot[2];
         end
 
         return (Vx, Vz);
@@ -240,6 +266,20 @@ function HostRockVelocityFromDike( Grid, Δ, dt, dike::Dike)
 
 
 end
+
+function  RotatePoints!(Xrot,Zrot, X,Z, RotMat)
+    pt_rot      = zeros(Float64,2);
+    for i in eachindex(X) # linear indexing
+        #pt                 =   [X[i]; Z[i]];  # original point, shifted to center of dike
+        pt_rot      =   RotMat*[X[i]; Z[i]];
+
+        Xrot[i]     =   pt_rot[1]
+        Zrot[i]     =   pt_rot[2]
+        
+    end
+
+end
+
 
 """
     dike_poly = CreatDikePolygon(dike::Dike)
@@ -443,16 +483,23 @@ function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
         in      = isinside_dike(pt, dike);
        
         # 3) Add them to the tracers structure
-        if in   # we are inside dike polygon
+        if in   # we are inside the dike
             
             if      dim==2; pt_new = [pt_rot[1]; pt_rot[2]];
             elseif  dim==3; pt_new = [pt_rot[1]; pt_rot[2]; pt_rot[3]]; end
             
-            if length(Tr)==0;   number  =   1;
-            else                number  =   Tr.num[end]+1;  end
+            if !isassigned(Tr,1)
+                number  =   1;
+            else     
+                number  =   Tr.num[end]+1;  
+            end
 
-            new_tracer  =   Tracer(num=number, coord=pt_new, T=T);          # Create new tracer
-            if length(Tr)==0
+            #new_tracer  =   Tracer(num=number, coord=pt_new, T=T);          # Create new tracer
+            new_tracer  =   Tracer(number, pt_new, T);          # Create new tracer
+            
+            if !isassigned(Tr,1)
+                StructArrays.foreachfield(v -> deleteat!(v, 1), Tr)         # Delete first (undefined) row of tracer StructArray. Assumes that Tr is defined as Tr = StructArray{Tracer}(undef, 1)
+
                 Tr      =   StructArray([new_tracer]);                      # Create tracer array
             else
                 push!(Tr, new_tracer);                                      # Add new point to existing array

@@ -28,17 +28,20 @@ export Interpolate_Linear,  AdvectTemperature, AdvectTracers
 const SecYear =   3600*24*365.25;                      # seconds/year
 export SecYear
 
+
 # routines related to advection 
 include("Advection.jl")
 export Interpolate_Linear, AdvectTracers, AdvectTemperature
 
 include("Dikes.jl")
-export Dike, DikePoly, Tracer
-export AddDike, HostRockVelocityFromDike, CreatDikePolygon, volume_dike, InjectDike
+export Dike, DikePoly
+export Tracer, AddDike, HostRockVelocityFromDike, CreatDikePolygon, volume_dike, InjectDike
+
 
 # Routines that deal with tracers
 include("Tracers.jl")
 export UpdateTracers
+
 
 # Routines related to Parameters.jl, which come in handy in the main routine
 export @unpack

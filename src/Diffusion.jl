@@ -7,7 +7,7 @@ module Diffusion2D
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
 
-export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!;
+export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!, bc2D_z!;
 
 @init_parallel_stencil(Threads, Float64, 2);    # initialize parallel stencil in 2D
 
@@ -42,10 +42,17 @@ end
 end
 
 
-# Set side boundary conditions to be zero-flux
-@parallel_indices (iy) function bc2D_x!(T::Data.Array) # apply zero flux BC's at side boundaries
+# Set x- boundary conditions to be zero-flux
+@parallel_indices (iy) function bc2D_x!(T::Data.Array) # apply zero flux BC's at the x-side boundaries
     T[1  , iy] = T[2    , iy]
     T[end, iy] = T[end-1, iy]
+    return
+end
+
+# Set z- boundary conditions to be zero-flux
+@parallel_indices (ix) function bc2D_z!(T::Data.Array) # apply zero flux BC's at side boundaries
+    T[ix,1 ]    = T[ix, 2    ]
+    T[ix, end]  = T[ix, end-1]
     return
 end
 
