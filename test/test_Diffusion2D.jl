@@ -9,10 +9,6 @@ using Test
 # Initialize for multiple threads (GPU is not tested here)
 @init_parallel_stencil(Threads, Float64, 2);    # initialize parallel stencil in 2D
 
-# Benchmarks tests to be included in the package : 
-#   1)  Gaussian diffusion (2D, 3D)
-#   2)  Steady state with variable k (2D,3D, different directions)
-#   3)  Halfspace cooling
 #   4)  Advection with rotational velocity field 
 
 function Diffusion_SteadyState2D(Setup="Constant_Zdirection")
@@ -177,7 +173,6 @@ else
     error = norm(T[:,1] .- Tanal,2); 
 end
 png(fname)
-print("error = $error \n")
 
 
 return error;        # return error
@@ -268,8 +263,6 @@ function Diffusion_Halfspace2D()
     
     error = norm(T[1,:] .- Tanal,2); 
     png(fname)
-    print("error = $error \n")
-    
     
     return error;        # return error
     
@@ -382,8 +375,6 @@ function Diffusion_Gaussian2D(Setup="2D")
     png(fname)
     
     error = norm(Terror[:],2); 
-    print("error = $error \n")
-    
     
     return error;        # return error
     
