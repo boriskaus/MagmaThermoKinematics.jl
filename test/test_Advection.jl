@@ -7,6 +7,9 @@ using LinearAlgebra
 using SpecialFunctions
 using Test
 
+
+const CreatePlots = false      # easy way to deactivate plotting throughout
+
 # Initialize for multiple threads (GPU is not tested here)
 @init_parallel_stencil(Threads, Float64, 3);    # initialize parallel stencil in 3D
 
@@ -82,25 +85,28 @@ function test_Interpolation(Dimension="2D", InterpolationMethod="Linear")
     Tanal       =   cos.(pi.*X_f).*sin.(2*pi.*Z_f);
     Terror      =   Tanal - Data_fine2[2];
 
-    p1          =   contourf(x, z,      Data_coarse1[1]',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Coarse ",  dpi=150, levels=10)
-    p2          =   contourf(x_f, z_f,  Data_fine2[2]',         aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Fine ",    dpi=150, levels=10)
-    p3          =   contourf(x_f, z_f,  Terror',                aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="error ",    dpi=150, levels=10)
-    
-    plot(p1,p2,p3);
+    if CreatePlots
+      p1          =   contourf(x, z,      Data_coarse1[1]',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Coarse ",  dpi=150, levels=10)
+      p2          =   contourf(x_f, z_f,  Data_fine2[2]',         aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Fine ",    dpi=150, levels=10)
+      p3          =   contourf(x_f, z_f,  Terror',                aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="error ",    dpi=150, levels=10)
+      
+      plot(p1,p2,p3);
 
-    png("Interpolation_2D_$InterpolationMethod")
-          
+      png("Interpolation_2D_$InterpolationMethod")
+    end
   
   elseif Dimension=="3D"
     Tanal       =   cos.(pi.*X_f).*sin.(2*pi.*Z_f).*sin.(2*pi.*Y_f);
     Terror      =   Tanal - Data_fine2[2];
 
-    p1          =   contourf(x, z,      Data_coarse1[1][:,10,:]', aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Coarse ",  dpi=150, levels=10)
-    p2          =   contourf(x_f, z_f,  Data_fine2[2][:,10,:]',   aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Fine ",    dpi=150, levels=10)
-    p3          =   contourf(x_f, z_f,  Terror[:,10,:]',          aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="error ",    dpi=150, levels=10)
-    
-    plot(p1,p2,p3);
-    png("Interpolation_3D_$InterpolationMethod")
+    if CreatePlots
+      p1          =   contourf(x, z,      Data_coarse1[1][:,10,:]', aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Coarse ",  dpi=150, levels=10)
+      p2          =   contourf(x_f, z_f,  Data_fine2[2][:,10,:]',   aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Fine ",    dpi=150, levels=10)
+      p3          =   contourf(x_f, z_f,  Terror[:,10,:]',          aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="error ",    dpi=150, levels=10)
+      
+      plot(p1,p2,p3);
+      png("Interpolation_3D_$InterpolationMethod")
+    end
 
   end
 
@@ -204,21 +210,21 @@ function test_SemiLagrangian2D(Method="ConstantZ",  InterpolationMethod="Linear"
 
   Terror      =  T - Tanal;   # error
   
-  # create plot 
-  p1          =   contourf(x, z, T',      aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Tnumeric, $(round(time, digits=2)) ",  dpi=300, levels=10)
-  p2          =   contourf(x, z, Tanal',  aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Tanal, $(round(time, digits=2)) ",     dpi=300, levels=10)
-  p3          =   contourf(x, z, Terror', aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Terror, $(round(time, digits=2)) ",    dpi=300, levels=10)
-  plot(p1,p2,p3);
+  if CreatePlots
+    # create plot 
+    p1          =   contourf(x, z, T',      aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Tnumeric, $(round(time, digits=2)) ",  dpi=300, levels=10)
+    p2          =   contourf(x, z, Tanal',  aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Tanal, $(round(time, digits=2)) ",     dpi=300, levels=10)
+    p3          =   contourf(x, z, Terror', aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Terror, $(round(time, digits=2)) ",    dpi=300, levels=10)
+    plot(p1,p2,p3);
+    png(fname)
+  end
 
- 
-  png(fname)
-  
   error = norm(Terror[:],2)/length(Terror[:]); 
   return error;        # return error
 end 
 
 function test_SemiLagrangian3D(Method="ConstantZ",  InterpolationMethod="Linear", AdvectionMethod="RK2")
-    # SemiLagrangian advection test in 2D
+    # SemiLagrangian advection test in 3D
     
     # Model parameters
     W,L,H                   =   1., 1., 1.;                         # Width, Length, Height
@@ -310,11 +316,11 @@ function test_SemiLagrangian3D(Method="ConstantZ",  InterpolationMethod="Linear"
             println(" Timestep $it = $((time)) ")
             #p1          =   heatmap(x_km, z_km, T[:,Int(Ny/2),:]',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="Temperature, $(round(time_kyrs, digits=2)) kyrs",  dpi=150)
             #p1          =   heatmap(x, z, T[:,Int(Ny/2),:]',         aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Temperature, $time",  dpi=150)
-            p1          =   heatmap(x, y, T[:,:,Int(Nz/2)]',         aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Temperature, $time",  dpi=150)
+         #   p1          =   heatmap(x, y, T[:,:,Int(Nz/2)]',         aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Temperature, $time",  dpi=150)
             
            # p1          =   heatmap(x, z, T[Int(Nx/2),:,:]',         aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Temperature, $time",  dpi=150)
             
-            plot(p1); frame(anim)
+          #  plot(p1); frame(anim)
         end
     
     end
@@ -349,26 +355,288 @@ function test_SemiLagrangian3D(Method="ConstantZ",  InterpolationMethod="Linear"
     Y1  = Y[:,Int(Ny/2),:];
     Z1  = Z[:,Int(Ny/2),:];
     
-    
-    # create plot 
-    p1          =   contourf(x, z, Tslice',      aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Tnumeric, $(round(time, digits=2)) ",  dpi=300, levels=10)
-    p2          =   contourf(x, z, Tanal1',  aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Tanal 3D, $(round(time, digits=2)) ",     dpi=300, levels=10)
-    p3          =   contourf(x, z, Terror1', aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Terror, $(round(time, digits=2)) ",    dpi=300, levels=10)
-    plot(p1,p2,p3);
+      
+    if CreatePlots
+      # create plot 
+      p1          =   contourf(x, z, Tslice',      aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Tnumeric, $(round(time, digits=2)) ",  dpi=300, levels=10)
+      p2          =   contourf(x, z, Tanal1',  aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Tanal 3D, $(round(time, digits=2)) ",     dpi=300, levels=10)
+      p3          =   contourf(x, z, Terror1', aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Terror, $(round(time, digits=2)) ",    dpi=300, levels=10)
+      plot(p1,p2,p3);
 
 
-   # st=20;
-   # quiver!(X1[1:st:end], Z1[1:st:end], gradient=(Vx1[1:st:end]*0.1,Vz1[1:st:end]*0.1), arrow = :arrow, color = :white)
+      # st=20;
+      # quiver!(X1[1:st:end], Z1[1:st:end], gradient=(Vx1[1:st:end]*0.1,Vz1[1:st:end]*0.1), arrow = :arrow, color = :white)
         
-    png(fname)
-    
+      png(fname)
+    end
+
     error = norm(Terror[:],2)/length(Terror[:]); 
     return error;        # return error
 end 
 
+function test_AdvectTracers2D(Method="ConstantZ",  AdvectionMethod="RK2")
+  # Test tracer advection in 2D
+  
+  # Model parameters
+  W,H                     =   1.,  1.;                      # Width, Length, Height
+  Nx, Nz                  =   129, 129;                     # resolution
+  dx,dz                   =   W/(Nx-1), H/(Nz-1);           # grid size [m]
+  
 
-if 1==0
-# test the interpolation methods
+
+  # Set up model geometry 
+  x,z                     =   0:dx:((Nx-1)*dx), 0:dz:((Nz-1)*dz);
+  coords                  =   collect(Iterators.product(x,z))             # generate coordinates from 1D coordinate vectors   
+  X,Z                     =   (x->x[1]).(coords), (x->x[2]).(coords);     # transfer coords to 2D arrays
+  Grid, Spacing           =   (x,z), (dx,dz);
+ 
+  # generate tracer coordinates
+  Nxt, Nzt                =   50, 50          # num of tracers in x,z
+  Wt,Ht                   =   0.1, 0.1;
+  dxt,dzt                 =   Wt/(Nxt-1), Ht/(Nzt-1);
+  xt,zt                   =   -Wt/2:dxt:Wt/2, -Ht/2:dz:Ht/2;
+  coordst                 =   collect(Iterators.product(xt,zt))             # generate coordinates from 1D coordinate vectors   
+  Xt,Zt                   =   (x->x[1]).(coordst), (x->x[2]).(coordst);     # transfer coords to 2D arrays
+ 
+  Xc                      =   0.5;
+  Zc                      =   0.75;
+  if      Method=="ConstantZ"
+    # Simple advection in z-direction
+    Vx        =   X.*0;
+    Vz        =   Z.*0 .- 1;
+    TotalTime =   0.5;                         # thermal cooling age
+    
+  elseif  Method=="Rotation"
+    # Rigid body rotation:
+    Vx        =    (Z .- 0.5);
+    Vz        =   -(X .- 0.5);
+    TotalTime =   2*pi;    
+
+  elseif  Method=="Shear"
+    # Shear velocity field:
+    Vx        =  -sin.(pi.*X).*cos.(pi.*Z);
+    Vz        =   cos.(pi.*X).*sin.(pi.*Z);
+    
+  end
+
+  maxVel      =   max( maximum(abs.(Vx)), maximum(abs.(Vz)) );
+  dt          =   min(dx,dz)/2.0/maxVel;   # stable timestep (to ensure we move no more than 0.5*(dx|dz) per timesstep )
+  numTime     =   ceil(TotalTime/dt);
+  nt          =   Int(numTime);
+  dt          =   TotalTime/nt;
+
+
+  # Create tracer structure
+  Xt .=  Xt .+ Xc; Zt .=  Zt .+ Zc;   # shift coordinates of tracers
+  Xt0, Zt0    =   Xt, Zt;    
+
+  new_tracer  =   Tracer(1, [Xt[1]; Zt[1]], 0.);            # Create new tracer
+  Tracers     =   StructArray([new_tracer]);                # Create tracer array
+  for i=firstindex(Xt)+1:lastindex(Xt)
+    new_tracer  =   Tracer(i, [Xt[i]; Zt[i]], 0.);          # Create new tracer
+    push!(Tracers, new_tracer);                             # Add new point to existing array
+  end
+  Tracers0 = copy(Tracers);         # create a copy of the original tracers
+    
+
+  #  ENV["GKSwstype"]="nul"; if isdir("viz2D_out")==false mkdir("viz2D_out") end; loadpath = "./viz2D_out/"; anim = Animation(loadpath,String[])
+  #  println("Animation directory: $(anim.dir)")
+
+  time,time_kyrs          = 0.0, 0.0;
+  err = 100;
+  it = 0;
+  #nt = 100
+  for it=1:nt
+  
+      # Perform an advection step for temperature 
+      Tracers      =   AdvectTracers(Tracers, Grid, (Vx,Vz), Spacing, dt, AdvectionMethod);
+
+      time        =   time + dt;                                            # Keep track of evolved time
+  
+      if mod(it,1000)==0  # print progress      
+          println(" Timestep $it = $((time)) ")
+
+          Tr_coord = Tracers.coord; Tr_coord = hcat(Tr_coord...)';       # extract array with coordinates of tracers
+          p1 = scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), markersize=1.0, xlims=(0,1), ylims=(0,1))
+          plot(p1); frame(anim)
+      end
+  
+  end
+  
+  x_km, z_km  =   x, z;
+  
+  
+  # compute analytical solution
+  if      Method=="ConstantZ"
+    # Analytical location of tracers
+    Tr_coord_anal = Tracers0.coord; Tr_coord_anal = hcat(Tr_coord_anal...)';       # extract array with coordinates of tracers
+    Tr_coord_anal[:,2] .= Tr_coord_anal[:,2] .- 0.5;
+
+  elseif      Method=="Rotation"
+      # Should arrive @ same point
+      Tr_coord_anal = Tracers0.coord; Tr_coord_anal = hcat(Tr_coord_anal...)';       # extract array with coordinates of tracers
+   
+  end
+  Tr_coord = Tracers.coord; Tr_coord = hcat(Tr_coord...)'; 
+  
+  fname       = "TracersAdvection_2D_$(Method)_$(AdvectionMethod)";
+
+
+  Terror      =  Tr_coord - Tr_coord_anal;   # error
+  
+  if CreatePlots
+    # create plot   
+    p1 = plot(Tr_coord_anal[:,1], Tr_coord_anal[:,2], seriestype = :scatter, markersize=5.0, markershape=:circle, markerstrokecolor=:red, markercolor=:white, linewidth=0, label="analytics")
+        plot!(Tr_coord[:,1],      Tr_coord[:,2],      seriestype = :scatter, markersize=2.0, markershape=:circle, markerstrokecolor=:black, linewidth=0, label="numerics")
+    plot(p1);
+    png(fname)
+  end
+
+  error = norm(Terror[:],2)/length(Terror[:]); 
+  return error;        # return error
+end 
+
+
+function test_AdvectTracers3D(Method="ConstantZ",  AdvectionMethod="RK2")
+  # Test tracer advection in 3D
+  
+  # Model parameters
+  W,L,H                   =   1.,  1., 1.;                      # Width, Length, Height
+  Nx,Ny, Nz               =   65, 65, 65;                     # resolution
+  dx,dy,dz                =   W/(Nx-1), L/(Ny-1),H/(Nz-1);           # grid size [m]
+  
+  # Set up model geometry 
+  x,y,z                   =   0:dx:((Nx-1)*dx), 0:dy:((Ny-1)*dy), 0:dz:((Nz-1)*dz);
+  coords                  =   collect(Iterators.product(x,y,z))                               # generate coordinates from 1D coordinate vectors   
+  X,Y,Z                   =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);     # transfer coords to 2D arrays
+  Grid, Spacing           =   (x,y,z), (dx,dy,dz);
+ 
+  # generate tracer coordinates
+  Nxt, Nyt, Nzt           =   50, 50, 50          # num of tracers in x,z
+  Wt,Lt,Ht                =   0.1, 0.1, 0.1;
+  dxt,dyt,dzt             =   Wt/(Nxt-1), Lt/(Nyt-1), Ht/(Nzt-1);
+  xt,yt,zt                =   -Wt/2:dxt:Wt/2, -Lt/2:dyt:Lt/2, -Ht/2:dz:Ht/2;
+  coordst                 =   collect(Iterators.product(xt,yt,zt))             # generate coordinates from 1D coordinate vectors   
+  Xt,Yt,Zt                =   (x->x[1]).(coordst), (x->x[2]).(coordst),(x->x[3]).(coordst);     # transfer coords to 2D arrays
+ 
+  Xc                      =   0.5;
+  Yc                      =   0.5;
+  Zc                      =   0.75;
+  if      Method=="ConstantZ"
+    # Simple advection in z-direction
+    Vx        =   X.*0;
+    Vy        =   Y.*0;
+    Vz        =   Z.*0 .- 1;
+    TotalTime =   0.5;                         # thermal cooling age
+      
+  elseif  Method=="Rotation_alongY"
+    # Rigid body rotation:
+    Vx        =    (Z .- 0.5);
+    Vy        =   X.*0;
+    Vz        =   -(X .- 0.5);
+    TotalTime =   2*pi;    
+
+  elseif  Method=="Rotation_alongX"
+    # Rigid body rotation:
+    Vy        =    (Z .- 0.5);
+    Vx        =   Y.*0;
+    Vz        =   -(Y .- 0.5);
+    TotalTime =   2*pi;    
+  
+  elseif  Method=="Rotation_alongZ"
+    # Rigid body rotation:
+    Vy        =   -(X .- 0.5);
+    Vx        =    (Y .- 0.5);
+    Vz        =   Z.*0.0;
+    TotalTime =   2*pi;    
+    Xc                      =   0.5;
+    Yc                      =   0.75;
+    Zc                      =   0.5;
+  end
+
+
+  maxVel      =   max( maximum(abs.(Vx)), maximum(abs.(Vy)), maximum(abs.(Vz)) );
+  dt          =   min(dx,dy,dz)/2.0/maxVel;   # stable timestep (to ensure we move no more than 0.5*(dx|dz) per timesstep )
+  numTime     =   ceil(TotalTime/dt);
+  nt          =   Int(numTime);
+  dt          =   TotalTime/nt;
+
+
+  # Create tracer structure
+  Xt .=  Xt .+ Xc; Yt .=  Yt .+ Yc; Zt .=  Zt .+ Zc;   # shift coordinates of tracers
+
+  new_tracer  =   Tracer(1, [Xt[1]; Yt[1]; Zt[1]], 0.);            # Create new tracer
+  Tracers     =   StructArray([new_tracer]);                # Create tracer array
+  for i=firstindex(Xt)+1:lastindex(Xt)
+    new_tracer  =   Tracer(i, [Xt[i]; Yt[i]; Zt[i]], 0.);          # Create new tracer
+    push!(Tracers, new_tracer);                             # Add new point to existing array
+  end
+  Tracers0 = copy(Tracers);         # create a copy of the original tracers
+    
+
+  time    = 0.0;
+  err     = 100;
+  it = 0;
+  #nt = 100
+  for it=1:nt
+  
+      # Perform an advection step for temperature 
+      Tracers      =   AdvectTracers(Tracers, Grid, (Vx,Vy,Vz), Spacing, dt, AdvectionMethod);
+
+      time        =   time + dt;                                            # Keep track of evolved time
+  
+      if mod(it,1000)==0  # print progress      
+          println(" Timestep $it = $((time)) ")
+
+          Tr_coord = Tracers.coord; Tr_coord = hcat(Tr_coord...)';       # extract array with coordinates of tracers
+          p1 = scatter(Tr_coord[:,1], Tr_coord[:,3], zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), markersize=1.0, xlims=(0,1), ylims=(0,1))
+          plot(p1); frame(anim)
+      end
+  
+  end
+  
+  x_km, z_km  =   x, z;
+  
+  
+  # compute analytical solution
+  if      Method=="ConstantZ"
+    # Analytical location of tracers
+    Tr_coord_anal = Tracers0.coord; Tr_coord_anal = hcat(Tr_coord_anal...)';       # extract array with coordinates of tracers
+    Tr_coord_anal[:,3] .= Tr_coord_anal[:,3] .- 0.5;
+
+  else
+
+      # Should arrive @ same point
+      Tr_coord_anal = Tracers0.coord; Tr_coord_anal = hcat(Tr_coord_anal...)';       # extract array with coordinates of tracers
+   
+  end
+  Tr_coord = Tracers.coord; Tr_coord = hcat(Tr_coord...)'; 
+  
+  fname       = "TracersAdvection_3D_$(Method)_$(AdvectionMethod)";
+
+
+  Terror      =  Tr_coord - Tr_coord_anal;   # error
+  
+  if CreatePlots
+    # create plot   
+    p1 = plot(Tr_coord_anal[:,1], Tr_coord_anal[:,3], seriestype = :scatter, markersize=5.0, markershape=:circle, markerstrokecolor=:red, markercolor=:white, linewidth=0, label="analytics")
+        plot!(Tr_coord[:,1],      Tr_coord[:,3],      seriestype = :scatter, markersize=2.0, markershape=:circle, markerstrokecolor=:black, linewidth=0, label="numerics")
+    plot(p1);
+    png(fname)
+  end
+
+  error = norm(Terror[:],2)/length(Terror[:]); 
+  return error;        # return error
+end 
+
+
+
+
+# ===================================================================================================
+
+if 1==1
+
+
 @testset "Interpolation" begin
   @test test_Interpolation("2D", "Linear") ≈  2.9880072526933544e-5  atol=1e-8;
   @test test_Interpolation("2D", "Cubic")  ≈  8.708144266671426e-7   atol=1e-8;
@@ -401,12 +669,30 @@ end;
   @test test_SemiLagrangian3D("Rotation_alongX","Cubic", "RK2"   )    ≈ 1.8995164672224572e-6    atol=1e-8;
   @test test_SemiLagrangian3D("Rotation_alongY","Cubic", "RK2"   )    ≈ 1.899516467222456e-6    atol=1e-8;
   @test test_SemiLagrangian3D("Rotation_alongZ","Cubic", "RK2"   )    ≈ 1.8995164672224786e-6   atol=1e-8;
-  
+end;
 
+
+@testset "2D tracer advection" begin
+  @test test_AdvectTracers2D("Rotation","Euler")        ≈ 0.00012187143210808163  atol=1e-8;
+  @test test_AdvectTracers2D("Rotation","RK2")          ≈ 3.132104548068979e-7    atol=1e-8;
+  @test test_AdvectTracers2D("Rotation","RK4")          ≈ 1.5661110135721713e-7   atol=1e-8;
+
+  @test test_AdvectTracers2D("ConstantZ","Euler")       ≈ 0.0   atol=1e-8;
+  
+end;
+
+@testset "3D tracer advection" begin
+  @test test_AdvectTracers3D("ConstantZ","Euler")       ≈ 0.0   atol=1e-8;
+ 
+  @test test_AdvectTracers3D("Rotation_alongX","RK2")   ≈ 1.60725931984687e-7    atol=1e-8;
+  @test test_AdvectTracers3D("Rotation_alongY","RK2")   ≈ 1.607259319846869e-7   atol=1e-8;
+  @test test_AdvectTracers3D("Rotation_alongZ","RK2")   ≈ 1.6256291449684137e-7  atol=1e-8;
+ 
+  @test test_AdvectTracers3D("Rotation_alongY","Euler") ≈ 3.169439899086836e-5   atol=1e-8;
+  @test test_AdvectTracers3D("Rotation_alongY","RK4")   ≈ 8.037493317907375e-8   atol=1e-8;
+  
 end;
 
 
 end
-
-err = test_SemiLagrangian3D("Rotation_alongY","Cubic","RK2")  
 

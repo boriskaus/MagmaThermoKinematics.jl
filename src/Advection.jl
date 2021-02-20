@@ -38,7 +38,6 @@ function Interpolate( Grid, Spacing, Data_grid, Points_irregular, InterpolationM
 
     dim                 =   length(Grid);           # number of dimensions
     nField              =   length(Data_grid);      # number of fields
-    @show nField
      
     X_irr               =   Points_irregular[1];    # coordinates of irregular point
     
@@ -216,14 +215,14 @@ end
 
 
 """
-        Tnew = AdvectTracers(Tracers, T::Array,Grid, Velocity, Spacing, dt, Method="RK4");
+        Tnew = AdvectTracers(Tracers, Grid, Velocity, Spacing, dt, Method="RK4");
 
         Advects [Tracers] for one timestep (dt) using the [Velocity] defined on the points [Grid]
         that have constant [Spacing].
 
         Method: can be "Euler","RK2" or "RK4", for 1th, 2nd or 4th order explicit advection scheme, respectively. 
 """
-function AdvectTracers(Tracers, T::Array, Grid, Velocity, Spacing, dt, Method="RK2");
+function AdvectTracers(Tracers, Grid, Velocity, Spacing, dt, Method="RK2");
     # Advect tracers forward in time & interpolate T on them 
     
     dim = length(Grid);

@@ -6,6 +6,8 @@ using LinearAlgebra
 using SpecialFunctions
 using Test
 
+const CreatePlots = false      # easy way to deactivate plotting throughout
+
 # Initialize for multiple threads (GPU is not tested here)
 @init_parallel_stencil(Threads, Float64, 3);    # initialize parallel stencil in 3D
 
@@ -103,12 +105,14 @@ function Diffusion_Gaussian3D(Setup="3D")
     Tanal1  = Tanal[:,Int(Ny/2),:];
     Terror1 = Terror[:,Int(Ny/2),:];
     
-    # create plot 
-    p1          =   heatmap(x_km, z_km, Tslice',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="T  3D $(round(time_kyrs/1e3, digits=2)) Myrs",  dpi=150)
-    p2          =   heatmap(x_km, z_km, Tanal1',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="T anal 3D $(round(time_kyrs/1e3, digits=2)) Myrs",  dpi=150)
-    p3          =   heatmap(x_km, z_km, Terror1',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="T error 3D $(round(time_kyrs/1e3, digits=2)) Myrs",  dpi=150)
-    plot(p1,p2,p3);
-    png(fname)
+    if CreatePlots
+        # create plot 
+        p1          =   heatmap(x_km, z_km, Tslice',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="T  3D $(round(time_kyrs/1e3, digits=2)) Myrs",  dpi=150)
+        p2          =   heatmap(x_km, z_km, Tanal1',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="T anal 3D $(round(time_kyrs/1e3, digits=2)) Myrs",  dpi=150)
+        p3          =   heatmap(x_km, z_km, Terror1',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="T error 3D $(round(time_kyrs/1e3, digits=2)) Myrs",  dpi=150)
+        plot(p1,p2,p3);
+        png(fname)
+    end
     
     error = norm(Terror[:],2)/length(Terror[:]); 
 

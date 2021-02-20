@@ -9,7 +9,7 @@ using Test
 # Initialize for multiple threads (GPU is not tested here)
 @init_parallel_stencil(Threads, Float64, 2);    # initialize parallel stencil in 2D
 
-#   4)  Advection with rotational velocity field 
+const CreatePlots = false      # easy way to deactivate plotting throughout
 
 function Diffusion_SteadyState2D(Setup="Constant_Zdirection")
 # steady state diffusion in x and z-direction for constant and variable K
@@ -162,17 +162,23 @@ elseif  Setup=="VariableK_Xdirection"
 end
 
 if      Setup=="Constant_Zdirection" || Setup=="VariableK_Zdirection"
-    # create plot 
-    plot(Tanal,z_km, label = "Analytics");
-    plot!(Tnum,z_km,ylabel="Depth [km]",xlabel="Temperature [C]", label = "Numerics",  marker = 2,   linewidth = 0);
+    if CreatePlots
+        # create plot 
+        plot(Tanal,z_km, label = "Analytics");
+        plot!(Tnum,z_km,ylabel="Depth [km]",xlabel="Temperature [C]", label = "Numerics",  marker = 2,   linewidth = 0);
+    end
     error = norm(T[1,:] .- Tanal,2); 
 else
-    # create plot 
-    plot(x_km, Tanal,label = "Analytics");
-    plot!(x_km,Tnum, xlabel="Width [km]",ylabel="Temperature [C]", label = "Numerics",  marker = 2,   linewidth = 0);
+    if CreatePlots
+        # create plot 
+        plot(x_km, Tanal,label = "Analytics");
+        plot!(x_km,Tnum, xlabel="Width [km]",ylabel="Temperature [C]", label = "Numerics",  marker = 2,   linewidth = 0);
+    end
     error = norm(T[:,1] .- Tanal,2); 
 end
-png(fname)
+if CreatePlots
+    png(fname)
+end
 
 
 return error;        # return error
@@ -256,14 +262,15 @@ function Diffusion_Halfspace2D()
     Tnum  = T[1,:];
     fname = "Diffusion_2D_Halfspace";
     
-
-    # create plot 
-    plot(Tanal,z_km, label = "Analytics");
-    plot!(Tnum,z_km,ylabel="Depth [km]",xlabel="Temperature [C]", label = "Numerics",  marker = 2,   linewidth = 0);
+    if CreatePlots
+        # create plot 
+        plot(Tanal,z_km, label = "Analytics");
+        plot!(Tnum,z_km,ylabel="Depth [km]",xlabel="Temperature [C]", label = "Numerics",  marker = 2,   linewidth = 0);
+    
+        png(fname)
+    end
     
     error = norm(T[1,:] .- Tanal,2); 
-    png(fname)
-    
     return error;        # return error
     
 end # end of halfspace cooling test
@@ -369,10 +376,12 @@ function Diffusion_Gaussian2D(Setup="2D")
     end
     Terror =  T - Tanal
 
-    # create plot 
-    p1          =   heatmap(x_km, z_km, Terror',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="T error 2D $(round(time_kyrs/1e3, digits=2)) Myrs",  dpi=150)
-    plot(p1);
-    png(fname)
+    if CreatePlots
+        # create plot 
+        p1          =   heatmap(x_km, z_km, Terror',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="T error 2D $(round(time_kyrs/1e3, digits=2)) Myrs",  dpi=150)
+        plot(p1);
+        png(fname)
+    end
     
     error = norm(Terror[:],2); 
     
