@@ -45,25 +45,21 @@ dx                      =   W/(Nx-1)*1e3; dz = H*1e3/(Nz-1);    # grid size [m]
 κ                       =   k_rock./(ρ*cp);                     # thermal diffusivity   
 dt                      =   min(dx^2, dz^2)./κ/20;              # stable timestep (required for explicit FD)
 nt                      =   floor(maxTime_kyrs*1e3*SecYear/dt); # number of required timesteps
-nTr_dike                =   1000;                               # number of tracers inserted per dike
+nTr_dike                =   100;                                # number of tracers inserted per dike
 
 
 #(...) 
 # Initialize numerical parameters and arrays
 #(...) 
 
-# Set up initial temperature structure
-T                       .=   -Z./1e3.*GeoT;                     # initial (linear) temperature profile
-
-# Add initial dike
-dike                    =   Dike(Width=W_in, Thickness=H_in,Center=[x_in;z_in],Angle=[45],Type=DikeType,T=T_in);  # Specify dike 
-T, Tracers, InjectVol   =   InjectDike([], T, Grid, Spacing, dike, nTr_dike);           # Inject first dike
-SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt);                                             # Compute solid fraction
-Tnew                    .=  T;                                                          # To get correct boundary conditions.
+# Initial geotherm and melt fraction
+T                       .=   -Z./1e3.*GeoT;                                 # Initial (linear) temperature profile
+SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt);                                 # Compute solid fraction
 
 # Preparation of visualisation
 #(...)
 
+InjectVol = 0.0;
 time,time_kyrs, dike_inj = 0.0, 0.0, 0.0;
 for it = 1:nt   # Time loop
 
@@ -71,9 +67,9 @@ for it = 1:nt   # Time loop
         dike_inj            =   floor(time_kyrs/InjectionInterval_kyrs)                                     # Keeps track on whether we injected already
         cen                 =   [W/2.; -H/2.]; center = (rand(2,1) .- 0.5).*[W_ran;H_ran] + cen;            # Random variation of location (over a distance )
         dike                =   Dike(Width=W_in, Thickness=H_in,Center=center[:]*1e3,Angle=(rand(1).-0.5).*Angle_ran,Type=DikeType,T=T_in); # Specify dike with random location/angle but fixed size 
-        T, Tracers, Vol     =   InjectDike(Tracers, T, Grid, Spacing, dike, nTr_dike);                      # Add dike, move hostrocks
+        Tracers, T, Vol     =   InjectDike(Tracers, T, Grid, Spacing, dike, nTr_dike);                      # Add dike, move hostrocks
         InjectVol           +=  Vol                                                                         # Keep track of injected volume
-        println("Added new dike; total injected magma volume = $(InjectVol/1e9) km^3; rate Q=$(InjectVol/(time_kyrs*1e3*SecYear)) m^3/s")
+        println("Added new dike; total injected magma volume = $(InjectVol/1e9) km³; rate Q=$(InjectVol/(time_kyrs*1e3*SecYear)) m³/s")
     end
 
     SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt);                                                 # Compute solid fraction
@@ -92,14 +88,14 @@ for it = 1:nt   # Time loop
     if mod(it,20)==0  # Visualisation
         Phi_melt    =   1.0 .- Phi;             
         x_km, z_km  =   x./1e3, z./1e3;
-        p1          =   heatmap(x_km, z_km, T',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="Temperature, $(round(time_kyrs, digits=2)) kyrs",  dpi=150)
-        p2          =   heatmap(x_km, z_km, Phi_melt',  aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:vik,     title="Melt fraction",xlabel="Width [km]", clims=(0.,1.), dpi=150)
+        p1          =   heatmap(x_km, z_km, T',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="$(round(time_kyrs, digits=2)) kyrs", xlabel="Width [km]",ylabel="Depth [km]", dpi=200, fontsize=6, colorbar_title="Temperature")
+        p2          =   heatmap(x_km, z_km, Phi_melt',  aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:vik,     xlabel="Width [km]", clims=(0.,1.), dpi=200, fontsize=6, colorbar_title="Melt Fraction")
         plot(p1, p2, layout=(1,2)); frame(anim)
     end
 
 end
 gif(anim, "Example2D.gif", fps = 15)   # create gif animation
-return Tracers, T, Grid
+return Tracers, T, Grid;
 end # end of main function
 
 Tracers,T,Grid = MainCode_2D(); # start the main code
@@ -109,9 +105,9 @@ The main routines are thus ``InjectDike(..)``, which inserts a new dike (of give
 The full code example can be downloaded [here](./examples/Example2D.jl)
 
 ## Dependencies
-We rely on `ParallelStencil.jl` to for the energy solver, `StructArrays.jl` to generate an aray of tracer structures, and `Random.jl` for random number generation, `Parameters.jl` to simplify setting parameters (such as specifying dike prperties). All these dependencies should be installed automatically if you download `ZirconThermoKinematics.jl`.
+We rely on `ParallelStencil.jl` to for the energy solver, `StructArrays.jl` to generate an aray of tracer structures, and `Random.jl` for random number generation, `Parameters.jl` to simplify setting parameters (such as specifying dike properties), and `Interpolations.jl` to interpolate properties such as temperature from a fixed grid to tracers. All these dependencies should be installed automatically if you download `ZirconThermoKinematics.jl`.
 
-`Plots.jl` is employed for plotting (you have to add that yourself; anyways useful to have).  
+`Plots.jl` is employed for plotting, and `WriteVTK.jl` is used in the 3D example to generate *.VTR files that can be visualized with [Paraview](https://www.paraview.org). You have to add both packages yourself; they are however anyways useful to have.
 
 ## Installation
 This is a julia package, so after installing julia in the usual manner, you can add the package with 
@@ -122,6 +118,11 @@ julia>]
 Next, you can download one of the code above, put it in the directory you are and start it with
 ```
 julia> include("Example2D.jl")
+```
+If you want to do a full testing of the package on your system, you can run the testing framework from within the package manager:
+```
+julia>]
+  pkg> test ZirconThermoKinematics
 ```
 
 
