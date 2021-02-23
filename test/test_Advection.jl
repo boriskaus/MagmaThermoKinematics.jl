@@ -1,4 +1,4 @@
-# this file tests various aspects of the 
+# this file tests various aspects of the advection routines
 using ZirconThermoKinematics
 using ParallelStencil
 using ParallelStencil.FiniteDifferences3D

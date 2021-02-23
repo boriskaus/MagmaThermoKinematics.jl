@@ -1,15 +1,12 @@
 # This includes routines that deal with tracers
 
-
-
-
 """
     
     Function that updates properties on tracers
 
         General form:
 
-        UpdateTracers!(Tracers, Grid, Spacing, T, Phi);
+        Tracers = UpdateTracers(Tracers, Grid, Spacing, T, Phi, InterpolationMethod);
 
 
         with:
@@ -26,8 +23,15 @@
             T:      Temperature that is defined on the grid. 
 
             Phi:    Solid fraction defined on grid   
+
+            InterpolationMethod:    Interpolation method from grid->Tracers
+                    "Cubic"     -   Cubic interpolation (default)
+                    "Linear"    -   Linear interpolation
+
+        out:
+            Tracers:    Tracers structure with updated T field
 """
-function UpdateTracers(Tracers, Grid, Spacing, T, Phi);
+function UpdateTracers(Tracers, Grid, Spacing, T, Phi, InterpolationMethod="Cubic");
 
     dim = length(Grid)    
     if length(Tracers)>0
@@ -46,8 +50,8 @@ function UpdateTracers(Tracers, Grid, Spacing, T, Phi);
         # Correct coordinates (to stay withoin bounds of models)
         Points_irregular = CorrectBounds(Points_irregular, Grid);
  
-        # Interpolate on tracers
-        T_tracers = Interpolate_Linear( Grid, Spacing, tuple(T), Points_irregular);
+        # Interpolate temperature from grid to tracers
+        T_tracers = Interpolate( Grid, Spacing, tuple(T), Points_irregular, InterpolationMethod);
 
         # Update info on tracers
         for iT = 1:length(Tracers)

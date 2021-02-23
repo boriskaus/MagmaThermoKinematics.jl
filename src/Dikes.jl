@@ -137,7 +137,7 @@ function InjectDike(Tracers, T::Array, Grid, Spacing, dike::Dike, nTr_dike::Int6
     Δ           =   H/(nsteps);
     dt          =   1.0
 
-    @time Velocity    =   HostRockVelocityFromDike(Grid,Δ, dt,dike);          # compute velocity field
+    Velocity    =   HostRockVelocityFromDike(Grid,Δ, dt,dike);          # compute velocity field
    
     # Move hostrock & already existing tracers to the side to create space for new dike
     Tnew        =   zeros(size(T))
@@ -150,11 +150,12 @@ function InjectDike(Tracers, T::Array, Grid, Spacing, dike::Dike, nTr_dike::Int6
     end
 
     # Insert dike in T profile and add new tracers
-    T,Tracers   =   AddDike(T, Tracers, Grid,dike, nTr_dike);                 # Add dike to T-field & insert tracers within dike
+    T,Tracers           =   AddDike(T, Tracers, Grid,dike, nTr_dike);                 # Add dike to T-field & insert tracers within dike
+
     # Compute volume of newly injected magma
     Area,InjectedVolume =   volume_dike(dike)
 
-    return Tracers, InjectedVolume, Velocity
+    return Tracers, T, InjectedVolume, Velocity
 
 end
 
@@ -185,27 +186,19 @@ function HostRockVelocityFromDike( Grid, Δ, dt, dike::Dike)
     # 
     dim = length(Grid);
     if dim==2
-        X, Z        =   Grid[1], Grid[2];
-        
+        coords      =   collect(Iterators.product(Grid[1],Grid[2]))                             # generate coordinates from 1D coordinate vectors   
+        X,Z         =   (x->x[1]).(coords), (x->x[2]).(coords);                      
+ 
         # Rotate and shift coordinate system into 'dike' reference frame
         @unpack Angle,Type = dike
-        α           =   Angle[end];
+        α           =   Angle[1];
 
         RotMat      =   [cosd(α) -sind(α); sind(α) cosd(α)];    # 2D rotation matrix
         Xrot,Zrot   =   zeros(size(X)), zeros(size(Z));
 
-        #pt          = zeros(Float64,2); 
-        #pt_rot      = pt;
-        #for i in eachindex(X) # linear indexing
-        #    pt                 .=   [X[i]; Z[i]] - dike.Center;  # original point, shifted to center of dike
-        #    pt_rot             .=   RotMat*pt;
-
-        #    Xrot[i], Zrot[i]    =   pt_rot[1],  pt_rot[2];
-        #end
-
-        X .= X .- dike.Center[1];
-        Z .= Z .- dike.Center[2];
-        @time RotatePoints!(Xrot,Zrot, X,Z, RotMat)
+        X           .= X .- dike.Center[1];
+        Z           .= Z .- dike.Center[2];
+        RotatePoints_2D!(Xrot,Zrot, X,Z, RotMat)
 
         Vx_rot, Vz_rot  = zeros(size(X)), zeros(size(Z));
         Vx, Vz          = zeros(size(X)), zeros(size(Z));
@@ -215,15 +208,15 @@ function HostRockVelocityFromDike( Grid, Δ, dt, dike::Dike)
             W, H    =  Width, Thickness;                # Dimensions of square dike
             Vint    =  Δ/dt/2.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
                 
-            Vz_rot[(Zrot.<0) .& (abs.(Xrot).<W/2.0)]  = -Vint;
-            Vz_rot[(Zrot.>0) .& (abs.(Xrot).<W/2.0)]  =  Vint;
+            Vz_rot[(Zrot.<0) .& (abs.(Xrot).<W/2.0)]  .= -Vint;
+            Vz_rot[(Zrot.>0) .& (abs.(Xrot).<W/2.0)]  .=  Vint;
 
             Vx_rot[abs.(X).<W]          .=   0.0;      # set radial velocity to zero at left boundary
 
         elseif Type=="ElasticDike"
                 @unpack Thickness,Width = dike
                 W, H    =  Width, Thickness;                # Dimensions of square dike
-                Vint    =  Δ/dt/2.0;                        # open the dike by a maximum amount of Δ in one dt
+                Vint    =  Δ/dt;                            # open the dike by a maximum amount of Δ in one dt (no 1/2 as that is taken care off inside the routine below)
                     
                 for ix=1:size(Vz_rot,1)
                     for iz=1:size(Vz_rot,2)
@@ -231,10 +224,10 @@ function HostRockVelocityFromDike( Grid, Δ, dt, dike::Dike)
                         # use elastic dike solution to compute displacement
                         Displacement, Bmax = DisplacementAroundPennyShapedDike(dike, [Xrot[ix,iz]; Zrot[ix,iz]]);
 
-                        Displacement .=  Displacement/Bmax;     # normalize such that 1 is the maximum
+                        Displacement    .=  Displacement/Bmax;     # normalize such that 1 is the maximum
                         
-                        Vz_rot[ix,iz] = Vint.*Displacement[2];
-                        Vx_rot[ix,iz] = Vint.*Displacement[1];      
+                        Vz_rot[ix,iz]   =   Vint.*Displacement[2];
+                        Vx_rot[ix,iz]   =   Vint.*Displacement[1];      
                     end
                 end
 
@@ -242,44 +235,94 @@ function HostRockVelocityFromDike( Grid, Δ, dt, dike::Dike)
             error("Unknown Dike Type: $Type")
         end
 
-        # "unrotate" vector fields
-        RotMat = [cosd(-α) -sind(-α); sind(-α) cosd(-α)];    # 2D rotation matrix (in opposite direction)
-        for i in eachindex(Z) 
-            pt          =   [Vx_rot[i]; Vz_rot[i]];  # velocities in rotated space
-            pt_rot      =   RotMat*pt;
-
-            Vx[i]     =   pt_rot[1];
-            Vz[i]     =   pt_rot[2];
-        end
+        # "unrotate" vector fields, using the transpose of RotMat
+        RotatePoints_2D!(Vx,Vz, Vx_rot,Vz_rot, RotMat')
 
         return (Vx, Vz);
 
     else
-        @unpack Angle = dike;
-        α,β         =   Angle[end], Angle[1];
-        RotMat_z    =   [cosd(α) -sind(α) 0.0; sind(α) cosd(α)      0.0;  0.0 0.0       1.0]; 
-        RotMat_x    =   [1.0        0.0     0.0; 0.0      cosd(β) -sind(β); 0.0 sind(β) cosd(β)]; 
-        RotMat      =   RotMat_z*RotMat_x;
+        @unpack Angle,Type   =   dike;
+        α,β             =   Angle[1], Angle[end];
+        RotMat_y        =   [cosd(α) 0.0 -sind(α); 0.0 1.0 0.0; sind(α) 0.0 cosd(α)  ];                      # perpendicular to y axis
+        RotMat_z        =   [cosd(β) -sind(β) 0.0; sind(β) cosd(β) 0.0; 0.0 0.0 1.0  ];                      # perpendicular to z axis
+        RotMat          =   RotMat_y*RotMat_z;
 
-        error("3D implementation to be finished")
+        coords          =   collect(Iterators.product(Grid[1],Grid[2],Grid[3]))                         # generate coordinates from 1D coordinate vectors   
+        X,Y,Z           =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);                      
+
+        Xrot,Yrot,Zrot  =   zeros(size(X)),  zeros(size(Y)), zeros(size(Z));
+        X               .=  X .- dike.Center[1];
+        Y               .=  Y .- dike.Center[2];
+        Z               .=  Z .- dike.Center[3];
+        RotatePoints_3D!(Xrot,Yrot,Zrot, X,Y,Z, RotMat)                 # rotate coordinates 
+       
+        Vx_rot, Vy_rot, Vz_rot  = zeros(size(X)), zeros(size(Y)), zeros(size(Z));
+        Vx, Vy, Vz              = zeros(size(X)), zeros(size(Y)), zeros(size(Z));
+        
+        if Type=="SquareDike"
+            @unpack Thickness,Width = dike
+            W, H    =  Width, Thickness;                # Dimensions of square dike
+            Vint    =  Δ/dt/2.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
+                
+            Vz_rot[(Zrot.<0) .& (abs.(Xrot).<W/2.0) .& (abs.(Yrot).<W/2.0)]  .= -Vint;
+            Vz_rot[(Zrot.>0) .& (abs.(Xrot).<W/2.0) .& (abs.(Yrot).<W/2.0)]  .=  Vint;
+
+            Vx_rot[abs.(X).<W]          .=   0.0;      # set radial velocity to zero at left boundary
+            Vy_rot[abs.(Y).<W]          .=   0.0;      # set radial velocity to zero at left boundary
+
+
+        elseif Type=="ElasticDike"
+                @unpack Thickness,Width = dike
+                W, H    =  Width, Thickness;                # Dimensions of square dike
+                Vint    =  Δ/dt;                            # open the dike by a maximum amount of Δ in one dt (no 1/2 as that is taken care off inside the routine below)
+                    
+                for i=firstindex(Vx_rot):lastindex(Vx_rot)
+                 
+                    # use elastic dike solution to compute displacement
+                    Displacement, Bmax  = DisplacementAroundPennyShapedDike(dike, [Xrot[i]; Yrot[i]; Zrot[i]]);
+
+                    Displacement        .=  Displacement/Bmax;     # normalize such that 1 is the maximum
+                        
+                    Vz_rot[i]           =   Vint.*Displacement[3];
+                    Vy_rot[i]           =   Vint.*Displacement[2];      
+                    Vx_rot[i]           =   Vint.*Displacement[1];      
+
+                end
+
+        else
+            error("Unknown Dike Type: $Type")
+        end
+
+        # "unrotate" vector fields
+        RotatePoints_3D!(Vx,Vy,Vz, Vx_rot,Vy_rot,Vz_rot, RotMat')           # rotate velocities back
+        
+        return (Vx, Vy, Vz);
+
     end
 
 
 end
 
-function  RotatePoints!(Xrot,Zrot, X,Z, RotMat)
+function  RotatePoints_2D!(Xrot,Zrot, X,Z, RotMat)
     pt_rot      = zeros(Float64,2);
     for i in eachindex(X) # linear indexing
-        #pt                 =   [X[i]; Z[i]];  # original point, shifted to center of dike
         pt_rot      =   RotMat*[X[i]; Z[i]];
 
         Xrot[i]     =   pt_rot[1]
         Zrot[i]     =   pt_rot[2]
-        
     end
-
 end
 
+function  RotatePoints_3D!(Xrot,Yrot,Zrot, X,Y,Z, RotMat)
+    pt_rot      = zeros(Float64,3);
+    for i in eachindex(X) # linear indexing
+        pt_rot      =   RotMat*[X[i]; Y[i]; Z[i]];
+
+        Xrot[i]     =   pt_rot[1]
+        Yrot[i]     =   pt_rot[2]
+        Zrot[i]     =   pt_rot[3]
+    end
+end
 
 """
     dike_poly = CreatDikePolygon(dike::Dike)
@@ -351,11 +394,14 @@ function isinside_dike(pt, dike::Dike)
         end
 
     elseif Type=="ElasticDike"
-        
+        eq_ellipse = 100.0;
+
         if dim==2
-            eq_ellipse = pt[1]^2.0/(Width/2.0)^2.0 + pt[2]^2.0/(Thickness/2.0)^2.0; # ellipse
+            eq_ellipse = (pt[1]^2.0)/((Width/2.0)^2.0) + (pt[2]^2.0)/((Thickness/2.0)^2.0); # ellipse
+        elseif dim==3
+            eq_ellipse = (pt[1]^2.0)/((Width/2.0)^2.0) + (pt[2]^2.0)/((Width/2.0)^2.0) + (pt[3]^2.0)/((Thickness/2.0)^2.0); # ellipsoid
         else
-            eq_ellipse = pt[1]^2.0/(Width/2.0)^2.0 + pt[2]^2.0/(Thickness/2.0)^2.0 + pt[3]^2.0/(Width/2.0)^2.0; # ellipsoid
+            error("Unknown # of dimensions: $dim")
         end
 
         if eq_ellipse < 1.0
@@ -410,28 +456,27 @@ tracers array Tracers.
 function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
 
     dim         =   length(Grid);
-    #dike_poly   =   CreatDikePolygon(dike);                            # Polygon that describes the dike 
     @unpack Angle,Center,Width,Thickness,T = dike;
     
     if dim==2
-        α           =    Angle[end];
+        α           =    Angle[1];
         RotMat      =    [cosd(α) -sind(α); sind(α) cosd(α)]; 
+        
     elseif dim==3
-        α           =    Angle[end];
-        β           =    Angle[1];
-        RotMat_z    =   [cosd(α) -sind(α) 0.0; sind(α) cosd(α)      0.0;  0.0 0.0       1.0]; 
-        RotMat_x    =   [1.0        0.0     0.0; 0.0      cosd(β) -sind(β); 0.0 sind(β) cosd(β)]; 
-        RotMat      =   RotMat_z*RotMat_x;
+        α,β             =   Angle[1], Angle[end];
+        RotMat_y        =   [cosd(α) 0.0  -sind(α); 0.0 1.0 0.0; sind(α) 0.0 cosd(α)  ];                      # perpendicular to y axis
+        RotMat_z        =   [cosd(β) -sind(β) 0.0; sind(β) cosd(β) 0.0; 0.0 0.0 1.0  ];                      # perpendicular to z axis
+        RotMat          =   RotMat_y*RotMat_z;
     end
   
     # Add dike to temperature field
     if dim==2
-        X,Z = Grid[1], Grid[2];
-        for ix=1:size(X,1)
-            for iz=1:size(X,2)
-                pt = [X[ix,iz];Z[ix,iz]] - Center;
-                pt_rot  = RotMat*pt;          # rotate and shift
-                in = isinside_dike(pt_rot, dike);
+        x,z = Grid[1], Grid[2];
+        for ix=1:length(x)
+            for iz=1:length(z)  
+                pt      =   [x[ix];z[iz]] - Center;
+                pt_rot  =   RotMat*pt;                      # rotate
+                in      =   isinside_dike(pt_rot, dike);
                 if in
                     Tfield[ix,iz] = T;
                 end
@@ -439,11 +484,11 @@ function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
         end
 
     elseif dim==3
-        X,Y,Z = Grid[1], Grid[2], Grid[3]
-        for ix=1:size(X,1)
-            for iy=1:size(X,2)
-                for iz=1:size(X,3)
-                    pt      = [X[ix,iy,iz];Y[ix,iy,iz];Z[ix,iy,iz]] - Center;
+        x,y,z = Grid[1], Grid[2], Grid[3]
+        for ix=1:length(x)
+            for iy=1:length(y)
+                for iz=1:length(z)
+                    pt      = [x[ix]; y[iy]; z[iz]] - Center;
                     pt_rot  = RotMat*pt;          # rotate and shift
                     in      = isinside_dike(pt_rot, dike);
                     if in
@@ -456,16 +501,6 @@ function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
     end
 
     # Add new tracers to the dike area
-    if dim==2
-        α      = Angle[end];
-        RotMat = [cosd(-α) -sind(-α); sind(-α) cosd(-α)]; 
-    elseif dim==3
-        α      = Angle[end];
-        β      = Angle[1];
-        RotMat_z = [cosd(-α) -sind(-α) 0.0; sind(-α) cosd(-α)      0.0;  0.0 0.0       1.0]; 
-        RotMat_x = [1.0        0.0     0.0; 0.0      cosd(-β) -sind(-β); 0.0 sind(-β) cosd(-β)]; 
-        RotMat   = RotMat_z*RotMat_x;
-    end
     for iTr=1:nTr_dike
        
         # 1) Randomly initialize tracers to the approximate dike area
@@ -477,7 +512,7 @@ function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
         end
 
         pt      = pt.*Size;
-        pt_rot  = RotMat*pt .+ Center[:];          # rotate and shift
+        pt_rot  = (RotMat')*pt .+ Center[:];          # rotate backwards (hence the transpose!) and shift
 
         # 2) Make sure that they are inside the dike area   
         in      = isinside_dike(pt, dike);
@@ -566,7 +601,7 @@ function DisplacementAroundPennyShapedDike(dike::Dike, CartesianPoint)
 
     if r==0; r=1e-3; end
 
-    B   =  Thickness;                         # maximum thickness of dike
+    B   =  Thickness;                     # maximum thickness of dike
     a   =  Width/2.0;                     # radius
 
     # note, we can either specify B and a, and compute pressure p and injected volume Q
