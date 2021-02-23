@@ -103,7 +103,7 @@ end
 
 
 
-function test_InsertDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45])
+function test_InsertDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45], numDikeInjectionEvents=1)
   # tests dike insertion in the domain including adding tracers
 
   
@@ -155,7 +155,9 @@ function test_InsertDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45])
   Tracers                 =   StructArray{Tracer}(undef, 1)                                    # Initialize Tracers structure
   Tracers, T, InjectVol, Velocity   =   InjectDike(Tracers, T, Grid, Spacing, dike, nTr_dike);           # Inject first dike
 
-
+  for i=1:numDikeInjectionEvents-1
+    Tracers, T, InjectVol, Velocity   =   InjectDike(Tracers, T, Grid, Spacing, dike, nTr_dike);           # Inject more dikes
+  end
 
   if Dimension=="2D"
     
@@ -232,9 +234,10 @@ end
 # Dike insertion algorithm
 @testset "Dike_Insert" begin
   @test test_InsertDike("2D", "SquareDike", [80 ])      ≈   47525.46540334226  atol=1e-8;
-  @test test_InsertDike("2D", "ElasticDike",[45 ])      ≈   46841.12717320112  atol=1e-8;
+  @test test_InsertDike("2D", "ElasticDike",[45 ],2)    ≈   48785.96837912225  atol=1e-8;     # also tests what happens if we add 2 dikes
   @test test_InsertDike("3D", "ElasticDike",[80; 45])   ≈   519654.9204937116  atol=1e-8;
   @test test_InsertDike("3D", "SquareDike",[15; -30])   ≈   527521.3194224192  atol=1e-8;
+
 
 end
 

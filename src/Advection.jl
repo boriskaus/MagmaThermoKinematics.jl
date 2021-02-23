@@ -174,7 +174,6 @@ function CorrectBounds(Points, Grid);
         X[X.>maxB]      .=      maxB; 
         Points_new[i]   .=       X;
     end
-
     
     return Points_new;
 end
@@ -243,7 +242,7 @@ function AdvectTracers(Tracers, Grid, Velocity, Spacing, dt, Method="RK2");
 
     # Advect
     Points_new          =   AdvectPoints(Points_irregular,  Grid,Velocity,Spacing, dt,Method,  "Linear");     # Advect tracers
-
+    
     for iT = 1:length(Tracers)
         if dim==2
             LazyRow(Tracers, iT).coord = [Points_new[1][iT]; Points_new[2][iT]];

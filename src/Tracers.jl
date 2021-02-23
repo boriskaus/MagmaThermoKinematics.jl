@@ -34,7 +34,7 @@
 function UpdateTracers(Tracers, Grid, Spacing, T, Phi, InterpolationMethod="Cubic");
 
     dim = length(Grid)    
-    if length(Tracers)>0
+    if isassigned(Tracers,1)        # only if the Tracers StructArray is non-empty
         # extract coordinates
         coord = Tracers.coord; coord = hcat(coord...)';       # extract array with coordinates of tracers
     

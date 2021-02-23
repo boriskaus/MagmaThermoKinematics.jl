@@ -450,7 +450,7 @@ function test_AdvectTracers2D(Method="ConstantZ",  AdvectionMethod="RK2")
   
       # Perform an advection step for temperature 
       Tracers      =   AdvectTracers(Tracers, Grid, (Vx,Vz), Spacing, dt, AdvectionMethod);
-
+      
       time        =   time + dt;                                            # Keep track of evolved time
   
       if mod(it,1000)==0  # print progress      
