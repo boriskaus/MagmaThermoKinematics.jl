@@ -210,7 +210,7 @@ end
 
 # ===================================================================================================
 
-if 1==0
+if 1==1
 
 @testset "Dike_Velocity" begin
   @test test_HostRockVelocityFromDike("2D", "ElasticDike",[80    ])  ≈   2663.677375120158  atol=1e-8;
@@ -248,6 +248,6 @@ end
 end
 
 #test_InjectDike("2D", "ElasticDike", [80 ],5, InterpolationMethod="Quadratic", AdvectionMethod="Euler")
-test_InjectDike("3D", "ElasticDike",[80; 45], InterpolationMethod="Linear", AdvectionMethod="Euler")
+#test_InjectDike("3D", "ElasticDike",[80; 45], InterpolationMethod="Linear", AdvectionMethod="Euler")
 
 
