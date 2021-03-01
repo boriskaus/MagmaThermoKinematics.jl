@@ -28,7 +28,7 @@ DikeType                =   "ElasticDike"           # Type to be injected ("Squa
 Nx, Nz                  =   500, 500;                           # resolution
 dx                      =   W/(Nx-1)*1e3; dz = H*1e3/(Nz-1);    # grid size [m]
 κ                       =   k_rock./(ρ*cp);                     # thermal diffusivity   
-dt                      =   min(dx^2, dz^2)./κ/20;              # stable timestep (required for explicit FD)
+dt                      =   min(dx^2, dz^2)./κ/10;              # stable timestep (required for explicit FD)
 nt                      =   floor(maxTime_kyrs*1e3*SecYear/dt); # number of required timesteps
 nTr_dike                =   100;                                # number of tracers inserted per dike
 
@@ -63,11 +63,11 @@ time,time_kyrs, dike_inj = 0.0, 0.0, 0.0;
 for it = 1:nt   # Time loop
 
     if floor(time_kyrs/InjectionInterval_kyrs)> dike_inj        # Add new dike every X years
-        dike_inj            =   floor(time_kyrs/InjectionInterval_kyrs)                                     # Keeps track on whether we injected already
-        cen                 =   [W/2.; -H/2.]; center = (rand(2,1) .- 0.5).*[W_ran;H_ran] + cen;            # Random variation of location (over a distance )
+        dike_inj            =   floor(time_kyrs/InjectionInterval_kyrs)                             # Keeps track on whether we injected already
+        cen                 =   [W/2.; -H/2.]; center = (rand(2,1) .- 0.5).*[W_ran;H_ran] + cen;    # Random variation of location (over a distance )
         dike                =   Dike(Width=W_in, Thickness=H_in,Center=center[:]*1e3,Angle=(rand(1).-0.5).*Angle_ran,Type=DikeType,T=T_in); # Specify dike with random location/angle but fixed size 
-        Tracers, T, Vol     =   InjectDike(Tracers, T, Grid, Spacing, dike, nTr_dike);                      # Add dike, move hostrocks
-        InjectVol           +=  Vol                                                                         # Keep track of injected volume
+        Tracers, T, Vol     =   InjectDike(Tracers, T, Grid, dike, nTr_dike);                       # Add dike, move hostrocks
+        InjectVol           +=  Vol                                                                 # Keep track of injected volume
         println("Added new dike; total injected magma volume = $(InjectVol/1e9) km³; rate Q=$(InjectVol/(time_kyrs*1e3*SecYear)) m³/s")
     end
 
@@ -79,7 +79,7 @@ for it = 1:nt   # Time loop
     @parallel (1:size(T,2)) bc2D_x!(Tnew);                                                      # set lateral boundary conditions (flux-free)
     Tnew[:,1] .= GeoT*H; Tnew[:,end] .= 0.0;                                                    # bottom & top temperature (constant)
     
-    Tracers         =   UpdateTracers(Tracers, Grid, Spacing, Tnew, Phi);                       # Update info on tracers 
+    Tracers         =   UpdateTracers(Tracers, Grid, Tnew, Phi);                                # Update info on tracers 
     T, Tnew         =   Tnew, T;                                                                # Update temperature
     time, time_kyrs =   time + dt, time/SecYear/1e3;                                            # Keep track of evolved time
     println(" Timestep $it = $(round(time/SecYear)/1e3) kyrs")
@@ -87,7 +87,7 @@ for it = 1:nt   # Time loop
     if mod(it,20)==0  # Visualisation
         Phi_melt    =   1.0 .- Phi;             
         x_km, z_km  =   x./1e3, z./1e3;
-        p1          =   heatmap(x_km, z_km, T',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="$(round(time_kyrs, digits=2)) kyrs", xlabel="Width [km]",ylabel="Depth [km]", dpi=200, fontsize=6, colorbar_title="Temperature")
+        p1          =   heatmap(x_km, z_km, T',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="$(round(time_kyrs, digits=2)) kyrs", clims=(0.,900.), xlabel="Width [km]",ylabel="Depth [km]", dpi=200, fontsize=6, colorbar_title="Temperature")
         p2          =   heatmap(x_km, z_km, Phi_melt',  aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:vik,     xlabel="Width [km]", clims=(0.,1.), dpi=200, fontsize=6, colorbar_title="Melt Fraction")
         plot(p1, p2, layout=(1,2)); frame(anim)
     end
@@ -97,4 +97,4 @@ gif(anim, "Example2D.gif", fps = 15)   # create gif animation
 return Tracers, T, Grid;
 end # end of main function
 
-Tracers,T,Grid = MainCode_2D(); # start the main code
+@time Tracers,T,Grid = MainCode_2D(); # start the main code

@@ -30,7 +30,7 @@ export SecYear
 
 # routines related to advection 
 include("Advection.jl")
-export AdvectTracers, AdvectTemperature, Interpolate     #
+export AdvectTracers!, AdvectTemperature, Interpolate!, CorrectBounds     #
 
 include("Dikes.jl")
 export Dike, DikePoly

@@ -82,8 +82,9 @@ function test_TracerUpdate(Dimension="2D", InterpolationMethod="Linear")
   Phi = T.*0.0;
  
   # Perform interpolation from grid -> tracers
-  Tracers = UpdateTracers(Tracers, Grid, Spacing, T, Phi, InterpolationMethod);
+  Tracers = UpdateTracers(Tracers, Grid, T, Phi, InterpolationMethod);
   
+          
   # Compute error 
   Tr_coord    =   Tracers.coord; Tr_coord = hcat(Tr_coord...)';       # extract array with coordinates of tracers
     

@@ -6,7 +6,7 @@
 
         General form:
 
-        Tracers = UpdateTracers(Tracers, Grid, Spacing, T, Phi, InterpolationMethod);
+        Tracers = UpdateTracers(Tracers, Grid, T, Phi, InterpolationMethod);
 
 
         with:
@@ -15,23 +15,20 @@
             Grid:   regular grid on which the parameters to be interpolated are defined
                     2D - (X,Z)
                     3D - (X,Y,Z)
-
-            Spacing: (constant) spacing of grid
-                    2D - (dx,dz)
-                    3D - (dx,dy,dz)
             
             T:      Temperature that is defined on the grid. 
 
             Phi:    Solid fraction defined on grid   
 
             InterpolationMethod:    Interpolation method from grid->Tracers
-                    "Cubic"     -   Cubic interpolation (default)
+                    "Cubic"     -   Cubic interpolation 
+                    "Quadratic" -   Quadratic interpolation (default)
                     "Linear"    -   Linear interpolation
 
         out:
             Tracers:    Tracers structure with updated T field
 """
-function UpdateTracers(Tracers, Grid, Spacing, T, Phi, InterpolationMethod="Cubic");
+function UpdateTracers(Tracers, Grid, T, Phi, InterpolationMethod="Quadratic");
 
     dim = length(Grid)    
     if isassigned(Tracers,1)        # only if the Tracers StructArray is non-empty
@@ -48,11 +45,12 @@ function UpdateTracers(Tracers, Grid, Spacing, T, Phi, InterpolationMethod="Cubi
         end
 
         # Correct coordinates (to stay withoin bounds of models)
-        Points_irregular = CorrectBounds(Points_irregular, Grid);
+        CorrectBounds!(Points_irregular, Grid);
  
         # Interpolate temperature from grid to tracers
-        T_tracers = Interpolate( Grid, Spacing, tuple(T), Points_irregular, InterpolationMethod);
-
+        T_tracers = tuple(zeros(size(x)));
+        Interpolate!(T_tracers, Grid, tuple(T), Points_irregular, InterpolationMethod);
+        
         # Update info on tracers
         for iT = 1:length(Tracers)
             LazyRow(Tracers, iT).T = T_tracers[1][iT];

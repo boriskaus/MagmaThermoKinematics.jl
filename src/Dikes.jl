@@ -102,7 +102,7 @@ end
     The orientation and the type of the dike are described by the structure     
 
     General form:
-        T, Velocity, VolumeInjected = InjectDike(Tracers, T, Grid, Spacing, dike, nTr_dike )
+        T, Velocity, VolumeInjected = InjectDike(Tracers, T, Grid, FullGrid, dike, nTr_dike; AdvectionMethod="RK2", InterpolationMethod="Quadratic")
 
     with:
         T:          Temperature grid (will be modified)
@@ -113,49 +113,79 @@ end
                     2D - (X,Z)
                     3D - (X,Y,Z)
 
-        Spacing:    (constant) spacing of grid
-                    2D - (dx,dz)
-                    3D - (dx,dy,dz)
+        FullGrid:   2D or 3D matrixes with the full grid coordinates
+                    2D - (X,Z)
+                    3D - (X,Y,Z)
 
         nTr_dike:   Number of new tracers to be injected into the new dike area
 
-"""
+    optional input parameters with keywords (add them with: AdvectionMethod="RK4", etc.):
 
-function InjectDike(Tracers, T::Array, Grid, Spacing, dike::Dike, nTr_dike::Int64 )
+        AdvectionMethod:    Advection algorithm 
+                    "Euler"     -    1th order accurate Euler timestepping
+                    "RK2"       -    2nd order Runga Kutta advection method [default]
+                    "RK4"       -    4th order Runga Kutta advection method
+                
+        InterpolationMethod: Interpolation Algorithm to interpolate data on advected points 
+                    
+                    Note:  higher order is more accurate for smooth fields, but if there are very sharp gradients, 
+                        it may result in a 'Gibbs' effect that has over and undershoots.   
+
+                    "Linear"    -    Linear interpolation
+                    "Quadratic" -    Quadratic spline
+                    "Cubic"     -    Cubic spline
+
+"""
+function InjectDike(Tracers, T::Array, Grid, dike::Dike, nTr_dike::Int64; AdvectionMethod="RK2", InterpolationMethod="Quadratic")
 
     # Some notes on the algorithm:
     #   For computational reasons, we do not open the dike at once, but in sufficiently small pseudo timesteps
     #   Sufficiently small implies that the motion per "pseudotimestep" cannot be more than 0.5*{dx|dy|dz}
     
     @unpack Width,Thickness = dike
-    H           =    Thickness;                                         # thickness of dike
-    d           =    minimum(Spacing)*0.5;                              # maximum distance the dike can open per pseudotimestep 
+    H           =   Thickness;                                         # thickness of dike
+    dim         =   length(Grid);
+    Spacing     =   Vector{Float64}(undef, dim);
+    
+    if dim==2
+        coords      =   collect(Iterators.product(Grid[1],Grid[2]))                             # generate coordinates from 1D coordinate vectors   
+        X,Z         =   (x->x[1]).(coords), (x->x[2]).(coords);    
+        GridFull    =   (X,Z); 
+    elseif dim==3
+        coords      =   collect(Iterators.product(Grid[1],Grid[2],Grid[3]))                     # generate coordinates from 1D coordinate vectors   
+        X,Y,Z       =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);     
+        GridFull    =   (X,Y,Z); 
+    end
 
-    nsteps      =   maximum([ceil(H/d), 10]);                           # the number of steps (>=10)
+    for i=1:dim
+        Spacing[i] = Grid[i][2] - Grid[i][1];
+    end
+    d           =   minimum(Spacing)*0.5;                              # maximum distance the dike can open per pseudotimestep 
+    nsteps      =   maximum([ceil(H/d), 2]);                           # the number of steps (>=10)
 
     # Compute velocity required to create space for dike
     Δ           =   H/(nsteps);
     dt          =   1.0
-
-    Velocity    =   HostRockVelocityFromDike(Grid,Δ, dt,dike);          # compute velocity field
-   
+    Velocity    =   HostRockVelocityFromDike(Grid,GridFull, Δ, dt,dike);       # compute velocity field
+ 
     # Move hostrock & already existing tracers to the side to create space for new dike
-    Tnew        =   zeros(size(T))
-    for ipseudotime=1:nsteps
-        Tnew    =   AdvectTemperature(T,        Grid,  Velocity,   Spacing,    dt);    
+    Tnew        =   zeros(size(T));
+    for ipseudotime=1:nsteps 
+        Tnew        =   AdvectTemperature(T, Grid,  GridFull, Velocity, dt, AdvectionMethod, InterpolationMethod);    
+
         if isassigned(Tracers,1)
-            Tracers =   AdvectTracers(Tracers, Grid,  Velocity,   Spacing,    dt);
+            AdvectTracers!(Tracers,  Grid,    Velocity, dt);
         end
         T      .=   Tnew;
     end
 
     # Insert dike in T profile and add new tracers
-    T,Tracers           =   AddDike(T, Tracers, Grid,dike, nTr_dike);                 # Add dike to T-field & insert tracers within dike
+    Tnew,Tracers        =   AddDike(T, Tracers, Grid,dike, nTr_dike);                 # Add dike to T-field & insert tracers within dike
 
     # Compute volume of newly injected magma
     Area,InjectedVolume =   volume_dike(dike)
 
-    return Tracers, T, InjectedVolume, Velocity
+    return Tracers, Tnew, InjectedVolume, Velocity
 
 end
 
@@ -164,7 +194,7 @@ end
     Host rock velocity obtained during opening of dike
 
     General form:
-        Velocity = HostRockVelocityFromDike( Grid, Δ, dt, dike);
+        Velocity = HostRockVelocityFromDike( Grid, Points, Δ, dt, dike);
 
         with:
 
@@ -180,15 +210,14 @@ end
 
 
 """
-function HostRockVelocityFromDike( Grid, Δ, dt, dike::Dike)
+function HostRockVelocityFromDike( Grid, Points, Δ, dt, dike::Dike)
 
     # Prescibe the velocity field to inject the dike with given orientation
     # 
     dim = length(Grid);
     if dim==2
-        coords      =   collect(Iterators.product(Grid[1],Grid[2]))                             # generate coordinates from 1D coordinate vectors   
-        X,Z         =   (x->x[1]).(coords), (x->x[2]).(coords);                      
- 
+        X,Z          =  Points[1], Points[2];
+         
         # Rotate and shift coordinate system into 'dike' reference frame
         @unpack Angle,Type = dike
         α           =   Angle[1];
@@ -235,8 +264,12 @@ function HostRockVelocityFromDike( Grid, Δ, dt, dike::Dike)
             error("Unknown Dike Type: $Type")
         end
 
-        # "unrotate" vector fields, using the transpose of RotMat
+        # "unrotate" vector fields and points using the transpose of RotMat
         RotatePoints_2D!(Vx,Vz, Vx_rot,Vz_rot, RotMat')
+        RotatePoints_2D!(X, Z,  Xrot,  Zrot,   RotMat')
+
+        X           .= X .+ dike.Center[1];
+        Z           .= Z .+ dike.Center[2];
 
         return (Vx, Vz);
 
@@ -247,8 +280,7 @@ function HostRockVelocityFromDike( Grid, Δ, dt, dike::Dike)
         RotMat_z        =   [cosd(β) -sind(β) 0.0; sind(β) cosd(β) 0.0; 0.0 0.0 1.0  ];                      # perpendicular to z axis
         RotMat          =   RotMat_y*RotMat_z;
 
-        coords          =   collect(Iterators.product(Grid[1],Grid[2],Grid[3]))                         # generate coordinates from 1D coordinate vectors   
-        X,Y,Z           =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);                      
+        X,Y,Z           =   Points[1], Points[2], Points[3];
 
         Xrot,Yrot,Zrot  =   zeros(size(X)),  zeros(size(Y)), zeros(size(Z));
         X               .=  X .- dike.Center[1];
@@ -295,7 +327,12 @@ function HostRockVelocityFromDike( Grid, Δ, dt, dike::Dike)
 
         # "unrotate" vector fields
         RotatePoints_3D!(Vx,Vy,Vz, Vx_rot,Vy_rot,Vz_rot, RotMat')           # rotate velocities back
+        RotatePoints_3D!( X, Y, Z, Xrot  ,Yrot  ,Zrot  , RotMat')           # rotate coordinates back
         
+        X               .=  X .+ dike.Center[1];
+        Y               .=  Y .+ dike.Center[2];
+        Z               .=  Z .+ dike.Center[3];
+
         return (Vx, Vy, Vz);
 
     end
@@ -399,12 +436,13 @@ function isinside_dike(pt, dike::Dike)
         if dim==2
             eq_ellipse = (pt[1]^2.0)/((Width/2.0)^2.0) + (pt[2]^2.0)/((Thickness/2.0)^2.0); # ellipse
         elseif dim==3
-            eq_ellipse = (pt[1]^2.0)/((Width/2.0)^2.0) + (pt[2]^2.0)/((Width/2.0)^2.0) + (pt[3]^2.0)/((Thickness/2.0)^2.0); # ellipsoid
+            # radius = sqrt(*)x^2+y^2)
+            eq_ellipse = (pt[1]^2.0 + pt[2]^2.0)/((Width/2.0)^2.0) + (pt[3]^2.0)/((Thickness/2.0)^2.0); # ellipsoid
         else
             error("Unknown # of dimensions: $dim")
         end
 
-        if eq_ellipse < 1.0
+        if eq_ellipse <= 1.0
             in = true;
         end
 

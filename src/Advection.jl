@@ -8,7 +8,7 @@ This contains routines related to advection of temperature and tracers
 
 
     General form:
-        Data_interp = Interpolate( Grid, Spacing, Data_grid, Points_irregular,  InterpolationMethod="Linear")
+        Interpolate!(Data_interp, Grid, Data_grid, Points_irregular,  InterpolationMethod="Linear")
 
         with:
 
@@ -28,205 +28,193 @@ This contains routines related to advection of temperature and tracers
 
             InterpolationMethod:   The interpolation method  
                     "Linear"    -   Linear interpolation (default)
+                    "Quadratic" -   Quadratic interpolation
                     "Cubic"     -   Cubix interpolation 
     
             Data_interp:   interpolated data field(s) on the irregular points. Same number of fields as Data_grid                          
 
             Note: we use the Julia package Interpolations.jl to perform the actual interpolation
 """
-function Interpolate( Grid, Spacing, Data_grid, Points_irregular, InterpolationMethod="Linear");
-
-    dim                 =   length(Grid);           # number of dimensions
-    nField              =   length(Data_grid);      # number of fields
-     
-    X_irr               =   Points_irregular[1];    # coordinates of irregular point
+function Interpolate!(Data_interp, Grid,  Data_grid, Points_irregular, InterpolationMethod="Linear");
     
+    dim::Int8           =   length(Grid);           # number of dimensions
+    nField ::Int8       =   length(Data_grid);      # number of fields
+    iField::Int64       =   0;
+    
+    # define functions to perform interpolation with as few allocations as possible
     if dim==2
-        Z_irr           =   Points_irregular[2];
-    else
-        Y_irr           =   Points_irregular[2];
-        Z_irr           =   Points_irregular[3];
-    end
-    
-    if nField==1
-        Data_interp    = tuple(zeros(size(X_irr))); # initialize to 0
-    elseif nField==2
-        Data_interp    = (zeros(size(X_irr)), zeros(size(X_irr)));
-    elseif nField==3
-        Data_interp    = (zeros(size(X_irr)), zeros(size(X_irr)),zeros(size(X_irr)));
-    else
-        error("Unknown number of fields ($nField)")
+        function evaluate_2D(s, itp, Points_irregular)
+            Threads.@threads for i=firstindex(Points_irregular[1]):lastindex(Points_irregular[1])
+                s[i]    = itp(Points_irregular[1][i],Points_irregular[2][i]);
+            end
+        end
+    elseif dim==3
+        function evaluate_3D(s, itp, Points_irregular)
+            Threads.@threads for i=firstindex(Points_irregular[1]):lastindex(Points_irregular[1])
+                s[i]    = itp(Points_irregular[1][i],Points_irregular[2][i],Points_irregular[3][i]);
+            end
+        end
     end
 
     for iField=1:nField
-
-        # Select the interpolation method
+        
+        # Select the interpolation method & scale
         if      InterpolationMethod=="Linear"
-            interp          =   LinearInterpolation(Grid, Data_grid[iField],        extrapolation_bc = Flat());    
+            interp      =   LinearInterpolation(Grid, Data_grid[iField],        extrapolation_bc = Flat());    
         elseif  InterpolationMethod=="Cubic"
-            interp          =   CubicSplineInterpolation(Grid, Data_grid[iField],   extrapolation_bc = Flat());    
+            interp      =   CubicSplineInterpolation(Grid, Data_grid[iField],   extrapolation_bc = Flat());    
+        elseif  InterpolationMethod=="Quadratic"
+            itp         =   interpolate(Data_grid[iField], BSpline(Quadratic(Line(OnCell()))));
+            if dim==2
+                interp  =   scale(itp,Grid[1],Grid[2]);
+            else
+                interp  =   scale(itp,Grid[1],Grid[2],Grid[3]);
+            end
         else
             error("Unknown interpolation method $InterpolationMethod")
         end
 
-        for i=firstindex(X_irr):lastindex(X_irr)
-            if dim==2
-                Data_interp[iField][i] = interp(X_irr[i], Z_irr[i]); 
-            else
-                Data_interp[iField][i] = interp(X_irr[i], Y_irr[i], Z_irr[i]); 
-            end
-        end        
+        # do interpolation for all points
+        if dim==2
+            evaluate_2D(Data_interp[iField], interp,Points_irregular);
+        elseif dim==3
+            evaluate_3D(Data_interp[iField], interp,Points_irregular);
+        end
+    
     end
-
-    return Data_interp
 
 end
 
 
 """
-    AdvPoints =   AdvectPoints(AdvPoints0, Grid,Velocity,Spacing,dt, Method="RK4", InterpolationMethod="Linear");
+    AdvPoints =   AdvectPoints(AdvPoints0, Grid,Velocity,dt, Method="RK2", InterpolationMethod="Linear");
     
 Advects irregular points described by the (2D or 3D tuple) AdvPoints0, though a fixed Eulerian
 grid (Grid), with constant spacing (Spacing) on which the velocity components (Velocity) are defined.
 Advection is done for the time dt, and can use different methods
 
 """
-function AdvectPoints(AdvPoints0, Grid,Velocity,Spacing,dt, Method="RK2", InterpolationMethod="Linear");
-
+function AdvectPoints(AdvPoints0, Grid,Velocity,dt, Method="RK2", InterpolationMethod="Linear");
     dim         = length(AdvPoints0);           # number of dimensions
     AdvPoints   = map(x->x.*0, AdvPoints0) ;    # initialize to 0
+   
+    if dim==2
+        Velocity_int    = (zeros(size(AdvPoints0[1])), zeros(size(AdvPoints0[2])));
+    elseif dim==3
+        Velocity_int    = (zeros(size(AdvPoints0[1])), zeros(size(AdvPoints0[2])),zeros(size(AdvPoints0[3])));
+    end
 
     # Different advection schemes can be used
     if Method=="Euler"
 
-        Velocity_int = Interpolate( Grid, Spacing, Velocity, AdvPoints0, InterpolationMethod);    
-        
-        
+        Interpolate!(Velocity_int, Grid, Velocity, AdvPoints0, InterpolationMethod);    
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt;  
         end
-        AdvPoints  =   CorrectBounds( AdvPoints , Grid);
+        CorrectBounds!( AdvPoints , Grid);
         
     elseif Method=="RK2"
-        Velocity_int = Interpolate( Grid, Spacing, Velocity, AdvPoints0, InterpolationMethod);    
+
+        Interpolate!(Velocity_int, Grid, Velocity, AdvPoints0, InterpolationMethod);    
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt/2.0;  
         end    
-        AdvPoints  =   CorrectBounds( AdvPoints , Grid);                               # step k1
+        CorrectBounds!( AdvPoints , Grid);                               # step k1
         
         # Interpolate velocity values on deformed grid
-        Velocity_int = Interpolate( Grid, Spacing, Velocity, AdvPoints, InterpolationMethod);    
+         Interpolate!(Velocity_int, Grid, Velocity, AdvPoints, InterpolationMethod);    
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt;  
         end    
-        AdvPoints  =   CorrectBounds( AdvPoints , Grid);                               # step k2
+        CorrectBounds!( AdvPoints , Grid);                               # step k2
 
     elseif Method=="RK4"
-
-        Velocity_int = Interpolate( Grid, Spacing, Velocity, AdvPoints0, InterpolationMethod);    
+        
+        Interpolate!(Velocity_int, Grid, Velocity, AdvPoints0, InterpolationMethod);    
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt/2.0;  
         end    
-        AdvPoints  =   CorrectBounds( AdvPoints , Grid);                               # step k1
+        CorrectBounds!( AdvPoints , Grid);                               # step k1
         
         # Interpolate velocity values on deformed grid
-        Velocity_int = Interpolate( Grid, Spacing, Velocity, AdvPoints,  InterpolationMethod);    
+        Interpolate!(Velocity_int, Grid, Velocity, AdvPoints,  InterpolationMethod);    
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt/2.0;  
         end    
-        AdvPoints  =   CorrectBounds( AdvPoints , Grid);                               # step k2
+        CorrectBounds!( AdvPoints , Grid);                               # step k2
         
         # Interpolate velocity values on deformed grid
-        Velocity_int = Interpolate( Grid, Spacing, Velocity, AdvPoints,  InterpolationMethod);    
+        Interpolate!(Velocity_int, Grid, Velocity, AdvPoints,  InterpolationMethod);    
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt/2.0;  
         end    
-        AdvPoints  =   CorrectBounds( AdvPoints , Grid);                               # step k3
+        CorrectBounds!( AdvPoints , Grid);                               # step k3
 
         # Interpolate velocity values on deformed grid
-        Velocity_int = Interpolate( Grid, Spacing, Velocity, AdvPoints,  InterpolationMethod);    
+        Interpolate!(Velocity_int, Grid, Velocity, AdvPoints,  InterpolationMethod);    
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt;  
         end             
-        AdvPoints  =   CorrectBounds( AdvPoints , Grid);                               # step k4
+        CorrectBounds!( AdvPoints , Grid);                               # step k4
         
+    else
+        error("Unknown advection method: $Method")
     end
 
     return AdvPoints;
 end
 
 """
-    Points_new = CorrectBounds(Points, Grid);
+    CorrectBounds!(Points, Grid);
     
 Ensures that the coordinates of Points stay within the bounds
 of the regular grid Grid, which is a tuple of 2 or 3 field (for 2D/3D)
 
  """
-function CorrectBounds(Points, Grid);
+function CorrectBounds!(Points, Grid);
 
-    Points_new  = map(x->x.*0, Points) ; # initialize to 0
+    #Points_new  = map(x->x.*0, Points) ; # initialize to 0
     for i=1:length(Grid);
-        minB    = minimum(Grid[i]);
-        maxB    = maximum(Grid[i]);
-    
-        X               =       Points[i];
-        X[X.<minB]      .=      minB; 
-        X[X.>maxB]      .=      maxB; 
-        Points_new[i]   .=       X;
+        Points[i][Points[i].<minimum(Grid[i])]      .=      minimum(Grid[i]); 
+        Points[i][Points[i].>maximum(Grid[i])]      .=      maximum(Grid[i]); 
     end
-    
-    return Points_new;
 end
 
 
 """
-        Tnew = AdvectTemperature(T, Grid, Velocity, Spacing, dt, Method="RK4",DataInterpolationMethod="Cubic")
+        Tnew = AdvectTemperature(T, Grid, Velocity, Spacing, dt, Method="RK2",DataInterpolationMethod="Quadratic")
 
     Advects temperature for one timestep dt, using a semi-lagrangian advection scheme 
 
         Method: can be "Euler","RK2" or "RK4", for 1th, 2nd or 4th order explicit advection scheme, respectively. 
 """
-function AdvectTemperature(T::Array,Grid, Velocity, Spacing, dt, Method="RK2", DataInterpolationMethod="Cubic");
+function AdvectTemperature( T::Array,Grid, PointsAdv0, Velocity, dt, Method="RK2", DataInterpolationMethod="Quadratic");
     
-    dim = length(Grid);
-
+    dim  = length(Grid);
+    Tnew = tuple(T);
     # 1) Use semi-lagrangian advection to advect temperature
     # Advect regular grid backwards in time
+    PointsAdv = AdvectPoints(PointsAdv0, Grid,Velocity,-dt,Method, "Linear");
 
-    # Create 2D or 3D grid to be advected backwards    
-    if dim==2
-        coords      =   collect(Iterators.product(Grid[1],Grid[2]))                             # generate coordinates from 1D coordinate vectors   
-        X,Z         =   (x->x[1]).(coords), (x->x[2]).(coords);                      
-        PointsAdv   =   (X,Z);
-    else
-        coords      =   collect(Iterators.product(Grid[1],Grid[2],Grid[3]))                     # generate coordinates from 1D coordinate vectors   
-        X,Y,Z       =   (x->x[1]).(coords),(x->x[2]).(coords),(x->x[3]).(coords);               # transfer coords to 3D arrays
-        PointsAdv   =   (X,Y,Z);
-    end
-
-    PointsAdv   =   AdvectPoints(PointsAdv, Grid,Velocity,Spacing,-dt,Method, "Linear");
- 
     # 2) Interpolate temperature on deformed points
-    Tnew        =   Interpolate(Grid, Spacing, tuple(T), PointsAdv, DataInterpolationMethod);    
-
+    Interpolate!( Tnew, Grid, tuple(T), PointsAdv, DataInterpolationMethod);    
+    
     return Tnew[1];
 end
 
 
 """
-        Tnew = AdvectTracers(Tracers, Grid, Velocity, Spacing, dt, Method="RK4");
+        AdvectTracers!(Tracers, Grid, Velocity, dt, Method="RK2");
 
-        Advects [Tracers] for one timestep (dt) using the [Velocity] defined on the points [Grid]
-        that have constant [Spacing].
+        Advects [Tracers] for one timestep (dt) using the [Velocity] defined on the points [Grid].
 
         Method: can be "Euler","RK2" or "RK4", for 1th, 2nd or 4th order explicit advection scheme, respectively. 
 """
-function AdvectTracers(Tracers, Grid, Velocity, Spacing, dt, Method="RK2");
+function AdvectTracers!(Tracers, Grid, Velocity, dt, Method="RK2");
     # Advect tracers forward in time & interpolate T on them 
     
-    dim = length(Grid);
-
-    coord = Tracers.coord; coord = hcat(coord...)';       # extract array with coordinates of tracers
+    dim             =   length(Grid);
+    coord     =   hcat(Tracers.coord...)';    # extract array with coordinates of tracers
     
     x   = coord[:,1];
     z   = coord[:,end];
@@ -238,19 +226,28 @@ function AdvectTracers(Tracers, Grid, Velocity, Spacing, dt, Method="RK2");
     end
     
     # Correct coordinates (to stay withoin bounds of models)
-    Points_irregular    =   CorrectBounds(Points_irregular, Grid);
+    CorrectBounds!(Points_irregular, Grid);
 
     # Advect
-    Points_new          =   AdvectPoints(Points_irregular,  Grid,Velocity,Spacing, dt,Method,  "Linear");     # Advect tracers
-    
-    for iT = 1:length(Tracers)
-        if dim==2
-            LazyRow(Tracers, iT).coord = [Points_new[1][iT]; Points_new[2][iT]];
-       
-        elseif dim==3
-            LazyRow(Tracers, iT).coord = [Points_new[1][iT]; Points_new[2][iT]; Points_new[3][iT]];
+    Points_new              =   AdvectPoints(Points_irregular,  Grid,Velocity, dt,Method,  "Linear");     # Advect tracers
+
+    # function to assign properties
+    function testnoalloc_2D(sarr, val)
+        for (Tracer,x,z) in zip(LazyRows(sarr), val[1], val[2])
+            Tracer.coord = [x;z];
         end
     end
 
-    return Tracers
+    function testnoalloc_3D(sarr, val)
+        for (Tracer,x,y,z) in zip(LazyRows(sarr), val[1], val[2], val[3])
+            Tracer.coord = [x; y; z];
+        end
+    end
+
+    if dim==2
+        testnoalloc_2D(Tracers, Points_new);
+    else
+        testnoalloc_3D(Tracers, Points_new);
+    end
+
 end

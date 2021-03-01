@@ -25,7 +25,7 @@ function test_HostRockVelocityFromDike(Dimension="2D", DikeType="ElasticDike", D
     x,z                     =   0:dx:W*1e3, -H*1e3:dz:0;                            # 1D coordinate arrays
     coords                  =   collect(Iterators.product(x,z))               # generate coordinates from 1D coordinate vectors   
     X,Z                     =   (x->x[1]).(coords), (x->x[2]).(coords);       # transfer coords to 3D arrays
-    Grid, Spacing           =   (x,z), (dx,dz);
+    Grid, FullGrid, Spacing =   (x,z), (X,Z), (dx,dz);
 
     Hdike                   =   100.0;
     Wdike                   =   20000.0;
@@ -42,7 +42,7 @@ function test_HostRockVelocityFromDike(Dimension="2D", DikeType="ElasticDike", D
       x,y,z                   =   0:dx:((Nx-1)*dx),  0:dy:((Ny-1)*dy), -((Nz-1)*dz):dz:0.;      # 1D coordinate arrays
       coords                  =   collect(Iterators.product(x,y,z))                             # generate coordinates from 1D coordinate vectors   
       X,Y,Z                   =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);   # transfer coords to 3D arrays
-      Grid, Spacing           =   (x,y,z), (dx,dy,dz);
+      Grid, FullGrid, Spacing =   (x,y,z), (X,Y,Z), (dx,dy,dz);
       cen                     =   [W/2;L/2; -H/2].*1e3;
       
  
@@ -58,7 +58,7 @@ function test_HostRockVelocityFromDike(Dimension="2D", DikeType="ElasticDike", D
   Δ                 =   Hdike;          # max. dike opening (m)
   dt                =   1; #0.01*SecYear;    # time in which the dike opened fully
 
-  Velocity          =   HostRockVelocityFromDike(Grid,Δ, dt,dike);          # compute velocity field
+  Velocity          =   HostRockVelocityFromDike(Grid, FullGrid, Δ, dt,dike);          # compute velocity field
 
   
   if Dimension=="2D"
@@ -103,7 +103,7 @@ end
 
 
 
-function test_InsertDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45], numDikeInjectionEvents=1)
+function test_InjectDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45], numDikeInjectionEvents=1; InterpolationMethod="Cubic")
   # tests dike insertion in the domain including adding tracers
 
   
@@ -117,7 +117,7 @@ function test_InsertDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45],
     x,z                     =   0:dx:W*1e3, -H*1e3:dz:0;                            # 1D coordinate arrays
     coords                  =   collect(Iterators.product(x,z))               # generate coordinates from 1D coordinate vectors   
     X,Z                     =   (x->x[1]).(coords), (x->x[2]).(coords);       # transfer coords to 3D arrays
-    Grid, Spacing           =   (x,z), (dx,dz);
+    Grid, GridFull,Spacing  =   (x,z), (X,Z), (dx,dz);
 
     Hdike                   =   1000.0;
     Wdike                   =   20000.0;
@@ -134,7 +134,7 @@ function test_InsertDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45],
       x,y,z                   =   0:dx:((Nx-1)*dx),  0:dy:((Ny-1)*dy), -((Nz-1)*dz):dz:0.;      # 1D coordinate arrays
       coords                  =   collect(Iterators.product(x,y,z))                             # generate coordinates from 1D coordinate vectors   
       X,Y,Z                   =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);   # transfer coords to 3D arrays
-      Grid, Spacing           =   (x,y,z), (dx,dy,dz);
+      Grid, GridFull,Spacing  =   (x,y,z), (X,Y,Z), (dx,dy,dz);
       cen                     =   [W/2; L/2; -H/2].*1e3;
       
  
@@ -153,10 +153,11 @@ function test_InsertDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45],
   # Test the InsertDike routine, which modifies temperature and adds tracers
   nTr_dike                =   1000;
   Tracers                 =   StructArray{Tracer}(undef, 1)                                    # Initialize Tracers structure
-  Tracers, T, InjectVol, Velocity   =   InjectDike(Tracers, T, Grid, Spacing, dike, nTr_dike);           # Inject first dike
+  Tracers, Tnew, InjectVol, Velocity    =   InjectDike(Tracers, T, Grid, dike, nTr_dike, InterpolationMethod=InterpolationMethod);           # Inject first dike
 
   for i=1:numDikeInjectionEvents-1
-    Tracers, T, InjectVol, Velocity   =   InjectDike(Tracers, T, Grid, Spacing, dike, nTr_dike);           # Inject more dikes
+    T = Tnew;
+    Tracers, Tnew, InjectVol, Velocity  =   InjectDike(Tracers, T, Grid, dike, nTr_dike, InterpolationMethod=InterpolationMethod);           # Inject more dikes
   end
 
   if Dimension=="2D"
@@ -167,7 +168,7 @@ function test_InsertDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45],
       Vz = Velocity[2];
       
       Tr_coord    =   Tracers.coord; Tr_coord = hcat(Tr_coord...)';       # extract array with coordinates of tracers
-      p1          =   heatmap(x/1e3, z/1e3,      T',       aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:inferno, title="T",  dpi=300, levels=30)
+      p1          =   heatmap(x/1e3, z/1e3,      T',     aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:inferno, title="T",  dpi=300, levels=30)
       p2          =   scatter(Tr_coord[:,1]/1e3, Tr_coord[:,2]/1e3, zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), markersize=5.0, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),title="Tracers")
       p3          =   heatmap(x/1e3, z/1e3,      Vx',       aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:inferno, title="Vx",  dpi=300, levels=30)
       p4          =   heatmap(x/1e3, z/1e3,      Vz',       aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:inferno, title="Vz",  dpi=300, levels=30)
@@ -211,12 +212,12 @@ end
 
 if 1==1
 
-@testset "Dike_VelocityFields" begin
-  @test test_HostRockVelocityFromDike("2D", "ElasticDike",[90    ])  ≈   2663.498414886056  atol=1e-8;
-  @test test_HostRockVelocityFromDike("2D","SquareDike",  [90    ])  ≈   5215.361924162119  atol=1e-8;
+@testset "Dike_Velocity" begin
+  @test test_HostRockVelocityFromDike("2D", "ElasticDike",[80    ])  ≈   2663.677375120158  atol=1e-8;
+  @test test_HostRockVelocityFromDike("2D","SquareDike",  [80    ])  ≈   5286.303056011829  atol=1e-8;
   @test test_HostRockVelocityFromDike("3D","SquareDike",  [90; 90])  ≈  13114.877048604001  atol=1e-4;
   @test test_HostRockVelocityFromDike("3D","ElasticDike",[90; 45])   ≈   4762.014274270334  atol=1e-4;
-end;
+end
 
 # test dike structure
 @testset "Dike_Struct" begin
@@ -232,13 +233,19 @@ end
 end
 
 # Dike insertion algorithm
-@testset "Dike_Insert" begin
-  @test test_InsertDike("2D", "SquareDike", [80 ])      ≈   47525.46540334226  atol=1e-8;
-  @test test_InsertDike("2D", "ElasticDike",[45 ],2)    ≈   48785.96837912225  atol=1e-8;     # also tests what happens if we add 2 dikes
-  @test test_InsertDike("3D", "ElasticDike",[80; 45])   ≈   519654.9204937116  atol=1e-8;
-  @test test_InsertDike("3D", "SquareDike",[15; -30])   ≈   527521.3194224192  atol=1e-8;
+@testset "Dike_Inject" begin
+  @test test_InjectDike("2D", "SquareDike", [80 ],1)    ≈   47525.46578461968 atol=1e-3;
+  
+  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Linear")    ≈   48449.55881626355  atol=1e-3;     # also tests what happens if we add 2 dikes
+  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Quadratic") ≈   48771.11210790134  atol=1e-3;     # also tests what happens if we add 2 dikes
+  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Cubic")     ≈   48782.54981090538  atol=1e-3;     # also tests what happens if we add 2 dikes
 
+  @test test_InjectDike("3D", "ElasticDike",[80; 45])   ≈   519654.92166558706 atol=1e-3;
+  @test test_InjectDike("3D", "SquareDike",[15; -30])   ≈   527521.5412692772  atol=1e-3;
 
 end
 
 end
+
+#@time test_InjectDike("2D", "ElasticDike", [80 ],5, InterpolationMethod="Quadratic")
+

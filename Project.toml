@@ -1,7 +1,7 @@
 name = "ZirconThermoKinematics"
 uuid = "e7fe3d1a-f102-40b5-a66b-64b14986c4c8"
 authors = ["Boris Kaus <kaus@uni-mainz.de>"]
-version = "0.2.0"
+version = "0.2.1"
 
 [deps]
 Interpolations = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"

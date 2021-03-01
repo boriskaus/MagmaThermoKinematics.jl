@@ -8,6 +8,7 @@ using SpecialFunctions
 using Test
 
 
+
 const CreatePlots = false      # easy way to deactivate plotting throughout
 
 # Initialize for multiple threads (GPU is not tested here)
@@ -36,7 +37,7 @@ function test_Interpolation(Dimension="2D", InterpolationMethod="Linear")
     coords_f                =   collect(Iterators.product(x_f,z_f))         # generate coordinates from 1D coordinate vectors   
     X_f,Z_f                 =   (x->x[1]).(coords_f), (x->x[2]).(coords_f); # transfer coords to 3D arrays
     Grid_f                  =   (x_f, z_f);     # note
-    
+    Y_f = [];
     # Define function on coarse grid
     T                       =   cos.(pi.*X).*sin.(2*pi.*Z)
 
@@ -45,12 +46,18 @@ function test_Interpolation(Dimension="2D", InterpolationMethod="Linear")
     
     Grid_fine               =   (X_f, Z_f)
 
+    Data_fine1              =   (X_f*0,); 
+    Data_fine2              =   (X_f.*0, Z_f.*0); 
+
   elseif Dimension=="3D"
       # Model parameters
       W,L,H                 =   1., 1., 1.;                                    # Width, Length, Height
       
       # Define coarse grid
-      Nx, Ny, Nz              =   33,33, 33;                                                    # resolution of coarse grid
+      Nx, Ny, Nz              =   33,33,33;                                                    # resolution of coarse grid
+      
+      Nx, Ny, Nz              =   150,150,150;                                                  # resolution of coarse grid
+
       dx,dy,dz                =   W/(Nx-1), L/(Ny-1), H/(Nz-1);                                 # grid size [m]
       x,y,z                   =   0:dx:((Nx-1)*dx),  0:dy:((Ny-1)*dy), 0:dz:((Nz-1)*dz);        # 1D coordinate arrays
       coords                  =   collect(Iterators.product(x,y,z))                             # generate coordinates from 1D coordinate vectors   
@@ -59,6 +66,7 @@ function test_Interpolation(Dimension="2D", InterpolationMethod="Linear")
   
       # Define fine grid
       Nx_f, Ny_f, Nz_f        =   65, 65, 65;                                                       # resolution of fine grid
+      Nx_f, Ny_f, Nz_f        =   165, 165, 165;                                                       # resolution of fine grid
       dx_f,dy_f,dz_f          =   W/(Nx_f-1), L/(Ny_f-1), H/(Nz_f-1);                               # grid size [m]
       x_f,y_f,z_f             =   0:dx_f:H, 0:dy_f:L,0:dz_f:H;                                      # 1D coordinate arrays
       coords_f                =   collect(Iterators.product(x_f,y_f, z_f))                          # generate coordinates from 1D coordinate vectors   
@@ -73,12 +81,16 @@ function test_Interpolation(Dimension="2D", InterpolationMethod="Linear")
       Data_coarse2            =   (T, T, T);        # 3 datasets on grid 
 
       Grid_fine               =   (X_f, Y_f, Z_f)
+      Data_fine1              =   (X_f.*0,); 
+      Data_fine2              =   (X_f.*0, Y_f.*0, Z_f.*0); 
+      
   end
+
 
  
   # Perform interpolation from coarse-fine grid
-  Data_fine1 =  Interpolate( Grid, Spacing, Data_coarse1, Grid_fine, InterpolationMethod);       # one field
-  Data_fine2 =  Interpolate( Grid, Spacing, Data_coarse2, Grid_fine, InterpolationMethod);       # several fields
+  Interpolate!(Data_fine1, Grid, Data_coarse1, Grid_fine,   InterpolationMethod);       # one field
+  Interpolate!(Data_fine2, Grid, Data_coarse2, Grid_fine,   InterpolationMethod);       # several fields
 
   # Compute error 
   if Dimension=="2D"
@@ -133,7 +145,7 @@ function test_SemiLagrangian2D(Method="ConstantZ",  InterpolationMethod="Linear"
   x,z                     =   0:dx:((Nx-1)*dx), 0:dz:((Nz-1)*dz);
   coords                  =   collect(Iterators.product(x,z))             # generate coordinates from 1D coordinate vectors   
   X,Z                     =   (x->x[1]).(coords), (x->x[2]).(coords);     # transfer coords to 2D arrays
-  Grid, Spacing           =   (x,z), (dx,dz);
+  Grid,GridFull,Spacing   =   (x,z), (X,Z), (dx,dz);
  
   Xc                      =   0.5;
   Zc                      =   0.75;
@@ -166,8 +178,8 @@ function test_SemiLagrangian2D(Method="ConstantZ",  InterpolationMethod="Linear"
   dt          =   TotalTime/nt;
 
   
-#  ENV["GKSwstype"]="nul"; if isdir("viz2D_out")==false mkdir("viz2D_out") end; loadpath = "./viz2D_out/"; anim = Animation(loadpath,String[])
-#  println("Animation directory: $(anim.dir)")
+  #ENV["GKSwstype"]="nul"; if isdir("viz2D_out")==false mkdir("viz2D_out") end; loadpath = "./viz2D_out/"; anim = Animation(loadpath,String[])
+  #println("Animation directory: $(anim.dir)")
 
   time,time_kyrs          = 0.0, 0.0;
   err = 100;
@@ -176,18 +188,17 @@ function test_SemiLagrangian2D(Method="ConstantZ",  InterpolationMethod="Linear"
   for it=1:nt
   
       # Perform an advection step for temperature 
-      Tnew        =   AdvectTemperature(T,    Grid,  (Vx,Vz),   Spacing,    dt, AdvectionMethod, InterpolationMethod);    
-  
-
+      Tnew = AdvectTemperature(T,    Grid,  GridFull, (Vx,Vz),    dt, AdvectionMethod, InterpolationMethod);    
+    
       T, Tnew     =   Tnew, T;                                                                # Update temperature
       time        =   time + dt;                                            # Keep track of evolved time
   
       if mod(it,1000)==0  # print progress      
-          #println(" Timestep $it = $((time)) ")
+          println(" Timestep $it = $((time)) ")
           #p1          =   heatmap(x_km, z_km, T[:,Int(Ny/2),:]',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="Temperature, $(round(time_kyrs, digits=2)) kyrs",  dpi=150)
-          #p1          =   contourf(x, z, T[:,:]',         aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Temperature, $(round(time, digits=2)) ",  dpi=150, levels=10)
+          p1          =   contourf(x, z, T[:,:]',         aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Temperature, $(round(time, digits=2)) ",  dpi=150, levels=10)
           
-          #plot(p1); frame(anim)
+          plot(p1); frame(anim)
       end
   
   end
@@ -246,7 +257,7 @@ function test_SemiLagrangian3D(Method="ConstantZ",  InterpolationMethod="Linear"
     x,y,z                   =   0:dx:((Nx-1)*dx), 0:dy:((Ny-1)*dy), 0:dz:((Nz-1)*dz);
     coords                  =   collect(Iterators.product(x,y,z))                               # generate coordinates from 1D coordinate vectors   
     X,Y,Z                   =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);     # transfer coords to 3D arrays
-    Grid, Spacing           =   (x,y,z), (dx,dy,dz);
+    Grid, GridFull, Spacing =   (x,y,z), (X,Y,Z), (dx,dy,dz);
     Vx                      =  -sin.(pi.*X).*cos.(pi.*Z);
     Vy                      =   zeros(size(X));
     Vz                      =   cos.(pi.*X).*sin.(pi.*Z);
@@ -306,7 +317,8 @@ function test_SemiLagrangian3D(Method="ConstantZ",  InterpolationMethod="Linear"
     for it=1:nt
     
         # Perform an advection step for temperature 
-        Tnew    =   AdvectTemperature(T,    Grid,  (Vx,Vy,Vz),   Spacing,    dt, AdvectionMethod, InterpolationMethod);    
+
+        Tnew = AdvectTemperature(T,    Grid,  GridFull, (Vx,Vy,Vz),    dt, AdvectionMethod, InterpolationMethod);    
     
 
         T, Tnew         =   Tnew, T;                                                                # Update temperature
@@ -382,8 +394,6 @@ function test_AdvectTracers2D(Method="ConstantZ",  AdvectionMethod="RK2")
   Nx, Nz                  =   129, 129;                     # resolution
   dx,dz                   =   W/(Nx-1), H/(Nz-1);           # grid size [m]
   
-
-
   # Set up model geometry 
   x,z                     =   0:dx:((Nx-1)*dx), 0:dz:((Nz-1)*dz);
   coords                  =   collect(Iterators.product(x,z))             # generate coordinates from 1D coordinate vectors   
@@ -449,8 +459,8 @@ function test_AdvectTracers2D(Method="ConstantZ",  AdvectionMethod="RK2")
   for it=1:nt
   
       # Perform an advection step for temperature 
-      Tracers      =   AdvectTracers(Tracers, Grid, (Vx,Vz), Spacing, dt, AdvectionMethod);
-      
+      AdvectTracers!(Tracers, Grid, (Vx,Vz), dt, AdvectionMethod);
+
       time        =   time + dt;                                            # Keep track of evolved time
   
       if mod(it,1000)==0  # print progress      
@@ -581,7 +591,7 @@ function test_AdvectTracers3D(Method="ConstantZ",  AdvectionMethod="RK2")
   for it=1:nt
   
       # Perform an advection step for temperature 
-      Tracers      =   AdvectTracers(Tracers, Grid, (Vx,Vy,Vz), Spacing, dt, AdvectionMethod);
+     AdvectTracers!(Tracers, Grid, (Vx,Vy,Vz), dt, AdvectionMethod);
 
       time        =   time + dt;                                            # Keep track of evolved time
   
@@ -590,7 +600,7 @@ function test_AdvectTracers3D(Method="ConstantZ",  AdvectionMethod="RK2")
 
           Tr_coord = Tracers.coord; Tr_coord = hcat(Tr_coord...)';       # extract array with coordinates of tracers
           p1 = scatter(Tr_coord[:,1], Tr_coord[:,3], zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), markersize=1.0, xlims=(0,1), ylims=(0,1))
-          plot(p1); frame(anim)
+          plot(p1); 
       end
   
   end
@@ -633,15 +643,14 @@ end
 
 
 # ===================================================================================================
-
 if 1==1
 
-
 @testset "Interpolation" begin
-  @test test_Interpolation("2D", "Linear") ≈  2.9880072526933544e-5  atol=1e-8;
-  @test test_Interpolation("2D", "Cubic")  ≈  8.708144266671426e-7   atol=1e-8;
-  @test test_Interpolation("3D", "Linear") ≈  4.283068644002478e-6   atol=1e-8;
-  @test test_Interpolation("3D", "Cubic")  ≈  7.607530621010341e-8   atol=1e-8;
+  @test test_Interpolation("2D", "Linear")      ≈  2.9880072526933544e-5    atol=1e-8;
+  @test test_Interpolation("2D", "Quadratic")   ≈  9.72101621785853e-7      atol=1e-8;
+  @test test_Interpolation("2D", "Cubic")       ≈  8.708144266671426e-7     atol=1e-8;
+  @test test_Interpolation("3D", "Linear")      ≈  5.758940704356386e-8     atol=1e-8;
+  @test test_Interpolation("3D", "Cubic")       ≈  1.0924731223751025e-10   atol=1e-8;
 end;
 
 @testset "2D semi-lagrangian advection" begin
@@ -652,16 +661,17 @@ end;
   @test test_SemiLagrangian2D("Rotation", "Linear", "RK2"   )   ≈ 0.000892833826724465    atol=1e-8;
   @test test_SemiLagrangian2D("Rotation", "Linear", "RK4"   )   ≈ 0.0008928336158448796   atol=1e-8;
   
+  @test test_SemiLagrangian2D("Rotation", "Quadratic", "RK2")   ≈ 2.2477968913260075e-5   atol=1e-8;
+  
   @test test_SemiLagrangian2D("Rotation", "Cubic", "Euler"  )   ≈ 0.00013400741577631413  atol=1e-8;
   @test test_SemiLagrangian2D("Rotation", "Cubic", "RK2"    )   ≈ 1.1006030724096006e-6   atol=1e-8;
   @test test_SemiLagrangian2D("Rotation", "Cubic", "RK4"    )   ≈ 1.0944206043526207e-6   atol=1e-8;
-
-
 end;
 
 @testset "3D semi-lagrangian advection" begin
   @test test_SemiLagrangian3D("ConstantZ","Linear","RK2"   )          ≈ 6.822115778040405e-5    atol=1e-8;
   @test test_SemiLagrangian3D("ConstantZ","Cubic", "RK2"   )          ≈ 1.1038374380141209e-6   atol=1e-8;
+
   @test test_SemiLagrangian3D("Rotation_alongY","Linear", "Euler")    ≈ 0.00017064553949646487  atol=1e-8;
   @test test_SemiLagrangian3D("Rotation_alongY","Cubic", "RK2"   )    ≈ 1.899516467222456e-6    atol=1e-8;
   @test test_SemiLagrangian3D("Rotation_alongY","Cubic", "RK2"   )    ≈ 1.899516467222456e-6    atol=1e-8;
@@ -678,7 +688,6 @@ end;
   @test test_AdvectTracers2D("Rotation","RK4")          ≈ 1.5661110135721713e-7   atol=1e-8;
 
   @test test_AdvectTracers2D("ConstantZ","Euler")       ≈ 0.0   atol=1e-8;
-  
 end;
 
 @testset "3D tracer advection" begin
@@ -690,9 +699,19 @@ end;
  
   @test test_AdvectTracers3D("Rotation_alongY","Euler") ≈ 3.169439899086836e-5   atol=1e-8;
   @test test_AdvectTracers3D("Rotation_alongY","RK4")   ≈ 8.037493317907375e-8   atol=1e-8;
-  
 end;
 
 
 end
 
+
+#@time test_SemiLagrangian3D("ConstantZ","Cubic", "RK4"    )
+#test_SemiLagrangian3D("ConstantZ","Linear", "Euler"    ) 
+#test_SemiLagrangian2D("ConstantZ","Linear", "Euler"    ) 
+#test_AdvectTracers2D("Rotation","Euler") 
+#test_AdvectTracers2D("ConstantZ","Euler") 
+
+
+#test_AdvectTracers3D("Rotation_alongX","RK2")
+
+#test_SemiLagrangian2D("Rotation", "Linear", "RK2"   ) 
