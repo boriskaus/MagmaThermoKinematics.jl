@@ -1,5 +1,5 @@
 # this file tests various aspects of the 
-using ZirconThermoKinematics
+using MagmaThermoKinematics
 using Plots  
 using LinearAlgebra
 using SpecialFunctions

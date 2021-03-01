@@ -1,4 +1,4 @@
-using ZirconThermoKinematics.Diffusion3D
+using MagmaThermoKinematics.Diffusion3D
 using ParallelStencil
 using ParallelStencil.FiniteDifferences3D
 using Plots  

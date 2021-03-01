@@ -1,5 +1,5 @@
 # this file tests various aspects of the advection routines
-using ZirconThermoKinematics
+using MagmaThermoKinematics
 using ParallelStencil
 using ParallelStencil.FiniteDifferences3D
 using Plots  
@@ -103,7 +103,7 @@ end
 
 
 
-function test_InjectDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45], numDikeInjectionEvents=1; InterpolationMethod="Cubic")
+function test_InjectDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45], numDikeInjectionEvents=1; InterpolationMethod="Cubic", AdvectionMethod="RK2")
   # tests dike insertion in the domain including adding tracers
 
   
@@ -153,7 +153,7 @@ function test_InjectDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45],
   # Test the InsertDike routine, which modifies temperature and adds tracers
   nTr_dike                =   1000;
   Tracers                 =   StructArray{Tracer}(undef, 1)                                    # Initialize Tracers structure
-  Tracers, Tnew, InjectVol, Velocity    =   InjectDike(Tracers, T, Grid, dike, nTr_dike, InterpolationMethod=InterpolationMethod);           # Inject first dike
+  @time Tracers, Tnew, InjectVol, Velocity    =   InjectDike(Tracers, T, Grid, dike, nTr_dike, InterpolationMethod=InterpolationMethod);           # Inject first dike
 
   for i=1:numDikeInjectionEvents-1
     T = Tnew;
@@ -210,7 +210,7 @@ end
 
 # ===================================================================================================
 
-if 1==1
+if 1==0
 
 @testset "Dike_Velocity" begin
   @test test_HostRockVelocityFromDike("2D", "ElasticDike",[80    ])  ≈   2663.677375120158  atol=1e-8;
@@ -247,5 +247,7 @@ end
 
 end
 
-#@time test_InjectDike("2D", "ElasticDike", [80 ],5, InterpolationMethod="Quadratic")
+#test_InjectDike("2D", "ElasticDike", [80 ],5, InterpolationMethod="Quadratic", AdvectionMethod="Euler")
+test_InjectDike("3D", "ElasticDike",[80; 45], InterpolationMethod="Linear", AdvectionMethod="Euler")
+
 

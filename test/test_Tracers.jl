@@ -1,5 +1,5 @@
 # this file tests various aspects of the tracers routines
-using ZirconThermoKinematics
+using MagmaThermoKinematics
 using ParallelStencil
 using ParallelStencil.FiniteDifferences3D
 using Plots  

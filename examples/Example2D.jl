@@ -1,5 +1,5 @@
-using ZirconThermoKinematics
-using ZirconThermoKinematics.Diffusion2D
+using MagmaThermoKinematics
+using MagmaThermoKinematics.Diffusion2D
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
 using Plots                                     
@@ -25,7 +25,7 @@ maxTime_kyrs            =   15;                     # Maximum simulation time in
 H_ran, W_ran, Angle_ran =   H/4.0, W/4.0, 90.0;     # size of domain amdin which we randomly place dikes and range of angles   
 DikeType                =   "ElasticDike"           # Type to be injected ("SquareDike","ElasticDike")
 
-Nx, Nz                  =   500, 500;                           # resolution
+Nx, Nz                  =   1500, 1500;                         # resolution
 dx                      =   W/(Nx-1)*1e3; dz = H*1e3/(Nz-1);    # grid size [m]
 κ                       =   k_rock./(ρ*cp);                     # thermal diffusivity   
 dt                      =   min(dx^2, dz^2)./κ/10;              # stable timestep (required for explicit FD)

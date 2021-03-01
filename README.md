@@ -1,4 +1,4 @@
-# ZirconThermoKinematics.jl
+# MagmaThermoKinematics.jl
 
 Understanding how magmatic systems evolve and how the rock record can be interpreted is of interest to a wide range of Earth Scientists.
 
@@ -105,7 +105,7 @@ The main routines are thus ``InjectDike(..)``, which inserts a new dike (of give
 The full code example can be downloaded [here](./examples/Example2D.jl)
 
 ## Dependencies
-We rely on `ParallelStencil.jl` to for the energy solver, `StructArrays.jl` to generate an aray of tracer structures, and `Random.jl` for random number generation, `Parameters.jl` to simplify setting parameters (such as specifying dike properties), and `Interpolations.jl` to interpolate properties such as temperature from a fixed grid to tracers. All these dependencies should be installed automatically if you download `ZirconThermoKinematics.jl`.
+We rely on `ParallelStencil.jl` to for the energy solver, `StructArrays.jl` to generate an aray of tracer structures, and `Random.jl` for random number generation, `Parameters.jl` to simplify setting parameters (such as specifying dike properties), and `Interpolations.jl` to interpolate properties such as temperature from a fixed grid to tracers. All these dependencies should be installed automatically if you download `MagmaThermoKinematics.jl`.
 
 `Plots.jl` is employed for plotting, and `WriteVTK.jl` is used in the 3D example to generate *.VTR files that can be visualized with [Paraview](https://www.paraview.org). You have to add both packages yourself; they are however anyways useful to have.
 
@@ -113,7 +113,7 @@ We rely on `ParallelStencil.jl` to for the energy solver, `StructArrays.jl` to g
 This is a julia package, so after installing julia in the usual manner, you can add the package with 
 ```
 julia>]
-  pkg> add https://github.com/boriskaus/ZirconThermoKinematics.jl
+  pkg> add https://github.com/boriskaus/MagmaThermoKinematics.jl
 ```
 Next, you can download one of the code above, put it in the directory you are and start it with
 ```
@@ -122,12 +122,12 @@ julia> include("Example2D.jl")
 If you want to do a full testing of the package on your system, you can run the testing framework from within the package manager:
 ```
 julia>]
-  pkg> test ZirconThermoKinematics
+  pkg> test MagmaThermoKinematics
 ```
 And finally, if you have installed this package previously on your system, but want to update it to the latest version:
 ```
 julia>]
-  pkg> update ZirconThermoKinematics
+  pkg> update MagmaThermoKinematics
 ```
 
 

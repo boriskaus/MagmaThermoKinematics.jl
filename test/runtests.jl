@@ -1,7 +1,7 @@
 # NOTE: This file contains many parts that are copied from the file runtests.jl from the Package MPI.jl.
 push!(LOAD_PATH, "../src")
 
-import ZirconThermoKinematics # Precompile it.
+import MagmaThermoKinematics # Precompile it.
 
 excludedfiles = [ "test_excluded.jl"];
 
@@ -12,7 +12,7 @@ function runtests()
     testfiles = sort(filter(istest, vcat([joinpath.(root, files) for (root, dirs, files) in walkdir(testdir)]...)))
 
     nfail = 0
-    printstyled("Testing package ZirconThermoKinematics.jl\n"; bold=true, color=:white)
+    printstyled("Testing package MagmaThermoKinematics.jl\n"; bold=true, color=:white)
     for f in testfiles
         println("")
         if f ∈ excludedfiles

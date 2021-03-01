@@ -1,10 +1,10 @@
 """
-Module ZirconThermoKinematics
+Module MagmaThermoKinematics
 
 Enables Earth Scientists to simulate the thermal evolution of magmatic systems.
 
 """
-module ZirconThermoKinematics
+module MagmaThermoKinematics
 
 
 # list required modules

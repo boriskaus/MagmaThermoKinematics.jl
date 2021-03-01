@@ -174,7 +174,7 @@ function InjectDike(Tracers, T::Array, Grid, dike::Dike, nTr_dike::Int64; Advect
         Tnew        =   AdvectTemperature(T, Grid,  GridFull, Velocity, dt, AdvectionMethod, InterpolationMethod);    
 
         if isassigned(Tracers,1)
-            AdvectTracers!(Tracers,  Grid,    Velocity, dt);
+        @time    AdvectTracers!(Tracers,  Grid,    Velocity, dt);
         end
         T      .=   Tnew;
     end
