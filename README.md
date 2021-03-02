@@ -2,7 +2,7 @@
 
 Understanding how magmatic systems evolve and how the rock record can be interpreted is of interest to a wide range of Earth Scientists.
 
-This easy to use and versatile package simulates the thermal evolution of magmatic systems, consisting of (kinematically) emplaced dikes. It can take 2D, 2D axisymmetric and 3D geometries into account, and works in parallel on both CPU (and GPU's). A finite difference discretization is employed for the energy equation, combined with semi-lagrangian advection and tracers to track the thermal evolution of emplaced magma. Dikes are emplaced kinematically and the host rock is shifted to accommodate space for the intruding dikes/sills. Cooling, crystallizing and latent heat effects are taken into account, and the thermal evolution of tracers can be used to simulate zircon age distributions.
+This easy to use and versatile package simulates the thermal evolution of magmatic systems, consisting of (kinematically) emplaced dikes. It can take 2D, 2D axisymmetric and 3D geometries into account, and works in parallel on both CPU (and GPU's). A finite difference discretization is employed for the energy equation, combined with semi-lagrangian advection and tracers to track the thermal evolution of emplaced magma. Dikes are emplaced kinematically and the host rock is shifted to accommodate space for the intruding dikes/sills, using analytical models for penny-shaped cracks in elastic media. Cooling, crystallizing and latent heat effects are taken into account, and the thermal evolution of tracers can be used to simulate zircon age distributions.
 
 Below we give a number of example scripts that show how it can be used to simulate a number of scenarios.
 
@@ -109,7 +109,10 @@ The main routines are thus ``InjectDike(..)``, which inserts a new dike (of give
 The full code example can be downloaded [here](./examples/Example2D.jl)
 
 ## 3D example
-To go from 2D to 3D, only a few minor changes to the code above are required. Below, we highlight the changes (apart from array initializations, which now have to be done in 3D).
+To go from 2D to 3D, only a few minor changes to the code above are required. A movie of our example, which was computed on a laptop, is given here:
+![3-D dike intrusion](examples/movies/Example3D.gif)
+
+The main changes, compared to the 2D example, are highlighted below:
 
 ```julia
 #(...)
@@ -188,11 +191,7 @@ end # end of main function
 
 MainCode_3D(); # start the main code
 ```
-
-The result are a range of VTK files, which can be visualized with the 3D software [Paraview](https://www.paraview.org). A movie generated from that is:
-![3-D dike intrusion](examples/movies/Example3D.gif)
-
-The full code example can be downloaded [here](./examples/Example3D.jl), and the paraview statefile (to reproduce the movie) is available [here](./examples/movies/Example3D_Paraview.pvsm).
+The result of the script are a range of VTK files, which can be visualized with the 3D software [Paraview](https://www.paraview.org). The full code example can be downloaded [here](./examples/Example3D.jl), and the paraview statefile (to reproduce the movie) is available [here](./examples/movies/Example3D_Paraview.pvsm).
 
 
 ## Dependencies
