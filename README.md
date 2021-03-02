@@ -190,13 +190,9 @@ MainCode_3D(); # start the main code
 ```
 
 The result are a range of VTK files, which can be visualized with the 3D software [Paraview](https://www.paraview.org). A movie generated from that is:
+![3-D dike intrusion](examples/movies/Example3D.gif)
 
-
-
-
-The full code example can be downloaded [here](./examples/Example3D.jl)
-
-
+The full code example can be downloaded [here](./examples/Example3D.jl), and the paraview statefile (to reproduce the movie) is available [here](./examples/movies/Example3D_Paraview.pvsm).
 
 
 ## Dependencies

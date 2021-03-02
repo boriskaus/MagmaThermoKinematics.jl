@@ -19,18 +19,14 @@ k_rock, k_magma         =   1.5, 1.2;               # Thermal conductivity of ho
 La                      =   350e3;                  # Latent heat J/kg/K
 GeoT                    =   20.0;                   # Geothermal gradient [K/km]
 x_in,y_in,z_in          =   20e3,20e3,-15e3;        # Center of dike [x,z coordinates in m]
-#W_in, H_in              =   5e3,  2e2;              # Width and thickness of dike [m]
 W_in, H_in              =   5e3,  5e2;              # Width and thickness of dike [m]
-
 T_in                    =   900;                    # Intrusion temperature
 InjectionInterval_kyrs  =   0.1;                    # Inject a new dike every X kyrs
 maxTime_kyrs            =   15;                     # Maximum simulation time in kyrs
 H_ran, W_ran            =   H*0.4, W*0.3;           # Size of domain in which we randomly place dikes and range of angles   
 DikeType                =   "ElasticDike"           # Type to be injected ("SquareDike","ElasticDike")
 
-#Nx, Ny, Nz              =   500, 500, 500;                      # resolution
 Nx, Ny, Nz              =   250, 250, 250;                      # resolution
-
 dx,dy,dz                =   W/(Nx-1)*1e3, L/(Nx-1)*1e3, H*1e3/(Nz-1);    # grid size [m]
 κ                       =   k_rock./(ρ*cp);                     # thermal diffusivity   
 dt                      =   min(dx^2,dy^2, dz^2)./κ/10;         # stable timestep (required for explicit FD)
@@ -100,5 +96,5 @@ vtk_save(pvd)   # save Example3D.pvd file, which you can open with, for example,
 return Time_vec, Melt_Time      
 end             # end of main function
 
-MainCode_3D(); # start the main code
+Time_vec, Melt_Time = MainCode_3D(); # start the main code
 plot(Time_vec, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example3D") #Create plot
