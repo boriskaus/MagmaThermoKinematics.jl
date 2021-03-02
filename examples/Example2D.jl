@@ -97,4 +97,4 @@ return Time_vec, Melt_Time;
 end # end of main function
 
 Time_vec,Melt_Time = MainCode_2D(); # start the main code
-plot(Time_vec, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt") #Create plot
+plot(Time_vec, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example2D") #Create plot
