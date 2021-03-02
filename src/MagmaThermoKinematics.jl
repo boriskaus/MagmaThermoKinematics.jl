@@ -12,6 +12,7 @@ using Random                                    # random numbers
 using StructArrays                              # for tracers and dike polygon
 using Parameters                                # More flexible definition of parameters
 using Interpolations
+using StaticArrays
 
 ## Alphabetical include of computation-submodules (must be at end as needs to import from ParallelStencil, .e.g. INDICES).
 include("Diffusion.jl")
@@ -27,14 +28,14 @@ export Tracer
 const SecYear =   3600*24*365.25;                      # seconds/year
 export SecYear
 
+include("Dikes.jl")
+export Dike, DikePoly
+export Tracer, AddDike, HostRockVelocityFromDike, CreatDikePolygon, volume_dike, InjectDike
 
 # routines related to advection 
 include("Advection.jl")
 export AdvectTracers!, AdvectTemperature, Interpolate!, CorrectBounds     #
 
-include("Dikes.jl")
-export Dike, DikePoly
-export Tracer, AddDike, HostRockVelocityFromDike, CreatDikePolygon, volume_dike, InjectDike
 
 
 # Routines that deal with tracers

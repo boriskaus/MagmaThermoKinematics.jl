@@ -126,7 +126,7 @@ end
 # ===================================================================================================
 @testset "Update Tracer" begin
   @test test_TracerUpdate("2D", "Linear") ≈  1.0555442659990556e-5  atol=1e-8;
-  @test test_TracerUpdate("2D", "Cubic")  ≈  1.2096357983178128e-6  atol=1e-8;
+  @test test_TracerUpdate("2D", "Cubic")  ≈  7.422707661072311e-7   atol=1e-8;
   @test test_TracerUpdate("3D", "Linear") ≈  4.839581367935359e-6   atol=1e-8;
-  @test test_TracerUpdate("3D", "Cubic")  ≈  2.3389292115331444e-7  atol=1e-8;
+  @test test_TracerUpdate("3D", "Cubic")  ≈  2.1008678624797836e-7  atol=1e-8;
 end;

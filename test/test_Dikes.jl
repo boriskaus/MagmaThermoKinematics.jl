@@ -56,7 +56,7 @@ function test_HostRockVelocityFromDike(Dimension="2D", DikeType="ElasticDike", D
 
   # Compute velocity required to create space for dike
   Δ                 =   Hdike;          # max. dike opening (m)
-  dt                =   1; #0.01*SecYear;    # time in which the dike opened fully
+  dt                =   1;              # time in which the dike opened fully
 
   Velocity          =   HostRockVelocityFromDike(Grid, FullGrid, Δ, dt,dike);          # compute velocity field
 
@@ -153,11 +153,12 @@ function test_InjectDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45],
   # Test the InsertDike routine, which modifies temperature and adds tracers
   nTr_dike                =   1000;
   Tracers                 =   StructArray{Tracer}(undef, 1)                                    # Initialize Tracers structure
-  @time Tracers, Tnew, InjectVol, Velocity    =   InjectDike(Tracers, T, Grid, dike, nTr_dike, InterpolationMethod=InterpolationMethod);           # Inject first dike
+  Tracers, Tnew, InjectVol, Velocity    =   InjectDike(Tracers, T, Grid, dike, nTr_dike,  InterpolationMethod=InterpolationMethod, AdvectionMethod=AdvectionMethod);           # Inject first dike
+  
 
   for i=1:numDikeInjectionEvents-1
     T = Tnew;
-    Tracers, Tnew, InjectVol, Velocity  =   InjectDike(Tracers, T, Grid, dike, nTr_dike, InterpolationMethod=InterpolationMethod);           # Inject more dikes
+    Tracers, Tnew, InjectVol, Velocity  =   InjectDike(Tracers, T, Grid, dike, nTr_dike, InterpolationMethod=InterpolationMethod, AdvectionMethod=AdvectionMethod);           # Inject more dikes
   end
 
   if Dimension=="2D"
@@ -214,7 +215,7 @@ if 1==1
 
 @testset "Dike_Velocity" begin
   @test test_HostRockVelocityFromDike("2D", "ElasticDike",[80    ])  ≈   2663.677375120158  atol=1e-8;
-  @test test_HostRockVelocityFromDike("2D","SquareDike",  [80    ])  ≈   5286.303056011829  atol=1e-8;
+  @test test_HostRockVelocityFromDike("2D","SquareDike",  [80    ])  ≈   5286.539510870982  atol=1e-8;
   @test test_HostRockVelocityFromDike("3D","SquareDike",  [90; 90])  ≈  13114.877048604001  atol=1e-4;
   @test test_HostRockVelocityFromDike("3D","ElasticDike",[90; 45])   ≈   4762.014274270334  atol=1e-4;
 end
@@ -234,20 +235,20 @@ end
 
 # Dike insertion algorithm
 @testset "Dike_Inject" begin
-  @test test_InjectDike("2D", "SquareDike", [80 ],1)    ≈   47525.46578461968 atol=1e-3;
+  @test test_InjectDike("2D", "SquareDike", [80 ],1)    ≈   47525.46469221513 atol=1e-3;
   
-  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Linear")    ≈   48449.55881626355  atol=1e-3;     # also tests what happens if we add 2 dikes
-  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Quadratic") ≈   48771.11210790134  atol=1e-3;     # also tests what happens if we add 2 dikes
-  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Cubic")     ≈   48782.54981090538  atol=1e-3;     # also tests what happens if we add 2 dikes
+  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Linear")    ≈   48448.71557320294  atol=1e-3;     # also tests what happens if we add 2 dikes
+  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Quadratic") ≈   48770.72282124797  atol=1e-3;     # also tests what happens if we add 2 dikes
+  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Cubic")     ≈   48782.180721943965 atol=1e-3;     # also tests what happens if we add 2 dikes
 
-  @test test_InjectDike("3D", "ElasticDike",[80; 45])   ≈   519654.92166558706 atol=1e-3;
-  @test test_InjectDike("3D", "SquareDike",[15; -30])   ≈   527521.5412692772  atol=1e-3;
-
-end
+  @test test_InjectDike("3D", "ElasticDike",[80; 45])   ≈   519654.9176188356 atol=1e-3;
+  @test test_InjectDike("3D", "SquareDike",[15; -30])   ≈   527521.5507505678  atol=1e-3;
 
 end
 
-#test_InjectDike("2D", "ElasticDike", [80 ],5, InterpolationMethod="Quadratic", AdvectionMethod="Euler")
-#test_InjectDike("3D", "ElasticDike",[80; 45], InterpolationMethod="Linear", AdvectionMethod="Euler")
+end
+
+#test_InjectDike("2D", "ElasticDike", [80 ],5, InterpolationMethod="Linear", AdvectionMethod="Euler")
+#test_InjectDike("3D", "SquareDike",[80; 45], InterpolationMethod="Linear", AdvectionMethod="RK2")
 
 

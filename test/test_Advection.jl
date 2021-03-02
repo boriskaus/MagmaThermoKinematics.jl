@@ -648,7 +648,7 @@ if 1==1
 @testset "Interpolation" begin
   @test test_Interpolation("2D", "Linear")      ≈  2.9880072526933544e-5    atol=1e-8;
   @test test_Interpolation("2D", "Quadratic")   ≈  9.72101621785853e-7      atol=1e-8;
-  @test test_Interpolation("2D", "Cubic")       ≈  8.708144266671426e-7     atol=1e-8;
+  @test test_Interpolation("2D", "Cubic")       ≈  5.752004968381702e-7     atol=1e-8;
   @test test_Interpolation("3D", "Linear")      ≈  5.758940704356386e-8     atol=1e-8;
   @test test_Interpolation("3D", "Cubic")       ≈  1.0924731223751025e-10   atol=1e-8;
 end;
@@ -664,8 +664,8 @@ end;
   @test test_SemiLagrangian2D("Rotation", "Quadratic", "RK2")   ≈ 2.2477968913260075e-5   atol=1e-8;
   
   @test test_SemiLagrangian2D("Rotation", "Cubic", "Euler"  )   ≈ 0.00013400741577631413  atol=1e-8;
-  @test test_SemiLagrangian2D("Rotation", "Cubic", "RK2"    )   ≈ 1.1006030724096006e-6   atol=1e-8;
-  @test test_SemiLagrangian2D("Rotation", "Cubic", "RK4"    )   ≈ 1.0944206043526207e-6   atol=1e-8;
+  @test test_SemiLagrangian2D("Rotation", "Cubic", "RK2"    )   ≈ 1.0762102257417536e-6   atol=1e-8;
+  @test test_SemiLagrangian2D("Rotation", "Cubic", "RK4"    )   ≈ 1.069882664228221e-6    atol=1e-8;
 end;
 
 @testset "3D semi-lagrangian advection" begin
