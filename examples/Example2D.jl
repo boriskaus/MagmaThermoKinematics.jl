@@ -15,22 +15,22 @@ W,H                     =   30, 30;                 # Width, Height in km
 ρ                       =   2800;                   # Density 
 cp                      =   1050;                   # Heat capacity
 k_rock, k_magma         =   1.5, 1.2;               # Thermal conductivity of host rock & magma
-L                       =   350e3;                  # Latent heat J/kg/K
+La                      =   350e3;                  # Latent heat J/kg/K
 GeoT                    =   20.0;                   # Geothermal gradient [K/km]
 x_in,z_in               =   20e3,   -15e3;          # Center of dike [x,z coordinates in m]
-W_in, H_in              =   5e3,    2e2;            # Width and thickness of dike [m]
+W_in, H_in              =   5e3,    200;            # Width and thickness of dike [m]
 T_in                    =   900;                    # intrusion temperature
 InjectionInterval_kyrs  =   0.1;                    # inject a new dike every X kyrs
-maxTime_kyrs            =   15;                     # Maximum simulation time in kyrs
-H_ran, W_ran, Angle_ran =   H/4.0, W/4.0, 90.0;     # size of domain amdin which we randomly place dikes and range of angles   
+maxTime_kyrs            =   25;                     # Maximum simulation time in kyrs
+H_ran, W_ran            =   H*0.4, W*0.3;           # size of domain in which we randomly place dikes and range of angles   
 DikeType                =   "ElasticDike"           # Type to be injected ("SquareDike","ElasticDike")
 
-Nx, Nz                  =   1500, 1500;                         # resolution
+Nx, Nz                  =   500, 500;                           # resolution
 dx                      =   W/(Nx-1)*1e3; dz = H*1e3/(Nz-1);    # grid size [m]
 κ                       =   k_rock./(ρ*cp);                     # thermal diffusivity   
 dt                      =   min(dx^2, dz^2)./κ/10;              # stable timestep (required for explicit FD)
-nt                      =   floor(maxTime_kyrs*1e3*SecYear/dt); # number of required timesteps
-nTr_dike                =   100;                                # number of tracers inserted per dike
+nt::Int64               =   floor(maxTime_kyrs*1e3*SecYear/dt); # number of required timesteps
+nTr_dike                =   300;                                # number of tracers inserted per dike
 
 # Array initializations
 T                       =   @zeros(Nx,   Nz);                    
@@ -49,23 +49,22 @@ coords                  =   collect(Iterators.product(x,z))                 # ge
 X,Z                     =   (x->x[1]).(coords), (x->x[2]).(coords);         # transfer coords to 3D arrays
 Grid, Spacing           =   (x,z), (dx,dz);                                 # Grid & spacing
 Tracers                 =   StructArray{Tracer}(undef, 1)                   # Initialize tracers   
-
-# Initial geotherm and melt fraction
 T                       .=   -Z./1e3.*GeoT;                                 # Initial (linear) temperature profile
 SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt);                                 # Compute solid fraction
 
 # Preparation of visualisation
 ENV["GKSwstype"]="nul"; if isdir("viz2D_out")==false mkdir("viz2D_out") end; loadpath = "./viz2D_out/"; anim = Animation(loadpath,String[])
-println("Animation directory: $(anim.dir)")
 
-InjectVol = 0.0;
-time,time_kyrs, dike_inj = 0.0, 0.0, 0.0;
+time,time_kyrs, dike_inj, InjectVol = 0.0, 0.0, 0.0, 0.0;
+Time_vec,Melt_Time          = zeros(nt,1),zeros(nt,1);
 for it = 1:nt   # Time loop
 
     if floor(time_kyrs/InjectionInterval_kyrs)> dike_inj        # Add new dike every X years
-        dike_inj            =   floor(time_kyrs/InjectionInterval_kyrs)                             # Keeps track on whether we injected already
-        cen                 =   [W/2.; -H/2.]; center = (rand(2,1) .- 0.5).*[W_ran;H_ran] + cen;    # Random variation of location (over a distance )
-        dike                =   Dike(Width=W_in, Thickness=H_in,Center=center[:]*1e3,Angle=(rand(1).-0.5).*Angle_ran,Type=DikeType,T=T_in); # Specify dike with random location/angle but fixed size 
+        dike_inj            =   floor(time_kyrs/InjectionInterval_kyrs)                             # Keeps track on what was injected already
+        cen                 =   [W/2.; -H/2.]; center = (rand(2,1) .- 0.5).*[W_ran;H_ran] + cen;    # Randomly vary center of dike 
+        if center[end]<-12; Angle_rand = rand( 80.0:0.1:100.0)                                      # Dikes at depth             
+        else                Angle_rand = rand(-10.0:0.1:10.0); end                                  # Sills at shallower depth
+        dike                =   Dike(Width=W_in, Thickness=H_in, Center=center[:]*1e3,Angle=[Angle_rand],Type=DikeType,T=T_in); # Specify dike with random location/angle but fixed size 
         Tracers, T, Vol     =   InjectDike(Tracers, T, Grid, dike, nTr_dike);                       # Add dike, move hostrocks
         InjectVol           +=  Vol                                                                 # Keep track of injected volume
         println("Added new dike; total injected magma volume = $(InjectVol/1e9) km³; rate Q=$(InjectVol/(time_kyrs*1e3*SecYear)) m³/s")
@@ -75,18 +74,18 @@ for it = 1:nt   # Time loop
     K               .=  Phi.*k_rock .+ (1 .- Phi).*k_magma;                                     # Thermal conductivity
 
     # Perform a diffusion step
-    @parallel diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, dt, dx, dz,  L, dPhi_dt);  
+    @parallel diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, dt, dx, dz, La, dPhi_dt);  
     @parallel (1:size(T,2)) bc2D_x!(Tnew);                                                      # set lateral boundary conditions (flux-free)
     Tnew[:,1] .= GeoT*H; Tnew[:,end] .= 0.0;                                                    # bottom & top temperature (constant)
     
-    Tracers         =   UpdateTracers(Tracers, Grid, Tnew, Phi);                                # Update info on tracers 
-    T, Tnew         =   Tnew, T;                                                                # Update temperature
-    time, time_kyrs =   time + dt, time/SecYear/1e3;                                            # Keep track of evolved time
-    println(" Timestep $it = $(round(time/SecYear)/1e3) kyrs")
+    Tracers             =   UpdateTracers(Tracers, Grid, Tnew, Phi);                            # Update info on tracers 
+    T, Tnew             =   Tnew, T;                                                            # Update temperature
+    time,Time_vec[it]   =   time + dt, time/SecYear/1e3;                                        # Keep track of evolved time
+    Melt_Time[it]       =   sum( 1.0 .- Phi)/(Nx*Nz)                                            # Melt fraction in crust    
+    println(" Timestep $it = $(round(time_kyrs*100)/100) kyrs")
 
     if mod(it,20)==0  # Visualisation
-        Phi_melt    =   1.0 .- Phi;             
-        x_km, z_km  =   x./1e3, z./1e3;
+        Phi_melt    =   1.0 .- Phi;            x_km, z_km  =   x./1e3, z./1e3;
         p1          =   heatmap(x_km, z_km, T',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="$(round(time_kyrs, digits=2)) kyrs", clims=(0.,900.), xlabel="Width [km]",ylabel="Depth [km]", dpi=200, fontsize=6, colorbar_title="Temperature")
         p2          =   heatmap(x_km, z_km, Phi_melt',  aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:vik,     xlabel="Width [km]", clims=(0.,1.), dpi=200, fontsize=6, colorbar_title="Melt Fraction")
         plot(p1, p2, layout=(1,2)); frame(anim)
@@ -94,7 +93,8 @@ for it = 1:nt   # Time loop
 
 end
 gif(anim, "Example2D.gif", fps = 15)   # create gif animation
-return Tracers, T, Grid;
+return Time_vec, Melt_Time;
 end # end of main function
 
-@time Tracers,T,Grid = MainCode_2D(); # start the main code
+Time_vec,Melt_Time = MainCode_2D(); # start the main code
+plot(Time_vec, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt") #Create plot
