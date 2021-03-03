@@ -2,14 +2,14 @@
 
 Understanding how magmatic systems evolve and how the rock record can be interpreted is of interest to a wide range of Earth Scientists.
 
-This easy to use and versatile package simulates the thermal evolution of magmatic systems, consisting of (kinematically) emplaced dikes. It can take 2D, 2D axisymmetric and 3D geometries into account, and works in parallel on both CPU (and GPU's). A finite difference discretization is employed for the energy equation, combined with semi-lagrangian advection and tracers to track the thermal evolution of emplaced magma. Dikes are emplaced kinematically and the host rock is shifted to accommodate space for the intruding dikes/sills, using analytical models for penny-shaped cracks in elastic media. Cooling, crystallizing and latent heat effects are taken into account, and the thermal evolution of tracers can be used to simulate zircon age distributions.
+This easy to use and versatile package simulates the thermal evolution of magmatic systems, consisting of (kinematically) emplaced dikes. It can take 2D, 2D axisymmetric and 3D geometries into account, and works in parallel on both CPU (and GPU's). A finite difference discretization is employed for the energy equation, combined with semi-Lagrangian advection and tracers to track the thermal evolution of emplaced magma. Dikes are emplaced kinematically and the host rock is shifted to accommodate space for the intruding dikes/sills, using analytical models for penny-shaped cracks in elastic media. Cooling, crystallizing and latent heat effects are taken into account, and the thermal evolution of tracers can be used to simulate zircon age distributions.
 
 Below we give a number of example scripts that show how it can be used to simulate a number of scenarios.
 
 
 ## Contents
   - [100-lines 2D example](#100-lines-2d-example)
-  - [100-lines 3D example](#3d-example)
+  - [100-lines 3D example](#100-lines-3d-example)
   - [Dependencies](#dependencies)
   - [Installation](#installation)
 
@@ -195,24 +195,22 @@ The result of the script are a range of VTK files, which can be visualized with 
 
 
 ## Dependencies
-We rely on [ParallelStencil.jl](https://github.com/omlins/ParallelStencil.jl) to for the energy solver, `StructArrays.jl` to generate an aray of tracer structures, and `Random.jl` for random number generation, `Parameters.jl` to simplify setting parameters (such as specifying dike properties),  `Interpolations.jl` to interpolate properties such as temperature from a fixed grid to tracers,and StaticArrays.jl for speed. All these dependencies should be installed automatically if you download `MagmaThermoKinematics.jl`.
+We rely on [ParallelStencil.jl](https://github.com/omlins/ParallelStencil.jl) to for the energy solver, [StructArrays.jl](https://github.com/JuliaArrays/StructArrays.jl) to generate an aray of tracer structures, [Random.jl](https://docs.julialang.org/en/v1/stdlib/Random/) for random number generation, [Parameters.jl](https://github.com/mauro3/Parameters.jl) to simplify setting parameters (such as specifying dike properties), [Interpolations.jl](https://github.com/JuliaMath/Interpolations.jl) to interpolate properties such as temperature from a fixed grid to tracers, and [StaticArrays.jl](https://github.com/JuliaArrays/StaticArrays.jl) for speed. All these dependencies should be installed automatically if you install `MagmaThermoKinematics.jl`.
 
-`Plots.jl` is employed for plotting, and `WriteVTK.jl` is used in the 3D example to generate *.VTR/*.PVD files that can be visualized with [Paraview](https://www.paraview.org). You have to add both packages yourself; they are however anyways useful to have.
+[Plots.jl](http://docs.juliaplots.org/latest/) is employed for plotting, and [WriteVTK.jl](https://github.com/jipolanco/WriteVTK.jl) is used in the 3D example to generate *.VTR/*.PVD files that can be visualized with [Paraview](https://www.paraview.org). You have to add both packages yourself; they are however anyways useful to have.
 
 ## Installation
-This is a julia package, so after installing julia in the usual manner, you can add the package with 
+After installing julia in the usual manner, you can add (and test) the package with 
 ```
 julia>]
   pkg> add https://github.com/boriskaus/MagmaThermoKinematics.jl
+  pkg> test MagmaThermoKinematics
 ```
-Next, you can download one of the code above, put it in the directory you are and start it with
+The testing suite run above performs a large number of tests and, among others, compares the results with analytical solutions for advection/diffusion. Let us know if you encounter problems. 
+
+Next, you can download one of the codes above, put it in your current directory, and start it with
 ```
 julia> include("Example2D.jl")
-```
-If you want to do a full testing of the package on your system, you can run the testing framework from within the package manager:
-```
-julia>]
-  pkg> test MagmaThermoKinematics
 ```
 And finally, if you have installed this package previously on your system, but want to update it to the latest version:
 ```
