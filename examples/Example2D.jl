@@ -44,13 +44,13 @@ X,Xc,Z                  =   @zeros(Nx,   Nz), @zeros(Nx-1, Nz-1),   @zeros(Nx,  
 Phi_o, Phi, dPhi_dt     =   @zeros(Nx,   Nz), @zeros(Nx,   Nz  ),   @zeros(Nx,   Nz)    # solid fraction
 
 # Set up model geometry & initial T structure
-x,z                     =   0:dx:(Nx-1)*dx, -H*1e3:dz:(-H*1e3+(Nz-1)*dz);
-coords                  =   collect(Iterators.product(x,z))                 # generate coordinates from 1D coordinate vectors   
-X,Z                     =   (x->x[1]).(coords), (x->x[2]).(coords);         # transfer coords to 3D arrays
-Grid, Spacing           =   (x,z), (dx,dz);                                 # Grid & spacing
-Tracers                 =   StructArray{Tracer}(undef, 1)                   # Initialize tracers   
-T                       .=   -Z./1e3.*GeoT;                                 # Initial (linear) temperature profile
-SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt);                                 # Compute solid fraction
+x,z                     =   (0:Nx-1)*dx, (-(Nz-1):0)*dz;        # 1-D coordinate arrays
+crd                     =   collect(Iterators.product(x,z))     # Generate coordinates from 1D coordinate vectors   
+X,Z                     =   (x->x[1]).(crd), (x->x[2]).(crd);   # Transfer coords to 3D arrays
+Grid                    =   (x,z);                              # Grid 
+Tracers                 =   StructArray{Tracer}(undef, 1)       # Initialize tracers   
+T                       .=   -Z./1e3.*GeoT;                     # Initial (linear) temperature profile
+SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt);                     # Compute solid fraction
 
 # Preparation of visualisation
 ENV["GKSwstype"]="nul"; if isdir("viz2D_out")==false mkdir("viz2D_out") end; loadpath = "./viz2D_out/"; anim = Animation(loadpath,String[])
@@ -86,8 +86,8 @@ for it = 1:nt   # Time loop
 
     if mod(it,20)==0  # Visualisation
         Phi_melt    =   1.0 .- Phi;            x_km, z_km  =   x./1e3, z./1e3;
-        p1          =   heatmap(x_km, z_km, T',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="$(round(time_kyrs, digits=2)) kyrs", clims=(0.,900.), xlabel="Width [km]",ylabel="Depth [km]", dpi=200, fontsize=6, colorbar_title="Temperature")
-        p2          =   heatmap(x_km, z_km, Phi_melt',  aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:vik,     xlabel="Width [km]", clims=(0.,1.), dpi=200, fontsize=6, colorbar_title="Melt Fraction")
+        p1          =   heatmap(x_km, z_km, T',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:lajolla, clims=(0.,900.), xlabel="Width [km]",ylabel="Depth [km]", title="$(round(time_kyrs, digits=2)) kyrs", dpi=200, fontsize=6, colorbar_title="Temperature")
+        p2          =   heatmap(x_km, z_km, Phi_melt',  aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:nuuk,    clims=(0., 1. ), xlabel="Width [km]",             dpi=200, fontsize=6, colorbar_title="Melt Fraction")
         plot(p1, p2, layout=(1,2)); frame(anim)
     end
 

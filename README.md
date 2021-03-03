@@ -8,12 +8,12 @@ Below we give a number of example scripts that show how it can be used to simula
 
 
 ## Contents
-  - [100-line 2D example](#100-lines-2d-example)
-  - [100-line 3D example](#3d-example)
+  - [100-lines 2D example](#100-lines-2d-example)
+  - [100-lines 3D example](#3d-example)
   - [Dependencies](#dependencies)
   - [Installation](#installation)
 
-## 100-line 2D example
+## 100-lines 2D example
 A simple example that simulates the emplacement of dikes within the crust over a period of 10'000 years is shown below. 
 
 ![2-D dike intrusion](examples/movies/Example2D.gif)
@@ -91,8 +91,8 @@ for it = 1:nt   # Time loop
 
     if mod(it,20)==0  # Visualisation
         Phi_melt    =   1.0 .- Phi;            x_km, z_km  =   x./1e3, z./1e3;
-        p1          =   heatmap(x_km, z_km, T',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="$(round(time_kyrs, digits=2)) kyrs", clims=(0.,900.), xlabel="Width [km]",ylabel="Depth [km]", dpi=200, fontsize=6, colorbar_title="Temperature")
-        p2          =   heatmap(x_km, z_km, Phi_melt',  aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:vik,     xlabel="Width [km]", clims=(0.,1.), dpi=200, fontsize=6, colorbar_title="Melt Fraction")
+        p1          =   heatmap(x_km, z_km, T',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:lajolla, clims=(0.,900.), xlabel="Width [km]",ylabel="Depth [km]", title="$(round(time_kyrs, digits=2)) kyrs", dpi=200, fontsize=6, colorbar_title="Temperature")
+        p2          =   heatmap(x_km, z_km, Phi_melt',  aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:nuuk,    clims=(0., 1. ), xlabel="Width [km]",             dpi=200, fontsize=6, colorbar_title="Melt Fraction")
         plot(p1, p2, layout=(1,2)); frame(anim)
     end
 
@@ -108,16 +108,16 @@ The main routines are thus ``InjectDike(..)``, which inserts a new dike (of give
 
 The full code example can be downloaded [here](./examples/Example2D.jl)
 
-## 3D example
-To go from 2D to 3D, only a few minor changes to the code above are required. A movie of our example, which was computed on a laptop, is given here:
+## 100-lines 3D example
+To go from 2D to 3D, only a few minor changes to the code above are required. A movie of our example, which was computed on a laptop, is:
 ![3-D dike intrusion](examples/movies/Example3D.gif)
 
-The main changes, compared to the 2D example, are highlighted below:
-
+The main changes, compared to the 2D example, are:
 ```julia
 #(...)
 using MagmaThermoKinematics.Diffusion3D
 #(...)
+using ParallelStencil.FiniteDifferences3D
 using WriteVTK                                   
 
 # Initialize 
@@ -129,21 +129,21 @@ using WriteVTK
 # Model parameters
 W,L,H                   =   30,30,30;               # Width, Length, Height in km
 #(...)
-x_in,y_in,z_in          =   20e3,20e3,-15e3;        # Center of dike [x,z coordinates in m]
+x_in,y_in,z_in          =   20e3,20e3,-15e3;        # Center of dike [x,y,z coordinates in m]
+W_in, H_in              =   5e3,  5e2;              # Width and thickness of dike [m]
 #(..)
-Nx, Ny, Nz              =   250, 250, 250;          # resolution
-dx,dy,dz                =   W/(Nx-1)*1e3, L/(Nx-1)*1e3, H*1e3/(Nz-1);    # grid size [m]
+Nx, Ny, Nz              =   250, 250, 250;                                # Resolution
+dx,dy,dz                =   W/(Nx-1)*1e3, L/(Nx-1)*1e3, H*1e3/(Nz-1);     # Grid size [m]
 #(...)
 
 # Array initializations
 #(...)
 
 # Set up model geometry & initial T structure
-x,y,z                   =   0:dx:(Nx-1)*dx, 0:dy:(Ny-1)*dy,-H*1e3:dz:(-H*1e3+(Nz-1)*dz);
-coords                  =   collect(Iterators.product(x,y,z))               # generate coordinates from 1D coordinate vectors   
-X,Y,Z                   =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);         # transfer coords to 3D arrays
-Grid, Spacing           =   (x,y,z), (dx,dy,dz);                            # Grid & spacing
-
+x,y,z                   =   (0:Nx-1)*dx, (0:Ny-1)*dy, (-(Nz-1):0)*dz;       # 1D coordinate arrays
+crd                     =   collect(Iterators.product(x,y,z))               # Generate coordinates from 1D coordinate vectors   
+X,Y,Z                   =   (x->x[1]).(crd),(x->x[2]).(crd),(x->x[3]).(crd);# Transfer coords to 3D arrays
+Grid                    =   (x,y,z);                                        # Grid 
 #(...)
 
 # Preparation of VTK/Paraview output 
@@ -154,7 +154,7 @@ for it = 1:nt   # Time loop
 
     if floor(time_kyrs/InjectionInterval_kyrs)> dike_inj        # Add new dike every X years
         #(...)       
-      cen       =   [W/2.; -H/2.] + rand(-0.5:1e-3:0.5, 2).*[W_ran;H_ran];        # Randomly vary center of dike 
+        cen       =   [W/2.; -H/2.] + rand(-0.5:1e-3:0.5, 2).*[W_ran;H_ran];        # Randomly vary center of dike 
         if cen[end]<-12;    Angle_rand = rand( 80.0:0.1:100.0,2)                      # Orientation: near-vertical @ depth             
         else                Angle_rand = rand(-10.0:0.1:10.0,2); end                  # Orientation: near-vertical @ shallower depth     
         dike      =   Dike(Width=W_in, Thickness=H_in, Center=cen[:]*1e3,Angle=[Angle_rand],Type=DikeType,T=T_in); # Specify dike with random location/angle but fixed size 

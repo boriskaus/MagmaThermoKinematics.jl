@@ -18,7 +18,7 @@ cp                      =   1050;                   # Heat capacity
 k_rock, k_magma         =   1.5, 1.2;               # Thermal conductivity of host rock & magma
 La                      =   350e3;                  # Latent heat J/kg/K
 GeoT                    =   20.0;                   # Geothermal gradient [K/km]
-x_in,y_in,z_in          =   20e3,20e3,-15e3;        # Center of dike [x,z coordinates in m]
+x_in,y_in,z_in          =   20e3,20e3,-15e3;        # Center of dike [x,y,z coordinates in m]
 W_in, H_in              =   5e3,  5e2;              # Width and thickness of dike [m]
 T_in                    =   900;                    # Intrusion temperature
 InjectionInterval_kyrs  =   0.1;                    # Inject a new dike every X kyrs
@@ -26,12 +26,12 @@ maxTime_kyrs            =   15;                     # Maximum simulation time in
 H_ran, W_ran            =   H*0.4, W*0.3;           # Size of domain in which we randomly place dikes and range of angles   
 DikeType                =   "ElasticDike"           # Type to be injected ("SquareDike","ElasticDike")
 
-Nx, Ny, Nz              =   250, 250, 250;                      # resolution
-dx,dy,dz                =   W/(Nx-1)*1e3, L/(Nx-1)*1e3, H*1e3/(Nz-1);    # grid size [m]
-κ                       =   k_rock./(ρ*cp);                     # thermal diffusivity   
-dt                      =   min(dx^2,dy^2, dz^2)./κ/10;         # stable timestep (required for explicit FD)
-nt::Int64               =   floor(maxTime_kyrs*1e3*SecYear/dt); # number of required timesteps
-nTr_dike                =   1000;                               # number of tracers inserted per dike
+Nx, Ny, Nz              =   250, 250, 250;                          # Resolution
+dx,dy,dz                =   W/(Nx-1)*1e3,L/(Nx-1)*1e3,H*1e3/(Nz-1); # Grid size [m]
+κ                       =   k_rock./(ρ*cp);                         # Thermal diffusivity   
+dt                      =   min(dx^2,dy^2,dz^2)./κ/10;              # Stable timestep (required for explicit FD)
+nt::Int64               =   floor(maxTime_kyrs*1e3*SecYear/dt);     # Number of required timesteps
+nTr_dike                =   1000;                                   # Number of tracers inserted per dike
 
 # Array initializations
 T                       =   @zeros(Nx,Ny,Nz);                    
@@ -40,15 +40,15 @@ Rho                     =   @ones(Nx,Ny, Nz)*ρ;
 Cp                      =   @ones(Nx,Ny, Nz)*cp;
 
 # Work array initialization
-Tnew, qx,qy,qz          =   @zeros(Nx,Ny,Nz),   @zeros(Nx-1,Ny,Nz), @zeros(Nx,Ny-1,Nz), @zeros(Nx,Ny,Nz-1)  # thermal solver
-Kx, Ky, Kz              =   @zeros(Nx-1,Ny,Nz), @zeros(Nx,Ny-1,Nz), @zeros(Nx,Ny,Nz-1)                      # thermal conductivities
-Phi_o, Phi, dPhi_dt     =   @zeros(Nx,Ny,Nz),   @zeros(Nx,  Ny,Nz), @zeros(Nx,Ny,  Nz)                      # solid fraction
+Tnew, qx,qy,qz          =   @zeros(Nx,Ny,Nz),   @zeros(Nx-1,Ny,Nz), @zeros(Nx,Ny-1,Nz), @zeros(Nx,Ny,Nz-1)  # Thermal solver
+Kx, Ky, Kz              =   @zeros(Nx-1,Ny,Nz), @zeros(Nx,Ny-1,Nz), @zeros(Nx,Ny,Nz-1)                      # Thermal conductivities
+Phi_o, Phi, dPhi_dt     =   @zeros(Nx,Ny,Nz),   @zeros(Nx,  Ny,Nz), @zeros(Nx,Ny,  Nz)                      # Solid fraction
 
 # Set up model geometry & initial T structure
-x,y,z                   =   0:dx:(Nx-1)*dx, 0:dy:(Ny-1)*dy,-H*1e3:dz:(-H*1e3+(Nz-1)*dz);
-coords                  =   collect(Iterators.product(x,y,z))               # generate coordinates from 1D coordinate vectors   
-X,Y,Z                   =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);         # transfer coords to 3D arrays
-Grid, Spacing           =   (x,y,z), (dx,dy,dz);                            # Grid & spacing
+x,y,z                   =   (0:Nx-1)*dx, (0:Ny-1)*dy, (-(Nz-1):0)*dz;       # 1D coordinate arrays
+crd                     =   collect(Iterators.product(x,y,z))               # Generate coordinates from 1D coordinate vectors   
+X,Y,Z                   =   (x->x[1]).(crd),(x->x[2]).(crd),(x->x[3]).(crd);# Transfer coords to 3D arrays
+Grid                    =   (x,y,z);                                        # Grid
 Tracers                 =   StructArray{Tracer}(undef, 1)                   # Initialize tracers   
 T                       .=   -Z./1e3.*GeoT;                                 # Initial (linear) temperature profile
 SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt);                                 # Compute solid fraction
