@@ -21,8 +21,8 @@ function test_HostRockVelocityFromDike(Dimension="2D", DikeType="ElasticDike", D
     
     # Define grid
     Nx, Nz                  =   129, 129;                                     # resolution of coarse grid
-    dx,dz                   =   W*1e3/(Nx-1), H*1e3/(Nz-1);                         # grid size [m]
-    x,z                     =   0:dx:W*1e3, -H*1e3:dz:0;                            # 1D coordinate arrays
+    dx,dz                   =   W*1e3/(Nx-1), H*1e3/(Nz-1);                   # grid size [m]
+    x,z                     =   0:dx:W*1e3, -H*1e3:dz:0;                      # 1D coordinate arrays
     coords                  =   collect(Iterators.product(x,z))               # generate coordinates from 1D coordinate vectors   
     X,Z                     =   (x->x[1]).(coords), (x->x[2]).(coords);       # transfer coords to 3D arrays
     Grid, FullGrid, Spacing =   (x,z), (X,Z), (dx,dz);
@@ -52,7 +52,7 @@ function test_HostRockVelocityFromDike(Dimension="2D", DikeType="ElasticDike", D
   end
 
   # Create dike
-  dike              =   Dike(Width=Wdike, Thickness=Hdike,Center=cen,Angle=DikeAngle,Type=DikeType,T=T_in);  # Specify dike 
+  dike              =   Dike(W=Wdike, H=Hdike,Center=cen,Angle=DikeAngle,Type=DikeType,T=T_in);  # Specify dike 
 
   # Compute velocity required to create space for dike
   Δ                 =   Hdike;          # max. dike opening (m)
@@ -148,7 +148,7 @@ function test_InjectDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45],
   T                       =   -Z./1e3.*GeoT;                                             # initial (linear) temperature profile
 
   # Create dike
-  dike                    =   Dike(Width=Wdike, Thickness=Hdike,Center=cen,Angle=DikeAngle,Type=DikeType,T=T_in);  # Specify dike 
+  dike                    =   Dike(W=Wdike, H=Hdike,Center=cen,Angle=DikeAngle,Type=DikeType,T=T_in);  # Specify dike 
 
   # Test the InsertDike routine, which modifies temperature and adds tracers
   nTr_dike                =   1000;
@@ -222,15 +222,15 @@ end
 
 # test dike structure
 @testset "Dike_Struct" begin
-  @test typeof(Dike(Center=[0; 0],Angle=[45],     T=900, Type="SquareDike",  Width=1000, Thickness=100 ))==Dike
-  @test typeof(Dike(Center=[0; 0],Angle=[45; 90], T=900, Type="ElasticDike", Width=1000, Thickness=100 ))==Dike
+  @test typeof(Dike(Center=[0; 0],Angle=[45],     T=900, Type="SquareDike",  W=1000, H=100 ))==Dike
+  @test typeof(Dike(Center=[0; 0],Angle=[45; 90], T=900, Type="ElasticDike", W=1000, H=100 ))==Dike
   @test typeof(Dike(Center=[0; 0],Angle=[45; 90], T=800, Type="ElasticDike", Q=1e6, ΔP=1e7, E=1e10) )==Dike  
 end
 
 # Volume of dike
 @testset "Dike_Volume" begin
   @test volume_dike(Dike(Center=[0; 0],Angle=[45; 90], T=800, Type="ElasticDike", Q=1e6, ΔP=1e7, E=1e10)) ==   (2539.6349734808196, 1.999999999999997e6)
-  @test volume_dike(Dike(Center=[0; 0],Angle=[45],     T=900, Type="SquareDike",  Width=1000, Thickness=100 )) == (100000.0, 1.0e8)
+  @test volume_dike(Dike(Center=[0; 0],Angle=[45],     T=900, Type="SquareDike",  W=1000, H=100 )) == (100000.0, 1.0e8)
 end
 
 # Dike insertion algorithm

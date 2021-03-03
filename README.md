@@ -55,8 +55,9 @@ nTr_dike                =   300;                                # Number of trac
 
 # Set up model geometry & initial T structure
 # (...)
-T                       .=   -Z./1e3.*GeoT;                     # Initial (linear) temperature profile
-SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt);                     # Compute solid fraction
+dike                    =   Dike(W=W_in,H=H_in,Type=DikeType,T=T_in); # "Reference" dike with given thickness,radius and T
+T                       .=   -Z./1e3.*GeoT;                           # Initial (linear) temperature profile
+SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt);                           # Compute solid fraction
 
 # Preparation of visualisation
 #(...)
@@ -69,8 +70,8 @@ for it = 1:nt   # Time loop
         cen       =   [W/2.; -H/2.] + rand(-0.5:1e-3:0.5, 2).*[W_ran;H_ran];        # Randomly vary center of dike 
         if cen[end]<-12;    Angle_rand = rand( 80.0:0.1:100.0)                      # Orientation: near-vertical @ depth             
         else                Angle_rand = rand(-10.0:0.1:10.0); end                  # Orientation: near-vertical @ shallower depth     
-        dike      =   Dike(Width=W_in, Thickness=H_in, Center=cen[:]*1e3,Angle=[Angle_rand],Type=DikeType,T=T_in); # Specify dike with random location/angle but fixed size 
-        Tracers, T, Vol     =   InjectDike(Tracers, T, Grid, dike, nTr_dike);       # Add dike, move hostrocks
+        dike      =   Dike(dike, Center=cen[:]*1e3,Angle=[Angle_rand]);             # Specify dike with random location/angle but fixed size/T 
+        Tracers, T, Vol     =   InjectDike(Tracers, T, Grid, dike, nTr_dike);       # Add dike, move host rocks
         InjectVol           +=  Vol                                                 # Keep track of injected volume
         println("Added new dike; total injected magma volume = $(InjectVol/1e9) km³; rate Q=$(InjectVol/(time_kyrs*1e3*SecYear)) m³/s")
     end
@@ -154,13 +155,10 @@ for it = 1:nt   # Time loop
 
     if floor(time_kyrs/InjectionInterval_kyrs)> dike_inj        # Add new dike every X years
         #(...)       
-        cen       =   [W/2.; -H/2.] + rand(-0.5:1e-3:0.5, 2).*[W_ran;H_ran];        # Randomly vary center of dike 
-        if cen[end]<-12;    Angle_rand = rand( 80.0:0.1:100.0,2)                      # Orientation: near-vertical @ depth             
-        else                Angle_rand = rand(-10.0:0.1:10.0,2); end                  # Orientation: near-vertical @ shallower depth     
-        dike      =   Dike(Width=W_in, Thickness=H_in, Center=cen[:]*1e3,Angle=[Angle_rand],Type=DikeType,T=T_in); # Specify dike with random location/angle but fixed size 
-     
-        cen                 =   [W/2.;L/2.;-H/2.]; center = (rand(3,1) .- 0.5).*[W_ran;W_ran;H_ran] + cen; # Random variation of location (over a distance 
-        dike                =   Dike(Width=W_in, Thickness=H_in,Center=center[:]*1e3,Angle=(rand(2).-0.5).*Angle_ran,Type=DikeType,T=T_in); # Specify dike with random location/angle but fixed size 
+        cen             =   [W/2.;L/2.;-H/2.] + rand(-0.5:1e-3:0.5, 3).*[W_ran;W_ran;H_ran];    # Randomly vary center of dike 
+        if cen[end]<-12;    Angle_rand = [rand(80.0:0.1:100.0); rand(0:360)]                    # Dikes at depth             
+        else                Angle_rand = [rand(-10.0:0.1:10.0); rand(0:360)] end                # Sills at shallower depth
+        dike            =   Dike(dike,Center=cen[:]*1e3,Angle=Angle_rand);                      # Specify dike with random location/angle but fixed size 
         #(...)       
     end
 

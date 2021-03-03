@@ -60,8 +60,8 @@ temperature field
     ν           ::  Float64         =   0.3                                   # Poison ratio of host rocks
     ΔP          ::  Float64         =   1e6;                                  # Overpressure of elastic dike
     Q           ::  Float64         =   1000;                                 # Volume of elastic dike
-    Width       ::  Float64         =   (3*E*Q/(16*(1-ν^2)*ΔP))^(1.0/3.0);    # Width of dike/sill   
-    Thickness   ::  Float64         =   8*(1-ν^2)*ΔP*Width/(π*E);              # (maximum) Thickness of dike/sill
+    W           ::  Float64         =   (3*E*Q/(16*(1-ν^2)*ΔP))^(1.0/3.0);    # Width of dike/sill   
+    H           ::  Float64         =   8*(1-ν^2)*ΔP*W/(π*E);                 # (maximum) Thickness of dike/sill
     Center      ::  Vector{Float64} =   [20e3 ; -10e3]                        # Center
 end
 
@@ -142,8 +142,7 @@ function InjectDike(Tracers, T::Array, Grid, dike::Dike, nTr_dike::Int64; Advect
     #   For computational reasons, we do not open the dike at once, but in sufficiently small pseudo timesteps
     #   Sufficiently small implies that the motion per "pseudotimestep" cannot be more than 0.5*{dx|dy|dz}
     
-    @unpack Width,Thickness = dike
-    H           =   Thickness;                                         # thickness of dike
+    @unpack H   =   dike
     dim         =   length(Grid);
     Spacing     =   Vector{Float64}(undef, dim);
     
@@ -234,8 +233,7 @@ function HostRockVelocityFromDike( Grid, Points, Δ, dt, dike::Dike)
         Vx, Vz          = zeros(size( Points[1])), zeros(size( Points[1]));
             
         if Type=="SquareDike"
-            @unpack Thickness,Width = dike
-            W, H    =  Width, Thickness;                # Dimensions of square dike
+            @unpack H,W = dike
             Vint    =  Δ/dt/2.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
                 
             Vz_rot[(Points[2] .<= 0) .& (abs.(Points[1]).<= W/2.0)]  .= -Vint;
@@ -244,8 +242,7 @@ function HostRockVelocityFromDike( Grid, Points, Δ, dt, dike::Dike)
             Vx_rot[abs.(Points[1]).<W]          .=   0.0;      # set radial velocity to zero at left boundary
 
         elseif Type=="ElasticDike"
-                @unpack Thickness,Width = dike
-                W, H    =  Width, Thickness;                # Dimensions of square dike
+                @unpack H,W = dike
                 Vint    =  Δ/dt;                            # open the dike by a maximum amount of Δ in one dt (no 1/2 as that is taken care off inside the routine below)
                 
 Threads.@threads for i in eachindex(Vz_rot)
@@ -289,8 +286,7 @@ Threads.@threads for i in eachindex(Vz_rot)
         Vx, Vy, Vz              = zeros(size(Points[1])), zeros(size(Points[2])), zeros(size(Points[3]));
         
         if Type=="SquareDike"
-            @unpack Thickness,Width = dike
-            W, H    =  Width, Thickness;                # Dimensions of square dike
+            @unpack H,W = dike                          # Dimensions of square dike
             Vint    =  Δ/dt/2.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
                 
             Vz_rot[(Points[3].<0) .& (abs.(Points[1]).<W/2.0) .& (abs.(Points[2]).<W/2.0)]  .= -Vint;
@@ -301,8 +297,7 @@ Threads.@threads for i in eachindex(Vz_rot)
 
 
         elseif Type=="ElasticDike"
-                @unpack Thickness,Width = dike
-                W, H    =  Width, Thickness;                # Dimensions of square dike
+                @unpack H,W = dike                          # Dimensions of dike
                 Vint    =  Δ/dt;                            # open the dike by a maximum amount of Δ in one dt (no 1/2 as that is taken care off inside the routine below)
                     
                 Threads.@threads for i=firstindex(Vx_rot):lastindex(Vx_rot)
@@ -380,9 +375,7 @@ function CreatDikePolygon(dike::Dike)
         α      = Angle[end];
         RotMat = [cosd(-α) -sind(-α); sind(-α) cosd(-α)]; 
         for i=1:length(poly)
-            @unpack Width, Thickness, Center = dike;   
-            H       =  Thickness;
-            W       =  Width;
+            @unpack W, H, Center = dike;   
             
             pt      = [LazyRow(poly, i).x*W/2.0; LazyRow(poly, i).z*H/2.0];
             pt_rot  = RotMat*pt;    # rotate
@@ -412,14 +405,14 @@ function isinside_dike(pt, dike::Dike)
     # important: this is a "unit" dike, which has the center at [0,0,0] and width given by dike.Size
     dim =   length(pt)
     in  =   false;
-    @unpack Type,Width,Thickness = dike;
+    @unpack Type,W,H = dike;
     if Type=="SquareDike"
         if  dim==2
-            if  (abs(pt[1])  < Width/2.0) & (abs(pt[end])< Thickness/2.0)
+            if  (abs(pt[1])  < W/2.0) & (abs(pt[end])< H/2.0)
                 in = true
             end
         elseif dim==3
-            if  (abs(pt[1])  < Width/2.0) & (abs(pt[end])< Thickness/2.0) & (abs(pt[2])< Width/2.0)
+            if  (abs(pt[1])  < W/2.0) & (abs(pt[end])< H/2.0) & (abs(pt[2])< W/2.0)
                 in = true
             end
         end
@@ -428,10 +421,10 @@ function isinside_dike(pt, dike::Dike)
         eq_ellipse = 100.0;
 
         if dim==2
-            eq_ellipse = (pt[1]^2.0)/((Width/2.0)^2.0) + (pt[2]^2.0)/((Thickness/2.0)^2.0); # ellipse
+            eq_ellipse = (pt[1]^2.0)/((W/2.0)^2.0) + (pt[2]^2.0)/((H/2.0)^2.0); # ellipse
         elseif dim==3
             # radius = sqrt(*)x^2+y^2)
-            eq_ellipse = (pt[1]^2.0 + pt[2]^2.0)/((Width/2.0)^2.0) + (pt[3]^2.0)/((Thickness/2.0)^2.0); # ellipsoid
+            eq_ellipse = (pt[1]^2.0 + pt[2]^2.0)/((W/2.0)^2.0) + (pt[3]^2.0)/((H/2.0)^2.0); # ellipsoid
         else
             error("Unknown # of dimensions: $dim")
         end
@@ -459,14 +452,14 @@ end
 """
 function volume_dike(dike::Dike)
     # important: this is a "unit" dike, which has the center at [0,0,0] and width given by dike.Size
-    @unpack Width, Thickness, Type =dike
+    @unpack W, H, Type =dike
 
     if Type=="SquareDike"
-        area    = Width*Thickness;                  #  (in 2D, in m^2)
-        volume  = Width*Width*Thickness;            #  (equivalent 3D volume, in m^3)
+        area    = W*H;                  #  (in 2D, in m^2)
+        volume  = W*W*H;                #  (equivalent 3D volume, in m^3)
     elseif Type=="ElasticDike"
-        area    = pi*Width*Thickness                #   (in 2D, in m^2)
-        volume  = 4/3*pi*Width*Width*Thickness      #   (equivalent 3D volume, in m^3)
+        area    = pi*W*H                #   (in 2D, in m^2)
+        volume  = 4/3*pi*W*W*H          #   (equivalent 3D volume, in m^3)
    
     else
         error("Unknown dike type $Type")
@@ -488,7 +481,7 @@ tracers array Tracers.
 function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
 
     dim         =   length(Grid);
-    @unpack Angle,Center,Width,Thickness,T = dike;
+    @unpack Angle,Center,W,H,T = dike;
     
     if dim==2
         α           =    Angle[1];
@@ -538,9 +531,9 @@ function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
         # 1) Randomly initialize tracers to the approximate dike area
         pt      = rand(dim,1) .- 0.5*ones(dim,1);
         if dim==2
-            Size = [Width; Thickness];
+            Size = [W; H];
         else
-            Size = [Width; Width; Thickness];
+            Size = [W; W; H];
         end
 
         pt      = pt.*Size;
@@ -623,7 +616,7 @@ end
 function DisplacementAroundPennyShapedDike(dike::Dike, CartesianPoint::SVector, dim)
 
     # extract required info from dike structure
-    @unpack ν,E,Width, Thickness = dike;
+    @unpack ν,E,W, H = dike;
 
     Displacement = Vector{Float64}(undef, dim);
 
@@ -633,8 +626,8 @@ function DisplacementAroundPennyShapedDike(dike::Dike, CartesianPoint::SVector, 
 
     if r==0; r=1e-3; end
 
-    B::Float64   =  Thickness;                     # maximum thickness of dike
-    a::Float64   =  Width/2.0;                     # radius
+    B::Float64   =  H;                          # maximum thickness of dike
+    a::Float64   =  W/2.0;                      # radius
 
     # note, we can either specify B and a, and compute pressure p and injected volume Q
     # Alternatively, it is also possible to:
