@@ -70,31 +70,6 @@ struct DikePoly    # polygon that describes the geometry of the dike (only in 2D
     z::Float64          # z-coordinates
 end
 
-
-"""
-    Structure that has information about the tracers
-
-    General form:
-        Tracer(num, coord, T)
-
-        with:
-
-            num:   number of the tracer (integer)
-
-            coord: coordinates of the tracer
-                    2D - [x; z]
-                    3D - [x; y; z]
-            
-            T:      Temperature of the tracer [Celcius]                              
-"""
-struct Tracer
-    num         ::  Int64                   # number
-    coord       ::  Vector{Float64}         # holds coordinates [2D or 3D]
-    T           ::  Float64                 # temperature
-end
-#    Phase       ::  Int64  = 0              # Phase (e.g., host rock vs injected melt)
-#    Chemistry   ::  Vector{Float64} = []    # Could @ some stage hold the evolving chemistry of the magma
-
 """
     This injects a dike in the computational domain in an instantaneous manner,
     while "pushing" the host rocks to the sides. 
@@ -554,8 +529,7 @@ function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
                 number  =   Tr.num[end]+1;  
             end
 
-            #new_tracer  =   Tracer(num=number, coord=pt_new, T=T);          # Create new tracer
-            new_tracer  =   Tracer(number, pt_new, T);          # Create new tracer
+            new_tracer  =   Tracer(num=number, coord=pt_new, T=T);          # Create new tracer
             
             if !isassigned(Tr,1)
                 StructArrays.foreachfield(v -> deleteat!(v, 1), Tr)         # Delete first (undefined) row of tracer StructArray. Assumes that Tr is defined as Tr = StructArray{Tracer}(undef, 1)

@@ -10,7 +10,6 @@ using Test
 
 const CreatePlots = false      # easy way to deactivate plotting throughout
 
-
 function test_TracerUpdate(Dimension="2D", InterpolationMethod="Linear")
   # test interpolation methods from grid to tracers in 2D and 3D
 
@@ -38,10 +37,10 @@ function test_TracerUpdate(Dimension="2D", InterpolationMethod="Linear")
     T                       =   cos.(pi.*X).*sin.(2*pi.*Z)
 
     # Create tracer structure
-    new_tracer  =   Tracer(1, [Xt[1]; Zt[1]], 0.);            # Create new tracer
-    Tracers     =   StructArray([new_tracer]);                # Create tracer array
+    new_tracer  =   Tracer(num=1, coord=[Xt[1]; Zt[1]], T=0.,);               # Create new tracer
+    Tracers     =   StructArray([new_tracer]);                                # Create tracer array
     for i=firstindex(Xt)+1:lastindex(Xt)
-      new_tracer  =   Tracer(i, [Xt[i]; Zt[i]], 0.);          # Create new tracer
+      new_tracer  =   Tracer(num=i, coord=[Xt[i]; Zt[i]], T=0.);              # Create new tracer
       push!(Tracers, new_tracer);                             # Add new point to existing array
     end
     Tracers0 = copy(Tracers);         # create a copy of the original tracers
@@ -70,11 +69,11 @@ function test_TracerUpdate(Dimension="2D", InterpolationMethod="Linear")
       T                       =   cos.(pi.*X).*sin.(2*pi.*Z).*sin.(2*pi.*Y)
 
       # Create tracer structure
-      new_tracer  =   Tracer(1, [Xt[1]; Yt[1]; Zt[1]], 0.);            # Create new tracer
-      Tracers     =   StructArray([new_tracer]);                # Create tracer array
+      new_tracer  =   Tracer(num=1, coord=[Xt[1]; Yt[1]; Zt[1]], T=0.);           # Create new tracer
+      Tracers     =   StructArray([new_tracer]);                                  # Create tracer array
       for i=firstindex(Xt)+1:lastindex(Xt)
-        new_tracer  =   Tracer(i, [Xt[i]; Yt[i]; Zt[i]], 0.);          # Create new tracer
-        push!(Tracers, new_tracer);                             # Add new point to existing array
+        new_tracer  =   Tracer(num=i, coord=[Xt[i]; Yt[i]; Zt[i]], T=0.);         # Create new tracer
+        push!(Tracers, new_tracer);                                               # Add new point to existing array
       end
   
   end

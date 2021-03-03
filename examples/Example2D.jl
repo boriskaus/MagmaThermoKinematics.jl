@@ -7,6 +7,7 @@ using Plots
 # Initialize 
 @init_parallel_stencil(Threads, Float64, 2);    # initialize parallel stencil in 2D
 
+
 #------------------------------------------------------------------------------------------
 @views function MainCode_2D();
 # Model parameters
@@ -47,8 +48,8 @@ x,z                     =   (0:Nx-1)*dx, (-(Nz-1):0)*dz;                    # 1-
 crd                     =   collect(Iterators.product(x,z))                 # Generate coordinates from 1D coordinate vectors   
 X,Z                     =   (x->x[1]).(crd), (x->x[2]).(crd);               # Transfer coords to 3D arrays
 Grid                    =   (x,z);                                          # Grid 
-dike                    =   Dike(W=W_in,H=H_in,Type=DikeType,T=T_in);       # "Reference" dike with given thickness,radius and T
 Tracers                 =   StructArray{Tracer}(undef, 1)                   # Initialize tracers   
+dike                    =   Dike(W=W_in,H=H_in,Type=DikeType,T=T_in);       # "Reference" dike with given thickness,radius and T
 T                       .=   -Z./1e3.*GeoT;                                 # Initial (linear) temperature profile
 SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt);                                 # Compute solid fraction
 
