@@ -201,9 +201,11 @@ We rely on [ParallelStencil.jl](https://github.com/omlins/ParallelStencil.jl) to
 After installing julia in the usual manner, you can add (and test) the package with 
 ```
 julia>]
+  pkg> add https://github.com/omlins/ParallelStencil.jl
   pkg> add https://github.com/boriskaus/MagmaThermoKinematics.jl
   pkg> test MagmaThermoKinematics
 ```
+We use ParallelStencil.jl, which is not (yet) a registed julia package, which is why you have to install that first.
 The testing suite run above performs a large number of tests and, among others, compares the results with analytical solutions for advection/diffusion. Let us know if you encounter problems. 
 
 Next, you can download one of the codes above, put it in your current directory, and start it with
