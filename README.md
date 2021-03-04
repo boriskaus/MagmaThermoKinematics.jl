@@ -195,7 +195,7 @@ The result of the script are a range of VTK files, which can be visualized with 
 ## Dependencies
 We rely on [ParallelStencil.jl](https://github.com/omlins/ParallelStencil.jl) to for the energy solver, [StructArrays.jl](https://github.com/JuliaArrays/StructArrays.jl) to generate an aray of tracer structures, [Random.jl](https://docs.julialang.org/en/v1/stdlib/Random/) for random number generation, [Parameters.jl](https://github.com/mauro3/Parameters.jl) to simplify setting parameters (such as specifying dike properties), [Interpolations.jl](https://github.com/JuliaMath/Interpolations.jl) to interpolate properties such as temperature from a fixed grid to tracers, and [StaticArrays.jl](https://github.com/JuliaArrays/StaticArrays.jl) for speed. All these dependencies should be installed automatically if you install `MagmaThermoKinematics.jl`.
 
-[Plots.jl](http://docs.juliaplots.org/latest/) is employed for plotting, and [WriteVTK.jl](https://github.com/jipolanco/WriteVTK.jl) is used in the 3D example to generate *.VTR/*.PVD files that can be visualized with [Paraview](https://www.paraview.org). You have to add both packages yourself; they are however anyways useful to have.
+[Plots.jl](http://docs.juliaplots.org/latest/) is employed for plotting, and [WriteVTK.jl](https://github.com/jipolanco/WriteVTK.jl) is used in the 3D example to generate `*.vtr/*.pvd` files that can be visualized with [Paraview](https://www.paraview.org). You have to add both packages yourself; they are however anyways useful to have.
 
 ## Installation
 After installing julia in the usual manner, you can add (and test) the package with 
@@ -208,6 +208,12 @@ julia>]
 We use ParallelStencil.jl, which is not (yet) a registed julia package, which is why you have to install that first.
 The testing suite run above performs a large number of tests and, among others, compares the results with analytical solutions for advection/diffusion. Let us know if you encounter problems. 
 
+If you want to run the examples and create plots, you may also want to install these two packages:
+```
+julia>]
+  pkg> add Plots
+  pkg> add WriteVTK
+```
 Next, you can download one of the codes above, put it in your current directory, and start it with
 ```
 julia> include("Example2D.jl")
