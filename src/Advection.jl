@@ -41,23 +41,8 @@ function Interpolate!(Data_interp, Grid,  Data_grid, Points_irregular, Interpola
     nField ::Int8       =   length(Data_grid);      # number of fields
     iField::Int64       =   0;
     
-    # define functions to perform interpolation with as few allocations as possible
-    if dim==2
-        function evaluate_2D(s, itp, Points_irregular)
-            Threads.@threads for i=firstindex(Points_irregular[1]):lastindex(Points_irregular[1])
-                 s[i]    = itp(Points_irregular[1][i],Points_irregular[2][i]);
-            end
-        end
-    elseif dim==3
-        function evaluate_3D(s, itp, Points_irregular)
-            Threads.@threads for i=firstindex(Points_irregular[1]):lastindex(Points_irregular[1])
-                 s[i]    = itp(Points_irregular[1][i],Points_irregular[2][i],Points_irregular[3][i]);
-            end
-        end
-    end
 
     CorrectBounds!(Points_irregular, Grid);
-
 
     for iField=1:nField
         
@@ -81,13 +66,26 @@ function Interpolate!(Data_interp, Grid,  Data_grid, Points_irregular, Interpola
 
         # do interpolation for all points
         if dim==2
-            evaluate_2D(Data_interp[iField], interp,Points_irregular);
+            evaluate_interp_2D(Data_interp[iField], interp,Points_irregular);
         elseif dim==3
-            evaluate_3D(Data_interp[iField], interp,Points_irregular);
+            evaluate_interp_3D(Data_interp[iField], interp,Points_irregular);
         end
     
     end
 
+end
+
+# define functions to perform interpolation with as few allocations as possible
+function evaluate_interp_2D(s, itp, Points_irregular)
+Threads.@threads    for i=firstindex(Points_irregular[1]):lastindex(Points_irregular[1])
+                        s[i]    = itp(Points_irregular[1][i],Points_irregular[2][i]);
+                    end
+end
+
+function evaluate_interp_3D(s, itp, Points_irregular)
+Threads.@threads    for i=firstindex(Points_irregular[1]):lastindex(Points_irregular[1])
+                        s[i]    = itp(Points_irregular[1][i],Points_irregular[2][i],Points_irregular[3][i]);
+                    end
 end
 
 

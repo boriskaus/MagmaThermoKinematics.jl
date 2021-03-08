@@ -281,7 +281,7 @@ Threads.@threads for i in eachindex(Vz_rot)
                     Displacement, Bmax  = DisplacementAroundPennyShapedDike(dike, SVector(Points[1][i], Points[2][i], Points[3][i]), dim);
 
                     Displacement        .=  Displacement/Bmax;     # normalize such that 1 is the maximum
-                        
+                    
                     Vz_rot[i]           =   Vint.*Displacement[3];
                     Vy_rot[i]           =   Vint.*Displacement[2];      
                     Vx_rot[i]           =   Vint.*Displacement[1];      
@@ -435,7 +435,6 @@ function volume_dike(dike::Dike)
     elseif Type=="ElasticDike"
         area    = pi*W*H                #   (in 2D, in m^2)
         volume  = 4/3*pi*W*W*H          #   (equivalent 3D volume, in m^3)
-   
     else
         error("Unknown dike type $Type")
     end
