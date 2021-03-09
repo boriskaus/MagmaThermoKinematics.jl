@@ -136,7 +136,7 @@ function InjectDike(Tracers, T::Array, Grid, dike::Dike, nTr_dike::Int64; Advect
         Spacing[i] = Grid[i][2] - Grid[i][1];
     end
     d           =   minimum(Spacing)*0.5;                              # maximum distance the dike can open per pseudotimestep 
-    nsteps      =   maximum([ceil(H/d), 10]);                           # the number of steps (>=10)
+    nsteps      =   maximum([ceil(H/d), 2]);                           # the number of steps (>=10)
 
     # Compute velocity required to create space for dike
     Δ           =   H/(nsteps);
