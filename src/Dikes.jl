@@ -63,6 +63,7 @@ temperature field
     W           ::  Float64         =   (3*E*Q/(16*(1-ν^2)*ΔP))^(1.0/3.0);    # Width of dike/sill   
     H           ::  Float64         =   8*(1-ν^2)*ΔP*W/(π*E);                 # (maximum) Thickness of dike/sill
     Center      ::  Vector{Float64} =   [20e3 ; -10e3]                        # Center
+    Phase       ::  Int64           =   2;                                    # Phase of newly injected magma
 end
 
 struct DikePoly    # polygon that describes the geometry of the dike (only in 2D)
@@ -135,7 +136,7 @@ function InjectDike(Tracers, T::Array, Grid, dike::Dike, nTr_dike::Int64; Advect
         Spacing[i] = Grid[i][2] - Grid[i][1];
     end
     d           =   minimum(Spacing)*0.5;                              # maximum distance the dike can open per pseudotimestep 
-    nsteps      =   maximum([ceil(H/d), 2]);                           # the number of steps (>=10)
+    nsteps      =   maximum([ceil(H/d), 10]);                           # the number of steps (>=10)
 
     # Compute velocity required to create space for dike
     Δ           =   H/(nsteps);
@@ -455,7 +456,8 @@ tracers array Tracers.
 function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
 
     dim         =   length(Grid);
-    @unpack Angle,Center,W,H,T = dike;
+    @unpack Angle,Center,W,H,T, Phase = dike;
+    PhaseDike = Phase;
     
     if dim==2
         α           =    Angle[1];
@@ -528,7 +530,7 @@ function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
                 number  =   Tr.num[end]+1;  
             end
 
-            new_tracer  =   Tracer(num=number, coord=pt_new, T=T);          # Create new tracer
+            new_tracer  =   Tracer(num=number, coord=pt_new, T=T, Phase=PhaseDike);          # Create new tracer
             
             if !isassigned(Tr,1)
                 StructArrays.foreachfield(v -> deleteat!(v, 1), Tr)         # Delete first (undefined) row of tracer StructArray. Assumes that Tr is defined as Tr = StructArray{Tracer}(undef, 1)

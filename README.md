@@ -57,8 +57,7 @@ nTr_dike                =   300;                                # Number of trac
 # (...)
 dike                    =   Dike(W=W_in,H=H_in,Type=DikeType,T=T_in); # "Reference" dike with given thickness,radius and T
 T                       .=   -Z./1e3.*GeoT;                           # Initial (linear) temperature profile
-SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt);                           # Compute solid fraction
-
+Phi, dPhi_dt            =   SolidFraction(T, Phi_o, dt);              # Compute solid fractio
 # Preparation of visualisation
 #(...)
 
@@ -76,7 +75,7 @@ for it = 1:nt   # Time loop
         println("Added new dike; total injected magma volume = $(InjectVol/1e9) km³; rate Q=$(InjectVol/(time_kyrs*1e3*SecYear)) m³/s")
     end
 
-    SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt);                                     # Compute solid fraction
+    Phi, dPhi_dt    =   SolidFraction!(T, Phi_o, dt);                               # Compute solid fraction
     K               .=  Phi.*k_rock .+ (1 .- Phi).*k_magma;                         # Thermal conductivity
 
     # Perform a diffusion step

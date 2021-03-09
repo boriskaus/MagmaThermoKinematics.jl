@@ -315,6 +315,19 @@ function PhaseRatioFromTracers(FullGrid, Grid, Tracers, InterpolationMethod="Con
         end
     end
 
+    # We need a way to deal with points that have zero tracers @ this stage 
+    #  (inject new tracers? take the phase ratio of a nearby point?)
+    ind_empty = findall(x->x==0, NumTracers);
+    for id in ind_empty
+        if dim==2
+            PhaseRatio[id[1],id[2],2]           = 1.0;   # somewhet arbitrary fill this with phase 2
+        else
+            PhaseRatio[id[1],id[2],id[3],2]     = 1.0;   # somewhet arbitrary fill this with phase 2
+        end
+    end
+
+
+
     if RequestNumTracers
         return PhaseRatio, NumTracers
     else
@@ -397,6 +410,78 @@ function CorrectBounds_Array!(Points, Grid);
     end
 end
 
+"""
+        RockType = RockAssemblage(PhaseRatio)
+
+        Computes the most abundant rock assemblage @ every point 
+ 
+"""
+function RockAssemblage(PhaseRatio);
+    # Most abundant rock-type @ every point 
+    dim         =   length(size(PhaseRatio))-1
+    dummy       =   findmax(PhaseRatio,dims=dim+1);
+    RockType    =   getindex.(dummy[2], dim+1)          # extract last of Cartesian index, which is the phase
+    if dim==2
+        RockType=RockType[:,:,1];
+    end
+    return RockType
+end
+
+"""
+        CorrectTracersForTopography!(Tracers, Topo, PhaseAir=1, PhaseRock=2)
+
+        Corrects tracers for topography, such that 'rock' tracers above the topography
+            are set to "air" and vice-versa
+
+        Input:
+            Tracers     -       Tracers structure
+            
+            Topo        -       
+                                (Topo_x, Topo_y, Topo_z)  : topography in 3D
+                                (Topo_x, Topo_z)  :         topography in 2D
+            PhaseAir    -       Phase of air
+            PhaseRock   -       Phase of rock
+ 
+"""
+function CorrectTracersForTopography!(Tracers, Topo, PhaseAir=1, PhaseRock=2)
+    # Correct Tracers for topography: 
+    #       all Tracers with rock phase>1 are set to "air",
+    #       all Tracesr with phase==1 is set to phase=2 ("rock")
+
+    dim = length(Topo)
+    if dim==2
+        interp_linear = LinearInterpolation((Topo[1]), Topo[end],  extrapolation_bc = Line());
+    elseif dim==3
+        interp_linear = LinearInterpolation((Topo[1], Topo[2]), Topo[end],  extrapolation_bc = Line());
+    end
+
+    minT,maxT     = minimum(Topo[end]), maximum(Topo[end])
+    
+    for iT=1:length(Tracers)
+        if      (Tracers[iT].coord[end]>maxT) & (Tracers.Phase[iT]>PhaseAir)
+            Tracers.Phase[iT] = PhaseAir;               # air
+        elseif (Tracers[iT].coord[end]<minT)  & (Tracers.Phase[iT]==PhaseAir)
+            Tracers.Phase[iT] = PhaseRock;               # rock
+        else
+            # need to do interpolation
+            pt      = Tracers[iT].coord;
+            
+            if dim==2
+                z_topo  = interp_linear(pt[1]);
+            elseif dim==3
+                z_topo  = interp_linear(pt[1],pt[2]);
+            end
+
+            if      (pt[end]>z_topo) & (Tracers[iT].Phase>PhaseAir)
+                Tracers.Phase[iT] = PhaseAir;          #
+            elseif  (pt[end]<z_topo) & (Tracers[iT].Phase==PhaseAir)
+                Tracers.Phase[iT] = PhaseRock; 
+            end
+ 
+        end
+    end
+  
+end
 
 """
         AdvectTracers!(Tracers, Grid, Velocity, dt, Method="RK2");

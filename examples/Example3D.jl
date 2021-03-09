@@ -44,14 +44,14 @@ Kx, Ky, Kz              =   @zeros(Nx-1,Ny,Nz), @zeros(Nx,Ny-1,Nz), @zeros(Nx,Ny
 Phi_o, Phi, dPhi_dt     =   @zeros(Nx,Ny,Nz),   @zeros(Nx,  Ny,Nz), @zeros(Nx,Ny,  Nz)                      # Solid fraction
 
 # Set up model geometry & initial T structure
-x,y,z                   =   (0:Nx-1)*dx, (0:Ny-1)*dy, (-(Nz-1):0)*dz;       # 1D coordinate arrays
-crd                     =   collect(Iterators.product(x,y,z))               # Generate coordinates from 1D coordinate vectors   
-X,Y,Z                   =   (x->x[1]).(crd),(x->x[2]).(crd),(x->x[3]).(crd);# Transfer coords to 3D arrays
-Grid                    =   (x,y,z);                                        # Grid
-dike                    =   Dike(W=W_in,H=H_in,Type=DikeType,T=T_in);       # "Reference" dike with given thickness,radius and T
-Tracers                 =   StructArray{Tracer}(undef, 1)                   # Initialize tracers   
-T                       .=   -Z./1e3.*GeoT;                                 # Initial (linear) temperature profile
-SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt);                                 # Compute solid fraction
+x,y,z                   =   (0:Nx-1)*dx, (0:Ny-1)*dy, (-(Nz-1):0)*dz;           # 1D coordinate arrays
+crd                     =   collect(Iterators.product(x,y,z))                   # Generate coordinates from 1D coordinate vectors   
+X,Y,Z                   =   (x->x[1]).(crd),(x->x[2]).(crd),(x->x[3]).(crd);    # Transfer coords to 3D arrays
+Grid                    =   (x,y,z);                                            # Grid
+dike                    =   Dike(W=W_in,H=H_in,Type=DikeType,T=T_in);           # "Reference" dike with given thickness,radius and T
+Tracers                 =   StructArray{Tracer}(undef, 1)                       # Initialize tracers   
+T                       .=   -Z./1e3.*GeoT;                                     # Initial (linear) temperature profile
+Phi, dPhi_dt            =   SolidFraction(T, Phi_o, dt);                        # Compute solid fraction
 
 # Preparation of VTK/Paraview output 
 if isdir("viz3D_out")==false mkdir("viz3D_out") end; loadpath = "./viz3D_out/"; pvd = paraview_collection("Example3D");
@@ -68,15 +68,15 @@ for it = 1:nt   # Time loop
         Tracers, T, Vol =   InjectDike(Tracers, T, Grid, dike, nTr_dike);                       # Add dike, move hostrocks
         InjectVol       +=  Vol                                                                 # Keep track of injected volume
         println("Added new dike; total injected magma volume = $(InjectVol/1e9) km³; rate Q=$(InjectVol/(time_kyrs*1e3*SecYear)) m³/s")
-    end
-    SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt);                                                 # Compute solid fraction
-    K               .=  Phi.*k_rock .+ (1 .- Phi).*k_magma;                                     # Thermal conductivity
+    end 
+    Phi, dPhi_dt        =   SolidFraction(T, Phi_o, dt);                                        # Compute solid fraction
+    K                   .=  Phi.*k_rock .+ (1 .- Phi).*k_magma;                                 # Thermal conductivity
 
     # Perform a diffusion step
     @parallel diffusion3D_step_varK!(Tnew, T, qx, qy, qz, K, Kx, Ky, Kz, Rho, Cp, dt, dx, dy, dz,  La, dPhi_dt);  
-    @parallel (1:size(T,2), 1:size(T,3)) bc3D_x!(Tnew);                                         # set lateral boundary conditions (flux-free)
-    @parallel (1:size(T,1), 1:size(T,3)) bc3D_y!(Tnew);                                         # set lateral boundary conditions (flux-free)
-    Tnew[:,:,1] .= GeoT*H; Tnew[:,:,end] .= 0.0;                                                # bottom & top temperature (constant)
+    @parallel (1:size(T,2), 1:size(T,3)) bc3D_x!(Tnew);                                         # Set lateral boundary conditions (flux-free)
+    @parallel (1:size(T,1), 1:size(T,3)) bc3D_y!(Tnew);                                         # Set lateral boundary conditions (flux-free)
+    Tnew[:,:,1] .= GeoT*H; Tnew[:,:,end] .= 0.0;                                                # Bottom & top temperature (constant)
     
     Tracers         =   UpdateTracers(Tracers, Grid, Tnew, Phi);                                # Update info on tracers 
     T, Tnew         =   Tnew, T;                                                                # Update temperature

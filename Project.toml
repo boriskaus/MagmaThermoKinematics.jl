@@ -1,9 +1,10 @@
 name = "MagmaThermoKinematics"
 uuid = "e7fe3d1a-f102-40b5-a66b-64b14986c4c8"
 authors = ["Boris Kaus <kaus@uni-mainz.de>"]
-version = "0.2.4"
+version = "0.2.5"
 
 [deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 Interpolations = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
 ParallelStencil = "94395366-693c-11ea-3b26-d9b7aac5d958"
 Parameters = "d96e819e-fc66-5662-9728-84c9c7592b0a"

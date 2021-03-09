@@ -6,20 +6,21 @@ Enables Earth Scientists to simulate the thermal evolution of magmatic systems.
 """
 module MagmaThermoKinematics
 
-
 # list required modules
 using Random                                    # random numbers
 using StructArrays                              # for tracers and dike polygon
 using Parameters                                # More flexible definition of parameters
-using Interpolations
-using StaticArrays
+using Interpolations                            # Fast interpolations
+using StaticArrays                      
+using CSV                                       # for reading phase diagrams
 
 ## Alphabetical include of computation-submodules (must be at end as needs to import from ParallelStencil).
 include("Diffusion.jl")
 export Diffusion2D, Diffusion3D  #
 
 include("MeltingRelationships.jl")
-export SolidFraction!           #
+export SolidFraction, ComputeLithostaticPressure, LoadPhaseDiagrams, PhaseDiagramData, ComputeDensityAndPressure
+export PhaseRatioAverage!, ComputeSeismicVelocities, SolidFraction_Parameterized!
 
 # Export functions that will be available outside this module
 export StructArray, LazyRow # useful 
@@ -38,7 +39,8 @@ export AdvectTemperature, Interpolate!, CorrectBounds, evaluate_interp_2D, evalu
 
 # Routines that deal with tracers
 include("Tracers.jl")
-export UpdateTracers, AdvectTracers!, InitializeTracers,PhaseRatioFromTracers  
+export UpdateTracers, AdvectTracers!, InitializeTracers,PhaseRatioFromTracers, CorrectTracersForTopography!
+export RockAssemblage  
 
 # Routines related to Parameters.jl, which come in handy in the main routine
 export @unpack

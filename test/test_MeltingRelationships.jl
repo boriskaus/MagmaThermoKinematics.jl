@@ -35,7 +35,7 @@ function test_SolidFraction()
   Phi                   = 0*T;
   
 
-  SolidFraction!(T, Phi_o, Phi, dPhi_dt, dt); # call routine
+  Phi, dPhi_dt = SolidFraction(T, Phi_o, dt); # call routine
 
   
   if CreatePlots
