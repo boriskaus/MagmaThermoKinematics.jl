@@ -8,7 +8,7 @@ using SpecialFunctions
 using Test
 
 
-const CreatePlots = true      # easy way to deactivate plotting throughout
+const CreatePlots = false      # easy way to deactivate plotting throughout
 
 function test_TracerUpdate(Dimension="2D", InterpolationMethod="Linear")
   # test interpolation methods from grid to tracers in 2D and 3D
