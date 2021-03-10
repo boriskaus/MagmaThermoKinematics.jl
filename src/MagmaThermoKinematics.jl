@@ -31,7 +31,7 @@ export SecYear
 
 include("Dikes.jl")
 export Dike, DikePoly
-export Tracer, AddDike, HostRockVelocityFromDike, CreatDikePolygon, volume_dike, InjectDike
+export Tracer, AddDike, HostRockVelocityFromDike, CreatDikePolygon, volume_dike, InjectDike, TracersToGrid!
 
 # routines related to advection & interpolation
 include("Advection.jl")

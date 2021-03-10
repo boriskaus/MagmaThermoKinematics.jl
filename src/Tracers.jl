@@ -211,7 +211,7 @@ end
 
         General form:
 
-        PhaseRatio,NumTracers = PhaseRatioFromTracers(Grid, Tracers, InterpolationMethod, RequestNumTracers);
+        PhaseRatio,NumTracers = PhaseRatioFromTracers(Grid, Tracers, InterpolationMethod, BackgroundPhase=2, RequestNumTracers=false; BackgroundPhase=2);
 
         with:
             Grid:   2D or 3D arrays that describe the grid coordinates
@@ -226,9 +226,16 @@ end
                                             This follows what is described in:
                                                 Duretz, T., May, D.A., Gerya, T.V., Tackley, P.J., 2011. Discretization errors and 
                                                 free surface stabilization in the finite difference and marker-in-cell method for applied geodynamics: 
-                                                A numerical study: Geochem. Geophys. Geosyst. 12, https://doi.org/10.1029/2011GC003567
+                                                A numerical study: Geochem. Geophys. Geosyst. 12, https://doi.org/10.1029/2011GC00356
+                                                
+            BackgroundPhase:        The background phase (used for places that don't have cells, nor surrounding cells )
 
-            RequestNumTracers:    Return the number of tracers on every grid cell (default=false)
+            RequestNumTracers:      Return the number of tracers on every grid cell (default=false)
+
+        optional parameters:
+
+            BackgroundPhase:        if this is defined, points where no tracers are present, will get the number BackgroundPhase.
+                                    You need to define this with a keywords as: (, BackgroundPhase=2) 
 
         out:
             PhaseRatio:    Phase ratio on the gridpoints defined by Grid
@@ -236,9 +243,12 @@ end
             NumTracers:    The number of tracers per grid point
             
 """
-function PhaseRatioFromTracers(FullGrid, Grid, Tracers, InterpolationMethod="Constant", RequestNumTracers=false);
+function PhaseRatioFromTracers(FullGrid, Grid, Tracers, InterpolationMethod="Constant", RequestNumTracers=false; BackgroundPhase=nothing);
 
     numPhases       =   maximum(Tracers.Phase);
+    if ~isnothing(BackgroundPhase)
+        if numPhases<BackgroundPhase; numPhases=BackgroundPhase; end
+    end
     dim             =   length(FullGrid)  
     Nx              =   size(FullGrid[1],1);
     if dim==2
@@ -307,26 +317,71 @@ function PhaseRatioFromTracers(FullGrid, Grid, Tracers, InterpolationMethod="Con
         Add_Phase_3D(PhaseRatio, NumTracers, length(Tracers), IndPoints, indPhase, indX, iPhase, indNum, Weight)
     end
 
-    # Normalize phase ratio, such that sum=1
+
+    if ~isnothing(BackgroundPhase)
+        # All "empty" cells will be set to the background phase
+        #
+        # This is particularly useful in case we have models where Tracers do not 'fill'
+        # the full model space 
+
+        ind_empty       = findall(x->x==0, NumTracers);
+        for I in ind_empty
+            # Use phase ratios from nearby point with most tracers
+            if dim==2;  PhaseRatio[:,:  ,BackgroundPhase]    .=   1.0;     
+            else        PhaseRatio[:,:,:,BackgroundPhase]    .=   1.0;
+            end
+
+            NumTracers[I] = 1;
+        end
+
+    else 
+        # This is for cases where we do cover the full model domain     
+        # 
+        # Deal with points that have zero tracers @ this stage 
+        #  We do this by a query of the surrounding (9/27 in 2D/3D) points and use the properties of the closest point
+        #
+        # TODO: Deal with cases in which tracers are not defined in the full domain, but only used to track dikes 
+        #       and their properties, while otherwise having a fixed background 
+        ind_empty       = findall(x->x==0, NumTracers);
+        R               = CartesianIndices(NumTracers)
+        Ifirst, Ilast   = first(R), last(R)
+        I1              = oneunit(Ifirst)
+        for I in ind_empty
+            @show I, NumTracers[I]
+
+            # query surrounding points & store the index of the point with the most particles
+            smax = 0;   Imax = I;
+            for J in max(Ifirst, I-I1):min(Ilast, I+I1)
+                if NumTracers[J]>smax
+                    Imax = J;
+                    smax = NumTracers[J];
+                end
+            end
+            
+            # Use phase ratios from nearby point with most tracers
+            for iPhase=1:numPhases
+                if dim==2;  PhaseRatio[I[1],I[2],     iPhase]   =   PhaseRatio[Imax[1],Imax[2],iPhase];     
+                else        PhaseRatio[I[1],I[2],I[3],iPhase]   =   PhaseRatio[Imax[1],Imax[2],Imax[3],iPhase];
+                end
+            end
+
+            NumTracers[I] = 1;
+        end
+
+      # in case we still have problematic cells, at least spit out a warning
+      if any(NumTracers .== 0 )
+        warning("We still have cells that have no tracers and we did not manage to fix this by using nearby cells. ")
+        end
+
+    end
     sumPhaseRatio   =   sum(PhaseRatio,dims=dim+1);
+
+    # Normalize phase ratio, such that sum=1
     for iPhase=1:numPhases
         if dim==2;  PhaseRatio[:,:  ,iPhase]    =   PhaseRatio[:,:  ,iPhase]./sumPhaseRatio;
         else        PhaseRatio[:,:,:,iPhase]    =   PhaseRatio[:,:,:,iPhase]./sumPhaseRatio; 
         end
     end
-
-    # We need a way to deal with points that have zero tracers @ this stage 
-    #  (inject new tracers? take the phase ratio of a nearby point?)
-    ind_empty = findall(x->x==0, NumTracers);
-    for id in ind_empty
-        if dim==2
-            PhaseRatio[id[1],id[2],2]           = 1.0;   # somewhet arbitrary fill this with phase 2
-        else
-            PhaseRatio[id[1],id[2],id[3],2]     = 1.0;   # somewhet arbitrary fill this with phase 2
-        end
-    end
-
-
 
     if RequestNumTracers
         return PhaseRatio, NumTracers
@@ -335,7 +390,147 @@ function PhaseRatioFromTracers(FullGrid, Grid, Tracers, InterpolationMethod="Con
     end
 end
 
-# define functions to speed up key calculations
+
+"""
+    This averages a certain property from tracers -> grid. The data will ONLY be set on the grid if we have at least x tracers!
+        if not, the origibal data will be kept
+
+        General form:   
+
+            TracersToGrid!(Data, FullGrid, Grid, Tracers, Property="T", InterpolationMethod="Constant", RequestNumTracers=false);
+
+        with:
+            Data:       2D or 3D arrays that have the grid coordinates
+            
+            FullGrid:   2D or 3D arrays that describe the grid coordinates
+                        2D - (X,Z)
+                        3D - (X,Y,Z)
+            
+            Grid:       1D vectors describing the cartesian grid            
+            
+            Tracers:    Tracers structure 
+
+            Property:   Property to be interpolated from Tracers2Grid 
+                        "T" - temperature
+
+            InterpolationMethod:    Interpolation method used to go from Tracers ->  Grid
+                    "Constant"          -   All particles within a distance [dx,dy,dz] around the grid point 
+                    "DistanceWeighted"  -   Particles closer to the grid point have a stronger weight.
+                                            This follows what is described in:
+                                                Duretz, T., May, D.A., Gerya, T.V., Tackley, P.J., 2011. Discretization errors and 
+                                                free surface stabilization in the finite difference and marker-in-cell method for applied geodynamics: 
+                                                A numerical study: Geochem. Geophys. Geosyst. 12, https://doi.org/10.1029/2011GC003567
+
+            RequestNumTracers:    Return the number of tracers on every grid cell (default=false)
+
+        out:
+            PhaseRatio:    Phase ratio on the gridpoints defined by Grid
+
+            NumTracers:    The number of tracers per grid point
+            
+"""
+function TracersToGrid!(Data, FullGrid, Grid, Tracers, Property="T", InterpolationMethod="Constant", RequestNumTracers=false);
+
+    numPhases       =   maximum(Tracers.Phase);
+    dim             =   length(FullGrid)  
+    Nx              =   size(FullGrid[1],1);
+    if dim==2
+        Nz          =   size(FullGrid[1],2);
+    else
+        Ny, Nz      =   size(FullGrid[1],2), size(FullGrid[1],3);
+    end
+    Data_local      =   copy(Data) .* 0.0;                  # will hold the data @ the end
+    
+    R               =   CartesianIndices(FullGrid[1])
+    Ifirst, Ilast   =   first(R), last(R)
+    I1              =   oneunit(Ifirst)
+
+    # We assume that spacing is constant in all directions; 
+    #   If that is not the case the algorithm becomes a bit more complicated (not implemented)
+    d               =   zeros(dim)
+    for idim=1:dim
+        d[idim]     =   (FullGrid[idim][Ifirst+I1] -   FullGrid[idim][Ifirst]);         # spacing of grid cells 
+    end
+    coord           =   Tracers.coord; coord = hcat(coord...)';                         # extract array with coordinates of all tracers
+
+    # Correct coordinates of tracers (to stay within bounds of grid), to not mess up the interpolation below
+    CorrectBounds_Array!(coord, Grid);
+  
+    indX            =   CartesianIndices( FullGrid[  1]);
+    IndPoints       =   zeros(Int,length(Tracers),1);
+    if dim==2
+        itp         =   interpolate(LinearIndices(FullGrid[1]), BSpline(Constant()));   # 2D interpolation that has indices
+        sitp        =   scale(itp, Grid[1], Grid[2]);
+        evaluate_interp_Int_2D(IndPoints, sitp,coord);                                  # this gives the full 2D/3D index
+    else
+        itp         =   interpolate(LinearIndices(FullGrid[1]), BSpline(Constant()));   # 2D interpolation that has indices
+        sitp        =   scale(itp, Grid[1], Grid[2], Grid[3]);
+        evaluate_interp_Int_3D(IndPoints, sitp,coord);                                  # this gives the full 2D/3D index
+    end
+
+    NumTracers  =   zeros(Int64,  size(Data));   # Keep track of # of tracers around every point
+    TotalWeight =   zeros(Float64,size(Data)) 
+    indNum      =   CartesianIndices(NumTracers);
+    
+    if InterpolationMethod=="DistanceWeighted"
+        # In case we use a distance based weighting, compute the weight factor here
+        X_g             =   FullGrid[1  ][IndPoints];   # Gridpoint to which the particle belongs 
+        Z_g             =   FullGrid[end][IndPoints];   # Gridpoint to which the particle belongs 
+        Weight      =   zeros(size(coord,1),1)
+        if dim==2
+            evaluate_weight_2D(Weight, coord, X_g, Z_g, d[1], d[end]);
+        elseif dim==3
+            Y_g         =   FullGrid[2  ][IndPoints];   
+            evaluate_weight_3D(Weight, coord, X_g, Y_g, Z_g, d[1], d[2], d[end]);
+        end
+    
+    elseif InterpolationMethod=="Constant"
+        Weight          =   ones(length(Tracers),1); 
+    else
+        error("Unknown InterpolationMethod=$InterpolationMethod. Choose: [Constant] or [DistanceWeighted]. ")
+    end
+
+    if  Property=="T"
+        DataTracers          =   Tracers.T;     # temperature
+    elseif Property=="Phi"
+        DataTracers          =   Tracers.Phi;   # solid fraction
+    else
+        error("Property $(Property) not yet implemented")
+    end
+    
+    SumData(Data_local, NumTracers, TotalWeight, length(Tracers), IndPoints, DataTracers, Weight);   # sum data from ever point
+
+    # normalize based on weight & set non-empty data pounts
+    Threads.@threads for i=eachindex(Data_local)
+        if TotalWeight[i]>0.0
+            Data_local[i] = Data_local[i]/TotalWeight[i];
+        end
+        if NumTracers[i]>0
+            Data[i] = Data_local[i];
+        end
+    end
+
+
+    if RequestNumTracers
+        return NumTracers
+    else
+        return nothing
+    end
+
+end
+
+
+
+# define functions to speed up key calculations above
+function SumData(DataLocal, NumTracers, TotalWeight, nT, IndPoints, DataTracers, Weight)
+    Threads.@threads    for iT=1:nT
+                                ind = IndPoints[iT];
+@inbounds                       DataLocal[ind]      +=  Weight[iT]*DataTracers[iT];  
+@inbounds                       TotalWeight[ind]    +=  Weight[iT];  
+@inbounds                       NumTracers[ind]     +=  1;               
+                        end
+    end
+
 
 function Add_Phase_2D(PhaseRatio, NumTracers, nT, IndPoints, indPhase, indX, iPhase, indNum, Weight)
     Threads.@threads    for iT=1:nT
