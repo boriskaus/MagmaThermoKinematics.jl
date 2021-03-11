@@ -263,6 +263,7 @@ function test_TracerToGrid(Dimension="2D")
 
   # Create tracer structure that fill te full grid
   Tracers                     =   InitializeTracers(FullGrid,3, false);
+  @time Tracers               =   InitializeTracers(FullGrid,3, false);
 
   Phi     =   Z./H;
  
@@ -318,7 +319,7 @@ end
 
   
 # ===================================================================================================
-if 1==1
+if 1==0
   @testset "Update Tracer" begin
     @test test_TracerUpdate("2D", "Linear") ≈  2.2699573946787955e-5  atol=1e-8;
     @test test_TracerUpdate("2D", "Cubic")  ≈  4.217098535399923e-7   atol=1e-8;
@@ -341,5 +342,9 @@ if 1==1
   end;
 
 end
+
+ test_TracerToGrid("2D")  
+ test_TracerToGrid("3D")  
+
 
 

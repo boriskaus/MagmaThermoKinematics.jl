@@ -14,6 +14,8 @@ using Interpolations                            # Fast interpolations
 using StaticArrays                      
 using CSV                                       # for reading phase diagrams
 
+include("Units.jl")                             # various useful units
+
 ## Alphabetical include of computation-submodules (must be at end as needs to import from ParallelStencil).
 include("Diffusion.jl")
 export Diffusion2D, Diffusion3D  #
@@ -25,9 +27,6 @@ export PhaseRatioAverage!, ComputeSeismicVelocities, SolidFraction_Parameterized
 # Export functions that will be available outside this module
 export StructArray, LazyRow # useful 
 export Tracer 
-
-const SecYear =   3600*24*365.25;                      # seconds/year
-export SecYear
 
 include("Dikes.jl")
 export Dike, DikePoly

@@ -161,33 +161,40 @@ function InitializeTracers(Grid, NumTracersDir=3, RandomPertur=true);
     elseif dim==3
         coord_loc0 = [ [x,y,z]   for x=xs for y=ys for z=zs];    # Creates a tuple with coords
     end
+    coord_loc = coord_loc0;
 
     for I = Ifirst:Ilast-I1         
-    
+       
+      
         for idim=1:dim
             cen[idim]  = (Grid[idim][I+I1] +   Grid[idim][I])/2.0;     # center of control volume
             d[idim]    = (Grid[idim][I+I1] -   Grid[idim][I]);         # spacing of grid cells 
         end
-        
+
+       
+        ## THIS SECTION ALLOCATES A LOT EVEN WHEN WE HAVE IT FALSE  ---
         # add random perturbation if requested
         if RandomPertur
+
             if dim==2
                 randm       = [(map(rand,(Float64,Float64)) .- 0.5).*2.0 .* (d1[1],d1[2]) for i=eachindex(coord_loc)];        #
-                coord_loc   = [ coord_loc0[i] .+ randm[i] for i=eachindex(coord_loc0)];       # This can potentially be done in-place?
-                
+                coord_loc   = [ coord_loc0[i] .+ randm[i] for i=eachindex(coord_loc0)];       # This can potentially be done in-place?   
             elseif dim==3
                 randm       = [(map(rand,(Float64,Float64, Float64)) .- 0.5).*2.0 .* (d1[1],d1[2],d1[3]) for i=eachindex(coord_loc)];        #
                 coord_loc   = [ coord_loc0[i] .+ randm[i] for i=eachindex(coord_loc0)];       # This can potentially be done in-place?
             end
-        else
-            coord_loc = coord_loc0;
-
         end
+     
+        #if 1==0
         
         # Add new tracers with perturbed coords to struct
+        
+        ## THIS LINE ALLOCATES EVEN MORE, BECAUSE IT IS CALLED MANY TIMES
         ReplaceTracerFields!(Tracers0, coord_loc,cen,size(Tracers,1));     # Replace coord & num and add cen to coordinate
-        append!(Tracers, Tracers0);                                         # Extend the Tracers structure and add new fields to it
-
+        
+        ## THIS LINE IS SLOW BUT DOESN'T ALLOCATE ALL THAT MUCH:
+        append!(Tracers, Tracers0);                                             # Extend the Tracers structure and add new fields to it
+       # end
     end
 
     # delete first field, which was empty   
