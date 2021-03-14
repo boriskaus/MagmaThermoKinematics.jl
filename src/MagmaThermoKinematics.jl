@@ -15,6 +15,19 @@ using StaticArrays
 using CSV                                       # for reading phase diagrams
 
 include("Units.jl")                             # various useful units
+include("Grids/Grids.jl"); 
+include("PhaseProperties/PhaseProperties.jl")
+include("Markers/Markers_.jl")
+
+using .Grids
+export RegularRectilinearGrid, Bounded, Flat2D
+
+using .PhaseProperties
+export ThermalPhaseProp, ThermalProp, PhaseProp, StokesProp
+
+using .Markers_
+export Markers, Marker, MarkerTemp
+
 
 ## Alphabetical include of computation-submodules (must be at end as needs to import from ParallelStencil).
 include("Diffusion.jl")
