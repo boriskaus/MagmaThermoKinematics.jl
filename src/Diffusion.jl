@@ -2,7 +2,7 @@
 Diffusion2D provides 2D diffusion codes (pure 2D and axisymmetric)
 """
 module Diffusion2D
-export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!, bc2D_z!;
+export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!, bc2D_z!, bc2D_z_bottom!;
 
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
@@ -50,6 +50,12 @@ end
 @parallel_indices (ix) function bc2D_z!(T::Data.Array) # apply zero flux BC's at side boundaries
     T[ix,1 ]    = T[ix, 2    ]
     T[ix, end]  = T[ix, end-1]
+    return
+end
+
+# Set z- boundary conditions @ bottom to be zero-flux
+@parallel_indices (ix) function bc2D_z_bottom!(T::Data.Array) # apply zero flux BC's at side boundaries
+    T[ix,1 ]    = T[ix, 2    ]
     return
 end
 
