@@ -231,15 +231,15 @@ MagmaThermoKinematics is currently being used as an example case to test this so
 
 ## Related work
 Thermal-kinematic codes such as the ones presented here have been around for some time with various degrees of sophistication (e.g., [1],[2],[3],[4],[5]). A recent effort in Julia, similar to what we do here, is described in [6].
-Yet, as far as we are aware, the source code of these other packages is currently not openly available (at least not in a non-binary format), which makes it often non-straightforward to understand what is actually done inside the codes.  
 
+Yet, as far as we are aware, the source code of these other packages is currently not openly available (at least not in a non-binary format), which makes it often non-straightforward to understand what is actually done inside the codes.   
 
-[1] Dufek, J., & Bergantz, G. W. (2005). Lower crustal magma genesis and preservation: A stochastic framework for the evaluation of basalt–crust interaction. Journal of Petrology, 46(11), 2167–2195. [https://doi.org/10.1093/petrology/egi049]()
+[1] Dufek, J., & Bergantz, G. W. (2005). Lower crustal magma genesis and preservation: A stochastic framework for the evaluation of basalt–crust interaction. *Journal of Petrology*, 46(11), 2167–2195. [https://doi.org/10.1093/petrology/egi049](https://doi.org/10.1093/petrology/egi049)
 
-[2] Annen, C., Blundy, J. D., & Sparks, R. S. J. (2006). The genesis of intermediate and silicic magmas in deep crustal hot zones. Journal of Petrology. 47(3), 505–539. [https://doi.org/10.1093/petrology/egi084]()
+[2] Annen, C., Blundy, J. D., & Sparks, R. S. J. (2006). The genesis of intermediate and silicic magmas in deep crustal hot zones. *Journal of Petrology*. 47(3), 505–539. [https://doi.org/10.1093/petrology/egi084](https://doi.org/10.1093/petrology/egi084)
 
-[4] Caricchi, L., Annen, C., Blundy, J., Simpson, G., & Pinel, V. (2014). Frequency and magnitude of volcanic eruptions controlled by magma injection and buoyancy. Nature Geoscience, 7, 126–130. [https://doi.org/10.1038/ngeo2041]()
+[4] Caricchi, L., Annen, C., Blundy, J., Simpson, G., & Pinel, V. (2014). Frequency and magnitude of volcanic eruptions controlled by magma injection and buoyancy. *Nature Geoscience*, 7, 126–130. [https://doi.org/10.1038/NGEO2041](https://doi.org/10.1038/NGEO2041)
 
-[5] Tierney, C. R., Schmitt, A. K., Lovera, O. M., & de Silva, S. L. (2016). Voluminous plutonism during a period of volcanic quiescence revealed by thermochemical modeling of zircon. Geology, 44, 683–686. https://doi.org/10.1130/G37968.1
+[5] Tierney, C. R., Schmitt, A. K., Lovera, O. M., & de Silva, S. L. (2016). Voluminous plutonism during a period of volcanic quiescence revealed by thermochemical modeling of zircon. *Geology*, 44, 683–686. [https://doi.org/10.1130/G37968.1](https://doi.org/10.1130/G37968.1)
 
-[6] Melnik, O.E., Utkin, I.S., Bindeman, I.N., 2021. Magma Chamber Formation by Dike Accretion and Crustal Melting: 2D Thermo‐Compositional Model With Emphasis on Eruptions and Implication for Zircon Records. *J Geophys Res Solid Earth* 126. https://doi.org/10.1029/2021JB023008. A preprint of their work is available [here](https://www.essoar.org/doi/10.1002/essoar.10505594.1).
+[6] Melnik, O.E., Utkin, I.S., Bindeman, I.N., 2021. Magma Chamber Formation by Dike Accretion and Crustal Melting: 2D Thermo‐Compositional Model With Emphasis on Eruptions and Implication for Zircon Records. *J Geophys Res Solid Earth* 126. [https://doi.org/10.1029/2021JB023008](https://doi.org/10.1029/2021JB023008). A preprint of their work is available [here](https://www.essoar.org/doi/10.1002/essoar.10505594.1).
