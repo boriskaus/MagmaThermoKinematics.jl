@@ -29,6 +29,10 @@ temperature field
             
             Type:           Type of dike
                             "SquareDike"    -   square dike area   
+                            "SquareDike_TopAccretion"           -   square dike area, which grows by underaccreting   
+                            "CylindricalDike_TopAccretion"      -   cylindrical dike area, which grows by underaccreting   
+                            "CylindricalDike_TopAccretion_FullModelAdvection"      -   cylindrical dike area, which grows by underaccreting; also material to the side of the dike is moved downwards   
+                            
                             "ElasticDike"   -   penny-shaped elastic dike in elastic halfspace
             
             T:          Temperature of the dike [Celcius]   
@@ -216,6 +220,32 @@ function HostRockVelocityFromDike( Grid, Points, Δ, dt, dike::Dike)
             Vz_rot[(Points[2] .>  0) .& (abs.(Points[1]).<  W/2.0)]  .=  Vint;
 
             Vx_rot[abs.(Points[1]).<W]          .=   0.0;      # set radial velocity to zero at left boundary
+        elseif Type=="SquareDike_TopAccretion"
+                @unpack H,W = dike
+                Vint    =  Δ/dt/1.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
+                    
+                Vz_rot[(Points[2] .<= 0) .& (abs.(Points[1]).<= W/2.0)]  .= -Vint;
+                #Vz_rot[(Points[2] .>  0) .& (abs.(Points[1]).<  W/2.0)]  .=  Vint;
+    
+                Vx_rot[abs.(Points[1]).<W]          .=   0.0;      # set radial velocity to zero at left boundary
+    
+        elseif   Type=="CylindricalDike_TopAccretion" || Type=="CylindricalDike_TopAccretion_FullModelAdvection"
+            @unpack H,W = dike
+            Vint    =  Δ/dt/1.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
+                
+            Vz_rot[(Points[2] .<= 0) .& ( (Points[1].^2 + Points[2].^2) .<= (W/2.0).^2)]  .= -Vint;
+            #Vz_rot[(Points[2] .>  0) .& (abs.(Points[1]).<  W/2.0)]  .=  Vint;
+
+            Vx_rot[abs.(Points[1]).<W]          .=   0.0;      # set radial velocity to zero at left boundary
+
+        elseif  Type=="CylindricalDike_TopAccretion_FullModelAdvection"
+            @unpack H,W = dike
+            Vint    =  Δ/dt/1.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
+                
+            Vz_rot[(Points[2] .<= 0) ]  .= -Vint;
+            #Vz_rot[(Points[2] .>  0) .& (abs.(Points[1]).<  W/2.0)]  .=  Vint;
+
+            Vx_rot[abs.(Points[1]).<=W] .=   0.0;      # set radial velocity to zero at left boundary
 
         elseif Type=="ElasticDike"
                 @unpack H,W = dike
@@ -271,7 +301,25 @@ Threads.@threads for i in eachindex(Vz_rot)
             Vx_rot[abs.(Points[1]).<W]          .=   0.0;      # set radial velocity to zero at left boundary
             Vy_rot[abs.(Points[2]).<W]          .=   0.0;      # set radial velocity to zero at left boundary
 
-
+        elseif  (Type=="SquareDike_TopAccretion") 
+                @unpack H,W = dike                          # Dimensions of square dike
+                Vint    =  Δ/dt/1.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
+                    
+                Vz_rot[(Points[3].<0) .& (abs.(Points[1]).<W/2.0) .& (abs.(Points[2]).<W/2.0)]  .= -Vint;
+               # Vz_rot[(Points[3].>0) .& (abs.(Points[1]).<W/2.0) .& (abs.(Points[2]).<W/2.0)]  .=  Vint;
+    
+                Vx_rot[abs.(Points[1]).<W]          .=   0.0;      # set radial velocity to zero at left boundary
+                Vy_rot[abs.(Points[2]).<W]          .=   0.0;      # set radial velocity to zero at left boundary
+        elseif  (Type=="CylindricalDike_TopAccretion") || (Type=="CylindricalDike_TopAccretion_FullModelAdvection")
+                @unpack H,W = dike                          # Dimensions of square dike
+                Vint    =  Δ/dt/1.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
+                    
+                Vz_rot[(Points[3] .<= 0.0) .& ( (Points[1].^2 + Points[2].^2).<=(W/2.0).^2) ]  .= -Vint;
+               # Vz_rot[(Points[3].>0) .& (abs.(Points[1]).<W/2.0) .& (abs.(Points[2]).<W/2.0)]  .=  Vint;
+    
+                Vx_rot[abs.(Points[1]).<= W]          .=   0.0;      # set radial velocity to zero at left boundary
+                Vy_rot[abs.(Points[2]).<= W]          .=   0.0;      # set radial velocity to zero at left boundary
+    
         elseif Type=="ElasticDike"
                 @unpack H,W = dike                          # Dimensions of dike
                 Vint    =  Δ/dt;                            # open the dike by a maximum amount of Δ in one dt (no 1/2 as that is taken care off inside the routine below)
@@ -392,7 +440,17 @@ function isinside_dike(pt, dike::Dike)
                 in = true
             end
         end
-
+    elseif  (Type=="SquareDike_TopAccretion") || (Type=="CylindricalDike_TopAccretion") || (Type=="CylindricalDike_TopAccretion_FullModelAdvection")
+        if  dim==2
+            if  (abs(pt[1])  <= W/2.0) & (abs(pt[end]) <= H/2.0)
+                in = true
+            end
+        elseif dim==3
+            error("add 3D case here")
+            if  (abs(pt[1])  < W/2.0) & (abs(pt[end])< H/2.0) & (abs(pt[2])< W/2.0)
+                in = true
+            end
+        end
     elseif Type=="ElasticDike"
         eq_ellipse = 100.0;
 
@@ -433,6 +491,13 @@ function volume_dike(dike::Dike)
     if Type=="SquareDike"
         area    = W*H;                  #  (in 2D, in m^2)
         volume  = W*W*H;                #  (equivalent 3D volume, in m^3)
+    elseif Type=="SquareDike_TopAccretion"
+        area    = W*H;                  #  (in 2D, in m^2)
+        volume  = W*W*H;                #  (equivalent 3D volume, in m^3)
+    elseif (Type=="CylindricalDike_TopAccretion") || (Type=="CylindricalDike_TopAccretion_FullModelAdvection")
+        area    = W*H;                  #  (in 2D, in m^2)
+        volume  = pi*(W/2.0)^2*H;       #  (equivalent 3D volume, in m^3)
+
     elseif Type=="ElasticDike"
         area    = pi*W*H                #   (in 2D, in m^2)
         volume  = 4/3*pi*W*W*H          #   (equivalent 3D volume, in m^3)
