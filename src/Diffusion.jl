@@ -18,9 +18,9 @@ using ParallelStencil.FiniteDifferences2D
     @all(qr)    =  @all(Rc).*@all(Kr).*@d_xa(T)./dr;                # heatflux in r
     @all(qz)    =            @all(Kz).*@d_ya(T)./dz;                # heatflux in z
     @inn(Tnew)  =  @inn(T) + dt./(@inn(Rho)*@inn(Cp)).* 
-                                (1.0./@inn(R).*@d_xi(qr)./dr  +     # 2nd derivative in r
-                                               @d_yi(qz)./dz) +     # 2nd derivative in z
-                                @inn(Rho)*L*@inn(dPhi_dt);          # latent heat
+                                ( 1.0./@inn(R).*@d_xi(qr)./dr +     # 2nd derivative in r
+                                                @d_yi(qz)./dz +     # 2nd derivative in z
+                                 @inn(Rho).*L*@inn(dPhi_dt)     );  # latent heat
 
     return
 end
@@ -32,8 +32,9 @@ end
     @all(qx)    =  @all(Kx).*@d_xa(T)./dx;                          # heatflux in x
     @all(qz)    =  @all(Kz).*@d_ya(T)./dz;                          # heatflux in z
     @inn(Tnew)  =  @inn(T) + dt./(@inn(Rho)*@inn(Cp)).* 
-                                 (@d_xi(qx)./dx + @d_yi(qz)./dz) +  # 2nd derivative 
-                                 @inn(Rho)*L*@inn(dPhi_dt);         # latent heat
+                                 (        @d_xi(qx)./dx + 
+                                          @d_yi(qz)./dz +           # 2nd derivative 
+                              @inn(Rho).*L*@inn(dPhi_dt) );         # latent heat
 
     return
 end
