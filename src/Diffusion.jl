@@ -12,29 +12,28 @@ using ParallelStencil.FiniteDifferences2D
 
 #------------------------------------------------------------------------------------------
 # Solve one diffusion timestep in axisymmetric geometry, including latent heat, with spatially variable Rho, Cp and K 
-@parallel function diffusion2D_AxiSymm_step!(Tnew, T, R, Rc, qr, qz, K, Kr, Kz, Rho, Cp, dt, dr, dz, L, dPhi_dt)   
+@parallel function diffusion2D_AxiSymm_step!(Tnew, T, R, Rc, qr, qz, K, Kr, Kz, Rho, Cp, dt, dr, dz, L, dϕdT)   
     @all(Kr)    =  @av_xa(K);                                       # average K in r direction
     @all(Kz)    =  @av_ya(K);                                       # average K in z direction
     @all(qr)    =  @all(Rc).*@all(Kr).*@d_xa(T)./dr;                # heatflux in r
     @all(qz)    =            @all(Kz).*@d_ya(T)./dz;                # heatflux in z
-    @inn(Tnew)  =  @inn(T) + dt./(@inn(Rho)*@inn(Cp)).* 
-                                ( 1.0./@inn(R).*@d_xi(qr)./dr +     # 2nd derivative in r
-                                                @d_yi(qz)./dz +     # 2nd derivative in z
-                                 @inn(Rho).*L*@inn(dPhi_dt)     );  # latent heat
+    @inn(Tnew)  =  @inn(T) + dt./(@inn(Rho).*(@inn(Cp) + L.*@inn(dϕdT))).* 
+                                 ( 1.0./@inn(R).*@d_xi(qr)./dr +     # 2nd derivative in r
+                                                 @d_yi(qz)./dz  );   # 2nd derivative in z
 
     return
 end
 
 # Solve one diffusion timestep in 2D geometry, including latent heat, with spatially variable Rho, Cp and K 
-@parallel function diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, dt, dx, dz, L, dPhi_dt)   
+@parallel function diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, dt, dx, dz, L, dϕdT)   
     @all(Kx)    =  @av_xa(K);                                       # average K in x direction
     @all(Kz)    =  @av_ya(K);                                       # average K in z direction
     @all(qx)    =  @all(Kx).*@d_xa(T)./dx;                          # heatflux in x
     @all(qz)    =  @all(Kz).*@d_ya(T)./dz;                          # heatflux in z
-    @inn(Tnew)  =  @inn(T) + dt./(@inn(Rho)*@inn(Cp)).* 
+    @inn(Tnew)  =  @inn(T) + dt./(@inn(Rho).*(@inn(Cp) + L.*@inn(dϕdT))).* 
                                  (        @d_xi(qx)./dx + 
-                                          @d_yi(qz)./dz +           # 2nd derivative 
-                              @inn(Rho).*L*@inn(dPhi_dt) );         # latent heat
+                                          @d_yi(qz)./dz             # 2nd derivative 
+                                 );          
 
     return
 end
@@ -82,7 +81,7 @@ ParallelStencil.@reset_parallel_stencil()       # reset, as we initialized paral
 
 # Solve one diffusion timestep in 3D geometry, including latent heat, with spatially variable Rho, Cp and K 
 #  Note: needs the 3D stencil routines; hence part is commented
-@parallel function diffusion3D_step_varK!(Tnew, T, qx, qy, qz, K, Kx, Ky, Kz, Rho, Cp, dt, dx, dy, dz, L, dPhi_dt)   
+@parallel function diffusion3D_step_varK!(Tnew, T, qx, qy, qz, K, Kx, Ky, Kz, Rho, Cp, dt, dx, dy, dz, L, dϕdT)   
     @all(Kx)    =  @av_xa(K);                                       # average K in x direction
     @all(Ky)    =  @av_ya(K);                                       # average K in y direction
     @all(Kz)    =  @av_za(K);                                       # average K in z direction
@@ -90,9 +89,10 @@ ParallelStencil.@reset_parallel_stencil()       # reset, as we initialized paral
     @all(qy)    =  @all(Ky).*@d_ya(T)./dy;                          # heatflux in y
     @all(qz)    =  @all(Kz).*@d_za(T)./dz;                          # heatflux in z
 
-    @inn(Tnew)  =  @inn(T) + dt./(@inn(Rho)*@inn(Cp)).* 
-                 (@d_xi(qx)./dx + @d_yi(qy)./dy + @d_zi(qz)./dz) +  # 2nd derivative 
-                               @inn(Rho)*L*@inn(dPhi_dt);           # latent heat
+    @inn(Tnew)  =  @inn(T) + dt./(@inn(Rho)*(@inn(Cp) + L.*@inn(dϕdT))).* 
+                   (  @d_xi(qx)./dx +
+                      @d_yi(qy)./dy + 
+                      @d_zi(qz)./dz   );                            # 2nd derivative 
 
     return
 end
