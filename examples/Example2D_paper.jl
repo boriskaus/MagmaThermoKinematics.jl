@@ -6,6 +6,7 @@ using ParallelStencil.FiniteDifferences2D
 using CairoMakie
 using GeoParams
 using Printf
+using MAT           # saves files in matlab format
 
 using Statistics
 using LinearAlgebra: norm
@@ -24,11 +25,13 @@ km³         = 1000^3
 
 # Model parameters
 W,H                     =   20e3, 20e3;                 # Width, Height
+Tsurface_C              =   0.0;
 GeoT                    =   40.0/1000;                  # Geothermal gradient [K/km]
-W_in, H_in              =   20e3,   100;                # Width and thickness of each dike that is intruded
-
-T_in                    =   1000;                       # Intrusion temperature
 maxTime                 =   1.5Myr;                     # Maximum simulation time in kyrs
+
+SimName                 =   "Zassy_Geneva_zeroFlux"   # name of simulation
+SaveOutput_steps        =   1e4;                        # saves output every x steps 
+CreateFig_steps         =   2000;                       # Create a figure every X steps
 
 if ~isempty(Mat_tup[1].EnergySourceTerms)
     La =  NumValue(Mat_tup[1].EnergySourceTerms[1].Q_L);             # latent heat 
@@ -36,40 +39,52 @@ else
     La = 0.
 end
 
-TotalVolume             =   1580e3^3           
-Flux                    =   7.5e-6*1000                 # in m^3/yr/m^2
-maxThickness            =   maxTime/SecYear*Flux        # max thickness of dike (from flux)
-
-nInjections             =   maxThickness/H_in   
-InjectionInterval       =   maxTime/nInjections;        # Inject a new dike every X kyrs
-@show maxThickness nInjections InjectionInterval
+# Specify sill parameters ----------------
+InjectionInterval       =   10kyr;                      # Inject a new dike every X kyrs
+W_in, H_in              =   20e3,   74.6269;            # Width and thickness of each dike that is intruded
+T_in                    =   1000;                       # Intrusion temperature
+SillThickness           =   H_in                        # Sill thickness [m]. Warning: This must be equal to an integer number of dz
 
 #DikeType                =   "SquareDike"              # Type to be injected ("ElasticDike","SquareDike")
 DikeType                =   "CylindricalDike_TopAccretion"   # Type to be injected ("ElasticDike","SquareDike", "SquareDike_TopAccretion")
 #DikeType = "CylindricalDike_TopAccretion_FullModelAdvection"
 #DikeType                =   "ElasticDike"              # Type to be injected ("ElasticDike","SquareDike", "SquareDike_TopAccretion")
+cen                     =   [0.; -7.0e3 - 0/2];         # Center of dike 
 
-cen                     =   [0.; -6.5e3 - 100/2];       # Center of dike 
+# Compute derived parameters from what is specified above
+SillRadius              =   W_in/2                      # Sill radius    
+SillArea                =   pi*SillRadius^2             # horizontal area of sill
+SillVolume              =   SillArea*SillThickness      # in m^3 
+
+nInjections             =   maxTime/InjectionInterval   
+TotalVolume             =   SillVolume*nInjections
+TotalVolume_km3         =   TotalVolume/1e9  # in km^3     
+ThicknessInjectedCrust  =   nInjections*SillThickness               # in m
+VertAccretionRate_m_yr  =   ThicknessInjectedCrust/maxTime*SecYear  # vertical accretion rate in m/yr
+MagmaFlux_km3_yr        =   TotalVolume_km3/maxTime*SecYear                     
+
+Flux                    =   TotalVolume/SillArea/maxTime*SecYear    # Magma flux in m3/yr/m2 
+MagmaFlux_km3_yr_km2    =   Flux/1e3                                # vertical magma flux in km3/yr/km2
+maxThickness            =   maxTime/SecYear*Flux                    # max thickness of dike (from flux)
 
 flux_free_bottom_BC     =   true
-Nx, Nz                  =   201, 201;                # resolution (grid cells in x,z direction)
-dx,dz                   =   W/(Nx-1), H/(Nz-1);      # grid size
-κ                       =   2.8/(1000*2700)
-dt                      =   min(dx^2, dz^2)./κ/20;  # stable timestep (required for explicit FD)
-nt::Int64               =   floor(maxTime/dt);      # number of required timesteps
-nTr_dike                =   300;                    # number of tracers inserted per dike
-
-@show nt maxTime/SecYear dt/SecYear
+Nx, Nz                  =   269, 269;                    # resolution (grid cells in x,z direction)
+dx,dz                   =   W/(Nx-1), H/(Nz-1);         # grid size
+κ                       =   3.3/(1000*2700)
+dt                      =   0.4*min(dx^2, dz^2)./κ/4;   # stable timestep (required for explicit FD)
+nt::Int64               =   floor(maxTime/dt);          # number of required timesteps
+nTr_dike                =   300;                        # number of tracers inserted per dike
+@show dt/SecYear
 
 # Array initializations
-T                       =   @zeros(Nx,   Nz);                    
+T                       =   @zeros(Nx,   Nz);    
 Kc                      =   @ones(Nx,    Nz);
 Rho                     =   @ones(Nx,    Nz);       
 Cp                      =   @ones(Nx,    Nz);
 Phi_melt, dϕdT          =   @zeros(Nx,   Nz), @zeros(Nx,   Nz  )                        # Melt fraction and derivative of mekt fraction vs T
 
 # Work array initialization
-Tnew, qr,qz, Kr, Kz     =   @zeros(Nx,   Nz), @zeros(Nx-1, Nz),     @zeros(Nx,   Nz-1), @zeros(Nx-1, Nz), @zeros(Nx,   Nz-1)    # thermal solver
+Tnew,T_init,qr,qz,Kr,Kz =   @zeros(Nx,   Nz), @zeros(Nx,   Nz), @zeros(Nx-1, Nz),     @zeros(Nx,   Nz-1), @zeros(Nx-1, Nz), @zeros(Nx,   Nz-1)    # thermal solver
 R,Rc,Z                  =   @zeros(Nx,   Nz), @zeros(Nx-1, Nz-1),   @zeros(Nx,   Nz)    # 2D gridpoints
 
 # Set up model geometry & initial T structure
@@ -80,42 +95,43 @@ Rc                      =   (R[2:end,:] + R[1:end-1,:])/2
 Grid                    =   (x,z);                                                  # Grid 
 Tracers                 =   StructArray{Tracer}(undef, 1)                           # Initialize tracers   
 dike                    =   Dike(W=W_in,H=H_in,Type=DikeType,T=T_in);               # "Reference" dike with given thickness,radius and T
-T                       .=   -Z.*GeoT;                                              # Initial (linear) temperature profile
+T_init                 .=   Tsurface_C .- Z.*GeoT;                                  # Initial (linear) temperature profile
+@parallel assign!(Tnew, T_init)
+@parallel assign!(T, T_init)
+
 P                       =   @zeros(Nx,Nz);
 Phases                  =   ones(Int64,Nx,Nz)
-
 time, dike_inj, InjectVol, Time_vec,Melt_Time = 0.0, 0.0, 0.0,zeros(nt,1),zeros(nt,1);
-T_init                  =   copy(T)
+
+if isdir(SimName)==false mkdir(SimName) end;    # create simulation directory if needed
 
 for it = 1:nt   # Time loop
 
-    if floor(time/InjectionInterval)> dike_inj              # Add new dike every X years
-        dike_inj            =   floor(time/InjectionInterval)        # Keeps track on what was injected already
+    # Add new dike every X years:
+    if floor(time/InjectionInterval)> dike_inj        
+        dike_inj            =   floor(time/InjectionInterval)                   # Keeps track on what was injected already
         Angle_rand          =   0;
-        dike                =   Dike(dike, Center=cen[:],Angle=[Angle_rand]);               # Specify dike with random location/angle but fixed size/T 
-        Tracers, T,Vol      =   InjectDike(Tracers, T, Grid, dike, nTr_dike);               # Add dike, move hostrocks
-        InjectVol           +=  Vol                                                         # Keep track of injected volume
+        dike                =   Dike(dike, Center=cen[:],Angle=[Angle_rand]);   # Specify dike with random location/angle but fixed size/T 
+        Tracers, T,Vol      =   InjectDike(Tracers, T, Grid, dike, nTr_dike,AdvectionMethod="Euler",InterpolationMethod="Quadratic");   # Add dike, move hostrocks
+        InjectVol           +=  Vol                                             # Keep track of injected volume
         Qrate               =   InjectVol/time
-        Qrate_km3_yr        =   Qrate*SecYear/(1e3^3)
+        Qrate_km3_yr        =   Qrate*SecYear/km³
         Qrate_km3_yr_km2    =   Qrate_km3_yr/(pi*(W_in/2/1e3)^2)
-        
-        @printf "  Added new dike; total injected magma volume = %.2f km³; rate Q=%.2f m³s⁻¹ = %.2e km³yr⁻¹ = %.2e km³yr⁻¹km⁻² \n" InjectVol/km³ Qrate Qrate_km3_yr Qrate_km3_yr_km2
+        @printf "  Added new dike; total injected magma volume = %.2f km³; rate Q= %.2e km³yr⁻¹ = %.2e km³yr⁻¹km⁻² \n" InjectVol/km³ Qrate_km3_yr Qrate_km3_yr_km2
     end
-
+    
     # Update material properties: rho, cp, k and dϕdT 
-    T_K         =  (T .+ 273.15).*K     # all GeoParams routines expect T in K
-    compute_meltfraction!(Phi_melt, Mat_tup, Phases, P, ustrip.(T_K)) 
-    compute_density!(Rho, Mat_tup, Phases, P,     ustrip.(T_K))
-    compute_heatcapacity!(Cp, Mat_tup, Phases, P, ustrip.(T_K))
-    compute_conductivity!(Kc, Mat_tup, Phases, P, ustrip.(T_K))
-    compute_dϕdT!(dϕdT, Mat_tup, Phases, P,       ustrip.(T_K)) 
+    T_K         =  T .+ 273.15     # all GeoParams routines expect T in K
+    compute_meltfraction!(Phi_melt, Mat_tup, Phases, P, T_K) 
+    compute_density!(Rho, Mat_tup, Phases, P,     T_K)
+    compute_heatcapacity!(Cp, Mat_tup, Phases, P, T_K)
+    compute_conductivity!(Kc, Mat_tup, Phases, P, T_K)
+    compute_dϕdT!(dϕdT, Mat_tup, Phases, P,       T_K)
     
     # Perform a diffusion step
     # Perform nonlinear iterations (for latent heat which depends on T)
-    err,iter = 1., 0
-    while err>1e-6
-        iter += 1
-        
+    err, iter = 1., 1
+    while err>1e-6 && iter<20
         @parallel diffusion2D_AxiSymm_step!(Tnew, T, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, dt, dx, dz, La, dϕdT) # diffusion step
         @parallel (1:size(T,2)) bc2D_x!(Tnew);                      # flux-free lateral boundary conditions
         if flux_free_bottom_BC==true
@@ -125,17 +141,20 @@ for it = 1:nt   # Time loop
         dϕdT_o  = dϕdT
         compute_dϕdT!(dϕdT, Mat_tup, Phases, P,  Tnew .+ 273.15)    # update dϕdT using latest estimate for T
         err     = norm(dϕdT-dϕdT_o)                                 # compute error
+        iter   += 1
     end
+
 
     # Update variables
     Tracers             =   UpdateTracers(Tracers, Grid, Tnew, Phi_melt);      # Update info on tracers 
-    T, Tnew             =   Tnew, T;                                           # Update temperature
+    @parallel assign!(T, Tnew)
+    @parallel assign!(Tnew, T)
     time                =   time + dt;                                         # Keep track of evolved time
     Melt_Time[it]       =   sum( Phi_melt)/(Nx*Nz)                             # Melt fraction in crust    
     Time_vec[it]        =   time;                                              # Vector with time
     
     # Visualize results
-    if mod(it,2000)==0  
+    if mod(it,CreateFig_steps)==0  || it==nt 
         time_Myrs = time/Myr;
         # ---------------------------------
         # Create plot (using Makie)
@@ -163,15 +182,29 @@ for it = 1:nt   # Time loop
         limits!(ax3, 0, 20, -20, 0)
         Colorbar(fig[1, 5], co)
         
+        
         # Save figure
-        save("Viz2D/Zassy2D_$it.png", fig)
+        save("$(SimName)/$(SimName)_$it.png", fig)
         #
         # ---------------------------------
-        println("Timestep $it = $(round(time/kyr*100)/100) kyrs, maxT = $(maximum(T)) C")
+        println("Timestep $it = $(round(time/kyr*100)/100) kyrs, maxT = $(round(maximum(T),digits=3)) ᵒC")
     end
+
+    # Save output to disk once in a while
+    if mod(it,SaveOutput_steps)==0  || it==nt 
+        filename = "$(SimName)/$(SimName)_$it.mat"
+        matwrite(filename, 
+                        Dict("Tnew"=> Tnew, 
+                             "time"=> time, 
+                             "x"   => Vector(x), 
+                             "z"   => Vector(z))
+            )
+        println("  Saved matlab output to $filename")    
+    end
+
 end
 
-return x,z,T, Time_vec, Melt_Time;
+return x,z,T, Time_vec, Melt_Time, Tracers;
 end # end of main function
 
 
@@ -185,15 +218,20 @@ end # end of main function
 MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
                                  Density    = ConstantDensity(ρ=2700/m^3),
                           EnergySourceTerms = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                               #Conductivity = ConstantConductivity(k=2.8Watt/K/m),     # in case we use constant k
+                          #     Conductivity = ConstantConductivity(k=1.0Watt/K/m),     # in case we use constant k
                                Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
+                               #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
                                HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
-                                    Melting = MeltingParam_4thOrder()),
-                # add more parametere here, in case you have >1 phase in the model                                    
+                                    Melting = MeltingParam_4thOrder()),                     # Marxer & Ulmer data
+                # add more parameters here, in case you have >1 phase in the model                                    
                 )
 
 # Call the main code with the specified material parameters
-x,z,T, Time_vec,Melt_Time = MainCode_2D(MatParam); # start the main code
+x,z,T, Time_vec,Melt_Time, Tracers = MainCode_2D(MatParam); # start the main code
+
+
+
+
 
 
 #plot(Time_vec/kyr, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example2D") #Create plot
