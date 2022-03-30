@@ -40,21 +40,21 @@ end
 
 
 # Set x- boundary conditions to be zero-flux
-@parallel_indices (iy) function bc2D_x!(T::Data.Array) # apply zero flux BC's at the x-side boundaries
+@parallel_indices (iy) function bc2D_x!(T::Data.Array) 
     T[1  , iy] = T[2    , iy]
     T[end, iy] = T[end-1, iy]
     return
 end
 
 # Set z- boundary conditions to be zero-flux
-@parallel_indices (ix) function bc2D_z!(T::Data.Array) # apply zero flux BC's at side boundaries
+@parallel_indices (ix) function bc2D_z!(T::Data.Array) 
     T[ix,1 ]    = T[ix, 2    ]
     T[ix, end]  = T[ix, end-1]
     return
 end
 
 # Set z- boundary conditions @ bottom to be zero-flux
-@parallel_indices (ix) function bc2D_z_bottom!(T::Data.Array) # apply zero flux BC's at side boundaries
+@parallel_indices (ix) function bc2D_z_bottom!(T::Data.Array) 
     T[ix,1 ]    = T[ix, 2    ]
     return
 end
@@ -98,16 +98,22 @@ ParallelStencil.@reset_parallel_stencil()       # reset, as we initialized paral
 end
 
 # Set x- boundary conditions to be zero-flux
-@parallel_indices (iy,iz) function bc3D_x!(T) # apply zero flux BC's at the x-side boundaries
+@parallel_indices (iy,iz) function bc3D_x!(T) 
     T[1  , iy,iz] = T[2    , iy,iz]
     T[end, iy,iz] = T[end-1, iy,iz]
     return
 end
 
 # Set y- boundary conditions to be zero-flux
-@parallel_indices (ix,iz) function bc3D_y!(T) # apply zero flux BC's at the y-side boundaries
+@parallel_indices (ix,iz) function bc3D_y!(T) 
     T[ix  , 1,iz] = T[ix, 2,iz]
     T[ix, end,iz] = T[ix, end-1,iz]
+    return
+end
+
+# Set z- boundary conditions @ bottom to be zero-flux
+@parallel_indices (ix,iy) function bc2D_z_bottom!(T::Data.Array) 
+    T[ix,iy,1 ]    = T[ix, iy,2  ]
     return
 end
 
