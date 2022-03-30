@@ -145,11 +145,11 @@ function InjectDike(Tracers, T::Array, Grid, dike::Dike, nTr_dike::Int64; Advect
     # Compute velocity required to create space for dike
     Δ           =   H/(nsteps);
     dt          =   1.0
-    Velocity    =  HostRockVelocityFromDike(Grid,GridFull, Δ, dt,dike);       # compute velocity field
- 
+    Velocity    =   HostRockVelocityFromDike(Grid,GridFull, Δ, dt,dike);       # compute velocity field
+
     # Move hostrock & already existing tracers to the side to create space for new dike
     Tnew        =   zeros(size(T));
-    for ipseudotime=1:nsteps 
+    for ipseudotime=1:nsteps
         Tnew        =   AdvectTemperature(T, Grid,  GridFull, Velocity, dt, AdvectionMethod, InterpolationMethod);                      # use interpolation of velocity from grid to advect T
         #Tnew    =   AdvectTemperature(T, Grid,  GridFull, Velocity, dt, AdvectionMethod, InterpolationMethod, "FromDike", dike, Δ);    # optional method, in which we use the analytical velocity to advect T
         
@@ -222,7 +222,7 @@ function HostRockVelocityFromDike( Grid, Points, Δ, dt, dike::Dike)
             Vx_rot[abs.(Points[1]).<W]          .=   0.0;      # set radial velocity to zero at left boundary
         elseif Type=="SquareDike_TopAccretion"
                 @unpack H,W = dike
-                Vint    =  Δ/dt/1.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
+                Vint    =  Δ/dt/1.0;                        # open the dike by a maximum amount of Δ in one dt
                     
                 Vz_rot[(Points[2] .<= 0) .& (abs.(Points[1]).<= W/2.0)]  .= -Vint;
                 #Vz_rot[(Points[2] .>  0) .& (abs.(Points[1]).<  W/2.0)]  .=  Vint;
@@ -231,9 +231,9 @@ function HostRockVelocityFromDike( Grid, Points, Δ, dt, dike::Dike)
     
         elseif   Type=="CylindricalDike_TopAccretion" 
             @unpack H,W = dike
-            Vint    =  Δ/dt/1.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
+            Vint    =  Δ/dt/1.0;                        # open the dike by a maximum amount of Δ in one dt 
                 
-            Vz_rot[(Points[2] .<= 0) .& ( (Points[1].^2 + Points[2].^2) .<= (W/2.0).^2)]  .= -Vint;
+            Vz_rot[(Points[2] .<= 0) .& ( Points[1]  .<= (W/2.0))]  .= -Vint;
             #Vz_rot[(Points[2] .>  0) .& (abs.(Points[1]).<  W/2.0)]  .=  Vint;
 
             Vx_rot[abs.(Points[1]).<=W]          .=   0.0;      # set radial velocity 

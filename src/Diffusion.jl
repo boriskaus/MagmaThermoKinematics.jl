@@ -2,13 +2,17 @@
 Diffusion2D provides 2D diffusion codes (pure 2D and axisymmetric)
 """
 module Diffusion2D
-export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!, bc2D_z!, bc2D_z_bottom!;
+export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!, bc2D_z!, bc2D_z_bottom!, assign!;
 
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
 
 @init_parallel_stencil(Threads, Float64, 2);    # initialize parallel stencil in 2D
 
+@parallel function assign!(A::Data.Array, B::Data.Array)
+    @all(A) = @all(B)
+    return
+end
 
 #------------------------------------------------------------------------------------------
 # Solve one diffusion timestep in axisymmetric geometry, including latent heat, with spatially variable Rho, Cp and K 
@@ -64,7 +68,7 @@ end
 
 
 """
-Diffusion3D provides 2D diffusion codes (pure 2D and axisymmetric)
+Diffusion3D provides 3D diffusion routines
 """
 module Diffusion3D
 
@@ -72,12 +76,16 @@ module Diffusion3D
 using ParallelStencil 
 using ParallelStencil.FiniteDifferences3D
 
-export diffusion3D_step_varK!, bc3D_x!, bc3D_y!
+export diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc2D_z_bottom!, assign!
 
 ParallelStencil.@reset_parallel_stencil()       # reset, as we initialized parallel_stencil already above (if we don't do this here, we dont seem to be able to define the functions below)    
 
 @init_parallel_stencil(Threads, Float64, 3);    # initialize parallel stencil in 2D
 
+@parallel function assign!(A::Data.Array, B::Data.Array)
+    @all(A) = @all(B)
+    return
+end
 
 # Solve one diffusion timestep in 3D geometry, including latent heat, with spatially variable Rho, Cp and K 
 #  Note: needs the 3D stencil routines; hence part is commented
