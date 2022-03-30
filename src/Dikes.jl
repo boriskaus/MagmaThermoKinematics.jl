@@ -227,16 +227,16 @@ function HostRockVelocityFromDike( Grid, Points, Δ, dt, dike::Dike)
                 Vz_rot[(Points[2] .<= 0) .& (abs.(Points[1]).<= W/2.0)]  .= -Vint;
                 #Vz_rot[(Points[2] .>  0) .& (abs.(Points[1]).<  W/2.0)]  .=  Vint;
     
-                Vx_rot[abs.(Points[1]).<W]          .=   0.0;      # set radial velocity to zero at left boundary
+                Vx_rot[abs.(Points[1]).<=W]          .=   0.0;      # set radial velocity 
     
-        elseif   Type=="CylindricalDike_TopAccretion" || Type=="CylindricalDike_TopAccretion_FullModelAdvection"
+        elseif   Type=="CylindricalDike_TopAccretion" 
             @unpack H,W = dike
             Vint    =  Δ/dt/1.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
                 
             Vz_rot[(Points[2] .<= 0) .& ( (Points[1].^2 + Points[2].^2) .<= (W/2.0).^2)]  .= -Vint;
             #Vz_rot[(Points[2] .>  0) .& (abs.(Points[1]).<  W/2.0)]  .=  Vint;
 
-            Vx_rot[abs.(Points[1]).<W]          .=   0.0;      # set radial velocity to zero at left boundary
+            Vx_rot[abs.(Points[1]).<=W]          .=   0.0;      # set radial velocity 
 
         elseif  Type=="CylindricalDike_TopAccretion_FullModelAdvection"
             @unpack H,W = dike
