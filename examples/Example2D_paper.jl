@@ -2,7 +2,6 @@ using MagmaThermoKinematics
 using MagmaThermoKinematics.Diffusion2D
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
-#using Plots 
 using CairoMakie
 using GeoParams
 using Printf
@@ -28,10 +27,11 @@ W,H                     =   20e3, 20e3;                 # Width, Height
 Tsurface_C              =   0.0;
 GeoT                    =   40.0/1000;                  # Geothermal gradient [K/km]
 maxTime                 =   1.5Myr;                     # Maximum simulation time in kyrs
+# maxTime                 =   0.15Myr;                  # Maximum simulation time in kyrs
 
-SimName                 =   "Zassy_Geneva_zeroFlux"   # name of simulation
-SaveOutput_steps        =   1e4;                        # saves output every x steps 
-CreateFig_steps         =   2000;                       # Create a figure every X steps
+SimName                 =   "Zassy_Geneva_zeroFlux"     # name of simulation
+SaveOutput_steps        =   1e3;                        # saves output every x steps 
+CreateFig_steps         =   500;                        # Create a figure every X steps
 
 if ~isempty(Mat_tup[1].EnergySourceTerms)
     La =  NumValue(Mat_tup[1].EnergySourceTerms[1].Q_L);             # latent heat 
@@ -67,6 +67,7 @@ Flux                    =   TotalVolume/SillArea/maxTime*SecYear    # Magma flux
 MagmaFlux_km3_yr_km2    =   Flux/1e3                                # vertical magma flux in km3/yr/km2
 maxThickness            =   maxTime/SecYear*Flux                    # max thickness of dike (from flux)
 
+deactivate_La_at_depth  =   true
 flux_free_bottom_BC     =   true
 Nx, Nz                  =   269, 269;                    # resolution (grid cells in x,z direction)
 dx,dz                   =   W/(Nx-1), H/(Nz-1);         # grid size
@@ -77,14 +78,16 @@ nTr_dike                =   300;                        # number of tracers inse
 @show dt/SecYear
 
 # Array initializations
-T                       =   @zeros(Nx,   Nz);    
+T                       =   @zeros(Nx,   Nz);   
+T_K                     =   @zeros(Nx,   Nz);   
 Kc                      =   @ones(Nx,    Nz);
 Rho                     =   @ones(Nx,    Nz);       
 Cp                      =   @ones(Nx,    Nz);
-Phi_melt, dϕdT          =   @zeros(Nx,   Nz), @zeros(Nx,   Nz  )                        # Melt fraction and derivative of mekt fraction vs T
+Phi_melt, dϕdT,dϕdT_o   =   @zeros(Nx,   Nz), @zeros(Nx,   Nz  ), @zeros(Nx,   Nz  )                   # Melt fraction and derivative of melt fraction vs T
 
 # Work array initialization
 Tnew,T_init,qr,qz,Kr,Kz =   @zeros(Nx,   Nz), @zeros(Nx,   Nz), @zeros(Nx-1, Nz),     @zeros(Nx,   Nz-1), @zeros(Nx-1, Nz), @zeros(Nx,   Nz-1)    # thermal solver
+T_it_old                =   @zeros(Nx,   Nz)
 R,Rc,Z                  =   @zeros(Nx,   Nz), @zeros(Nx-1, Nz-1),   @zeros(Nx,   Nz)    # 2D gridpoints
 
 # Set up model geometry & initial T structure
@@ -96,6 +99,11 @@ Grid                    =   (x,z);                                              
 Tracers                 =   StructArray{Tracer}(undef, 1)                           # Initialize tracers   
 dike                    =   Dike(W=W_in,H=H_in,Type=DikeType,T=T_in);               # "Reference" dike with given thickness,radius and T
 T_init                 .=   Tsurface_C .- Z.*GeoT;                                  # Initial (linear) temperature profile
+
+# Set initial sill in temperature structure
+ind = findall(R.<=W_in/2 .&& abs.(Z.-cen[2]) .< H_in/2 );
+T_init[ind] .= T_in;
+
 @parallel assign!(Tnew, T_init)
 @parallel assign!(T, T_init)
 
@@ -104,43 +112,53 @@ Phases                  =   ones(Int64,Nx,Nz)
 time, dike_inj, InjectVol, Time_vec,Melt_Time = 0.0, 0.0, 0.0,zeros(nt,1),zeros(nt,1);
 
 if isdir(SimName)==false mkdir(SimName) end;    # create simulation directory if needed
-
+global T_init, Kc
 for it = 1:nt   # Time loop
 
     # Add new dike every X years:
-    if floor(time/InjectionInterval)> dike_inj        
+    if floor(time/InjectionInterval)> dike_inj       
         dike_inj            =   floor(time/InjectionInterval)                   # Keeps track on what was injected already
         Angle_rand          =   0;
         dike                =   Dike(dike, Center=cen[:],Angle=[Angle_rand]);   # Specify dike with random location/angle but fixed size/T 
-        Tracers, T,Vol      =   InjectDike(Tracers, T, Grid, dike, nTr_dike,AdvectionMethod="Euler",InterpolationMethod="Quadratic");   # Add dike, move hostrocks
+        Tracers, T,Vol      =   InjectDike(Tracers, T, Grid, dike, nTr_dike);   # Add dike, move hostrocks
         InjectVol           +=  Vol                                             # Keep track of injected volume
         Qrate               =   InjectVol/time
         Qrate_km3_yr        =   Qrate*SecYear/km³
         Qrate_km3_yr_km2    =   Qrate_km3_yr/(pi*(W_in/2/1e3)^2)
-        @printf "  Added new dike; total injected magma volume = %.2f km³; rate Q= %.2e km³yr⁻¹ = %.2e km³yr⁻¹km⁻² \n" InjectVol/km³ Qrate_km3_yr Qrate_km3_yr_km2
+        @printf "  Added new dike; time=%.3f kyrs, total injected magma volume = %.2f km³; rate Q= %.2e km³yr⁻¹ = %.2e km³yr⁻¹km⁻² \n" time/kyr InjectVol/km³ Qrate_km3_yr Qrate_km3_yr_km2
     end
     
-    # Update material properties: rho, cp, k and dϕdT 
-    T_K         =  T .+ 273.15     # all GeoParams routines expect T in K
-    compute_meltfraction!(Phi_melt, Mat_tup, Phases, P, T_K) 
-    compute_density!(Rho, Mat_tup, Phases, P,     T_K)
-    compute_heatcapacity!(Cp, Mat_tup, Phases, P, T_K)
-    compute_conductivity!(Kc, Mat_tup, Phases, P, T_K)
-    compute_dϕdT!(dϕdT, Mat_tup, Phases, P,       T_K)
-    
-    # Perform a diffusion step
-    # Perform nonlinear iterations (for latent heat which depends on T)
+    # Perform nonlinear iterations (for latent heat and conductivity which depends on T)
     err, iter = 1., 1
+    @parallel assign!(T_K, T, 273.15)
+    @parallel assign!(T_it_old, T)
     while err>1e-6 && iter<20
+        
+        # Update material properties (as some are a function of T)
+        compute_meltfraction!(Phi_melt, Mat_tup, Phases, P, T_K) 
+        compute_density!(Rho, Mat_tup, Phases, P,     T_K)
+        compute_heatcapacity!(Cp, Mat_tup, Phases, P, T_K)
+        compute_conductivity!(Kc, Mat_tup, Phases, P, T_K)
+        compute_dϕdT!(dϕdT, Mat_tup, Phases, P,       T_K)
+
+        # Switch off latent heat below a certain depth 
+        if deactivate_La_at_depth==true
+            ind = findall(Z.<-15e3)
+            dϕdT[ind] .= 0.0
+        end
+        
+        # Diffusion step:
         @parallel diffusion2D_AxiSymm_step!(Tnew, T, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, dt, dx, dz, La, dϕdT) # diffusion step
         @parallel (1:size(T,2)) bc2D_x!(Tnew);                      # flux-free lateral boundary conditions
         if flux_free_bottom_BC==true
             @parallel (1:size(T,1)) bc2D_z_bottom!(Tnew);           # flux-free bottom BC  (if false=isothermal)
         end
         
-        dϕdT_o  = dϕdT
-        compute_dϕdT!(dϕdT, Mat_tup, Phases, P,  Tnew .+ 273.15)    # update dϕdT using latest estimate for T
-        err     = norm(dϕdT-dϕdT_o)                                 # compute error
+        # Update T_K (used above to compute material properties)
+        @parallel assign!(T_K, Tnew,  273.15)   # all GeoParams routines expect T in K
+        err     = norm(Tnew-T_it_old)           # compute error
+      
+        @parallel assign!(T_it_old, Tnew)       # Store Tnew of last iteration step
         iter   += 1
     end
 
@@ -218,7 +236,7 @@ end # end of main function
 MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
                                  Density    = ConstantDensity(ρ=2700/m^3),
                           EnergySourceTerms = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                          #     Conductivity = ConstantConductivity(k=1.0Watt/K/m),     # in case we use constant k
+                          #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),     # in case we use constant k
                                Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
                                #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
                                HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
