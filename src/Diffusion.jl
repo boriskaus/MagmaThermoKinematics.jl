@@ -2,17 +2,42 @@
 Diffusion2D provides 2D diffusion codes (pure 2D and axisymmetric)
 """
 module Diffusion2D
-export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!, bc2D_z!, bc2D_z_bottom!, assign!;
+export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!, bc2D_z!, bc2D_z_bottom!, assign!, diffusion2D_AxiSymm_residual!, 
+        RungaKutta1!, RungaKutta2!,RungaKutta4!;
 
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
 
 @init_parallel_stencil(Threads, Float64, 2);    # initialize parallel stencil in 2D
 
+@parallel function assign!(A::Data.Array, B::Data.Array, add::Data.Number)
+    @all(A) = @all(B) .+ add
+    return
+end
+
 @parallel function assign!(A::Data.Array, B::Data.Array)
     @all(A) = @all(B)
     return
 end
+
+# 1th order RK update (or Euler update)
+@parallel function RungaKutta1!(Tnew, T, Residual, dt)   
+    @all(Tnew) =  @all(T) + dt*@all(Residual)
+    return
+end
+
+# 2nd order RK update
+@parallel function RungaKutta2!(Tnew, T, Residual, Residual1, dt)   
+    @all(Tnew) =  @all(T) + dt/2.0*(@all(Residual) + @all(Residual1))
+    return
+end
+
+# 4th order RK update
+@parallel function RungaKutta4!(Tnew, T, Residual, Residual1,  Residual2,  Residual3, dt)   
+    @all(Tnew) =  @all(T) + dt/6.0*(@all(Residual) + 2.0*@all(Residual1) + 2.0*@all(Residual2) + @all(Residual3))
+    return
+end
+
 
 #------------------------------------------------------------------------------------------
 # Solve one diffusion timestep in axisymmetric geometry, including latent heat, with spatially variable Rho, Cp and K 
@@ -25,6 +50,18 @@ end
                                  ( 1.0./@inn(R).*@d_xi(qr)./dr +     # 2nd derivative in r
                                                  @d_yi(qz)./dz  );   # 2nd derivative in z
 
+    return
+end
+
+@parallel function diffusion2D_AxiSymm_residual!(Residual, T, R, Rc, qr, qz, K, Kr, Kz, Rho, Cp, dr, dz, L, dϕdT)   
+    @all(Kr)        =  @av_xa(K);                                       # average K in r direction
+    @all(Kz)        =  @av_ya(K);                                       # average K in z direction
+    @all(qr)        =  @all(Rc).*@all(Kr).*@d_xa(T)./dr;                # heatflux in r
+    @all(qz)        =            @all(Kz).*@d_ya(T)./dz;                # heatflux in z
+    @inn(Residual)  =  1.0./(@inn(Rho).*(@inn(Cp) + L.*@inn(dϕdT))).* 
+                                        ( 1.0./@inn(R).*@d_xi(qr)./dr +     # 2nd derivative in r
+                                                        @d_yi(qz)./dz  );   # 2nd derivative in z
+    
     return
 end
 
