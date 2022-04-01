@@ -13,6 +13,48 @@ using LinearAlgebra: norm
 # Initialize 
 @init_parallel_stencil(Threads, Float64, 2);    # initialize parallel stencil in 2D
 
+
+# This performs one diffusion timestep while doing nonlinear iterations (for latent heat and conductivity which depends on T)
+function Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, Phases, 
+                P, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, dt, dx, dz, La, dϕdT, Z, 
+                flux_free_bottom_BC, deactivate_La_at_depth)
+   
+    err, iter = 1., 1
+    @parallel assign!(T_K, T, 273.15)
+    @parallel assign!(T_it_old, T)
+    while err>1e-6 && iter<20
+        
+        # Update material properties (as some are a function of T)
+        compute_meltfraction!(Phi_melt, Mat_tup, Phases, P, T_K) 
+        compute_density!(Rho, Mat_tup, Phases, P,     T_K)
+        compute_heatcapacity!(Cp, Mat_tup, Phases, P, T_K)
+        compute_conductivity!(Kc, Mat_tup, Phases, P, T_K)
+        compute_dϕdT!(dϕdT, Mat_tup, Phases, P,       T_K)
+
+        # Switch off latent heat below a certain depth 
+        if deactivate_La_at_depth==true
+            ind = findall(Z.<-15e3)
+            dϕdT[ind] .= 0.0
+        end
+        
+        # Diffusion step:
+        @parallel diffusion2D_AxiSymm_step!(Tnew, T, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, dt, dx, dz, La, dϕdT) # diffusion step
+        @parallel (1:size(T,2)) bc2D_x!(Tnew);                      # flux-free lateral boundary conditions
+        if flux_free_bottom_BC==true
+            @parallel (1:size(T,1)) bc2D_z_bottom!(Tnew);           # flux-free bottom BC  (if false=isothermal)
+        end
+        
+        # Update T_K (used above to compute material properties)
+        @parallel assign!(T_K, Tnew,  273.15)   # all GeoParams routines expect T in K
+        err     = norm(Tnew-T_it_old)           # compute error
+    
+        @parallel assign!(T_it_old, Tnew)       # Store Tnew of last iteration step
+        iter   += 1
+    end
+
+    return nothing
+end
+
 #------------------------------------------------------------------------------------------
 @views function MainCode_2D(Mat_tup);
 
@@ -70,6 +112,7 @@ maxThickness            =   maxTime/SecYear*Flux                    # max thickn
 deactivate_La_at_depth  =   true
 flux_free_bottom_BC     =   true
 Nx, Nz                  =   269, 269;                    # resolution (grid cells in x,z direction)
+
 dx,dz                   =   W/(Nx-1), H/(Nz-1);         # grid size
 κ                       =   3.3/(1000*2700)
 dt                      =   0.4*min(dx^2, dz^2)./κ/4;   # stable timestep (required for explicit FD)
@@ -115,6 +158,7 @@ if isdir(SimName)==false mkdir(SimName) end;    # create simulation directory if
 global T_init, Kc
 for it = 1:nt   # Time loop
 
+    
     # Add new dike every X years:
     if floor(time/InjectionInterval)> dike_inj       
         dike_inj            =   floor(time/InjectionInterval)                   # Keeps track on what was injected already
@@ -128,41 +172,10 @@ for it = 1:nt   # Time loop
         @printf "  Added new dike; time=%.3f kyrs, total injected magma volume = %.2f km³; rate Q= %.2e km³yr⁻¹ = %.2e km³yr⁻¹km⁻² \n" time/kyr InjectVol/km³ Qrate_km3_yr Qrate_km3_yr_km2
     end
     
-    # Perform nonlinear iterations (for latent heat and conductivity which depends on T)
-    err, iter = 1., 1
-    @parallel assign!(T_K, T, 273.15)
-    @parallel assign!(T_it_old, T)
-    while err>1e-6 && iter<20
-        
-        # Update material properties (as some are a function of T)
-        compute_meltfraction!(Phi_melt, Mat_tup, Phases, P, T_K) 
-        compute_density!(Rho, Mat_tup, Phases, P,     T_K)
-        compute_heatcapacity!(Cp, Mat_tup, Phases, P, T_K)
-        compute_conductivity!(Kc, Mat_tup, Phases, P, T_K)
-        compute_dϕdT!(dϕdT, Mat_tup, Phases, P,       T_K)
-
-        # Switch off latent heat below a certain depth 
-        if deactivate_La_at_depth==true
-            ind = findall(Z.<-15e3)
-            dϕdT[ind] .= 0.0
-        end
-        
-        # Diffusion step:
-        @parallel diffusion2D_AxiSymm_step!(Tnew, T, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, dt, dx, dz, La, dϕdT) # diffusion step
-        @parallel (1:size(T,2)) bc2D_x!(Tnew);                      # flux-free lateral boundary conditions
-        if flux_free_bottom_BC==true
-            @parallel (1:size(T,1)) bc2D_z_bottom!(Tnew);           # flux-free bottom BC  (if false=isothermal)
-        end
-        
-        # Update T_K (used above to compute material properties)
-        @parallel assign!(T_K, Tnew,  273.15)   # all GeoParams routines expect T in K
-        err     = norm(Tnew-T_it_old)           # compute error
-      
-        @parallel assign!(T_it_old, Tnew)       # Store Tnew of last iteration step
-        iter   += 1
-    end
-
-
+    
+    # Do a diffusion step, while taking T-dependencies into account
+    Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, Phases, P, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, dt, dx, dz, La, dϕdT, Z, flux_free_bottom_BC, deactivate_La_at_depth)
+    
     # Update variables
     Tracers             =   UpdateTracers(Tracers, Grid, Tnew, Phi_melt);      # Update info on tracers 
     @parallel assign!(T, Tnew)
@@ -190,7 +203,10 @@ for it = 1:nt   # Time loop
         # 2D temperature plot 
         ax2=Axis(fig[1, 2],xlabel = "Width [km]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs, Geneva model; Temperature [ᵒC]")
         co = contourf!(fig[1, 2], x/1e3, z/1e3, T, levels = 0:50:1000,colormap = :jet)
-        co1 = contour!(fig[1, 2], x/1e3, z/1e3, T, levels = 690:690)       # solidus
+       
+        if maximum(T)>691
+           co1 = contour!(fig[1, 2], x/1e3, z/1e3, T, levels = 690:691)       # solidus
+        end
         limits!(ax2, 0, 20, -20, 0)
         Colorbar(fig[1, 3], co)
         
