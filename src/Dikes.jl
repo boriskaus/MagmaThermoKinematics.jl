@@ -32,8 +32,8 @@ temperature field
                             "SquareDike_TopAccretion"           -   square dike area, which grows by underaccreting   
                             "CylindricalDike_TopAccretion"      -   cylindrical dike area, which grows by underaccreting   
                             "CylindricalDike_TopAccretion_FullModelAdvection"      -   cylindrical dike area, which grows by underaccreting; also material to the side of the dike is moved downwards   
-                            
                             "ElasticDike"   -   penny-shaped elastic dike in elastic halfspace
+                            "ElipticalIntrusion" - elliptical dike intrusion area with radius Width/2 and height Height/2 
             
             T:          Temperature of the dike [Celcius]   
             
@@ -262,6 +262,27 @@ Threads.@threads for i in eachindex(Vz_rot)
              
                 end
 
+        elseif Type == "ElipticalIntrusion" 
+                @unpack H,W = dike
+                AR = H/W        # aspect ratio of ellipse
+                H = Δ           # we don't open the dike @ once but piece by piece
+                W = H/AR;
+                a_inject2   =   W^2; 
+                AR2         =   AR^2;
+                for I in eachindex(Points[1])
+                    x = Points[1][I]
+                    z = Points[2][I]
+                    
+                    Vx_rot[I]  = x*a_inject2/(z^2/AR2 + x^2.0)/2.0;
+                    Vz_rot[I]  = z*a_inject2/(z^2/AR2 + x^2.0)/2.0;
+                    if x==0 && z==0.0
+                        Vx_rot[I]=0.0
+                        Vz_rot[I]=0.0
+                        
+                    end
+                end
+
+
         else
             error("Unknown Dike Type: $Type")
         end
@@ -410,7 +431,15 @@ function CreatDikePolygon(dike::Dike)
     
     elseif Type=="ElasticDike"
         error("To be added")
-    
+
+    elseif Type == "ElipticalIntrusion" 
+        @unpack W, H, Center = dike;   
+        
+        p = 0:.1:2*pi
+        x    =  cos(p)*W/2.0;
+        z    = -sin(p)*H/2.0;
+
+
     else
         error("Unknown dike type $Type")
     end
@@ -451,7 +480,7 @@ function isinside_dike(pt, dike::Dike)
                 in = true
             end
         end
-    elseif Type=="ElasticDike"
+    elseif (Type=="ElasticDike") || (Type=="ElipticalIntrusion")
         eq_ellipse = 100.0;
 
         if dim==2
@@ -498,9 +527,9 @@ function volume_dike(dike::Dike)
         area    = W*H;                  #  (in 2D, in m^2)
         volume  = pi*(W/2.0)^2*H;       #  (equivalent 3D volume, in m^3)
 
-    elseif Type=="ElasticDike"
-        area    = pi*W*H                #   (in 2D, in m^2)
-        volume  = 4/3*pi*W*W*H          #   (equivalent 3D volume, in m^3)
+    elseif (Type=="ElasticDike") || (Type=="ElipticalIntrusion")
+        area    = pi*W/2*H/2                    #   (in 2D, in m^2)  - note that W,H are the diameters
+        volume  = 4/3*pi*(W/2)*(W/2)*(H/2)      #   (equivalent 3D volume, in m^3)
     else
         error("Unknown dike type $Type")
     end
@@ -527,7 +556,6 @@ function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
     if dim==2
         α           =    Angle[1];
         RotMat      =    SMatrix{2,2}([cosd(α) -sind(α); sind(α) cosd(α)]); 
-        
     elseif dim==3
         α,β             =   Angle[1], Angle[end];
         RotMat_y        =   SMatrix{3,3}([cosd(α) 0.0  -sind(α); 0.0 1.0 0.0; sind(α) 0.0 cosd(α)  ]);                      # perpendicular to y axis
@@ -609,7 +637,6 @@ function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
     end
 
     return Tfield, Tr;
-
 
 end
 
