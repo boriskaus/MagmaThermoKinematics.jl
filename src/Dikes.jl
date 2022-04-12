@@ -422,7 +422,7 @@ function CreateDikePolygon(dike::Dike, nump=101)
         dx = dike.W/2/nump/2 
         xx = Vector(dike.Center[1]:dx:dike.W/2)
         x  = [xx; xx[end:-1:1]];
-        z  = [ones(size(xx))*dike.H; -ones(size(xx))*dike.H/2 ] .+ Dikes.Center[2];
+        z  = [ones(size(xx))*dike.H; -ones(size(xx))*dike.H/2 ] .+ dike.Center[2];
         poly = [x,z];
     
     elseif Type=="ElipticalIntrusion"
