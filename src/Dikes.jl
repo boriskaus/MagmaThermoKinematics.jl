@@ -82,7 +82,7 @@ end
     The orientation and the type of the dike are described by the structure     
 
     General form:
-        T, Velocity, VolumeInjected = InjectDike(Tracers, T, Grid, FullGrid, dike, nTr_dike; AdvectionMethod="RK2", InterpolationMethod="Quadratic")
+        T, Velocity, VolumeInjected = InjectDike(Tracers, T, Grid, FullGrid, dike, nTr_dike; AdvectionMethod="RK2", InterpolationMethod="Quadratic", dike_poly=[])
 
     with:
         T:          Temperature grid (will be modified)
@@ -115,8 +115,11 @@ end
                     "Quadratic" -    Quadratic spline
                     "Cubic"     -    Cubic spline
 
+        dike_poly: polygon that describes the circumferrence of a diking area (in 2D)
+                    Will be advected if specified
+
 """
-function InjectDike(Tracers, T::Array, Grid, dike::Dike, nTr_dike::Int64; AdvectionMethod="RK2", InterpolationMethod="Linear")
+function InjectDike(Tracers, T::Array, Grid, dike::Dike, nTr_dike::Int64; AdvectionMethod="RK2", InterpolationMethod="Linear", dike_poly=[])
 
     # Some notes on the algorithm:
     #   For computational reasons, we do not open the dike at once, but in sufficiently small pseudo timesteps
@@ -165,7 +168,13 @@ function InjectDike(Tracers, T::Array, Grid, dike::Dike, nTr_dike::Int64; Advect
     # Compute volume of newly injected magma
     Area,InjectedVolume =   volume_dike(dike)
 
-    return Tracers, Tnew, InjectedVolume, Velocity
+    # Advect dike polygon
+    if ~isempty(dike_poly)
+        advect_dike_polygon!(dike_poly, Grid, Velocity)
+    end
+
+
+    return Tracers, Tnew, InjectedVolume, dike_poly, Velocity
 
 end
 
@@ -399,55 +408,89 @@ function  RotatePoints_3D!(Xrot,Yrot,Zrot, X,Y,Z, RotMat)
 end
 
 """
-    dike_poly = CreatDikePolygon(dike::Dike)
+    dike_poly = CreateDikePolygon(dike::Dike, numpoints=101)
 
     Creates a new dike polygon with given orientation and width. 
     This polygon is used for plotting, and described by the struct dike
 
-    Different Types are available:
-
 """
-function CreatDikePolygon(dike::Dike)
+function CreateDikePolygon(dike::Dike, nump=101)
     @unpack Type = dike;
 
-    if Type=="SquareDike"
+    if Type=="CylindricalDike_TopAccretion"
 
-        # unit dike
-        poly = StructArray([DikePoly(-1.0, -1.0), DikePoly( 1.0, -1.0),
-                            DikePoly( 1.0,  1.0), DikePoly(-1.0,  1.0)]);
-        
-        push!(poly,poly[1]); # close polygon
-
-        # scale & rotate dike
-        @unpack Angle = dike;   
-        α      = Angle[end];
-        RotMat = [cosd(-α) -sind(-α); sind(-α) cosd(-α)]; 
-        for i=1:length(poly)
-            @unpack W, H, Center = dike;   
-            
-            pt      = [LazyRow(poly, i).x*W/2.0; LazyRow(poly, i).z*H/2.0];
-            pt_rot  = RotMat*pt;    # rotate
-            
-            LazyRow(poly, i).x = pt_rot[1] + Center[1];   # shift
-            LazyRow(poly, i).z = pt_rot[2] + Center[2];
-        end
+        dx = dike.W/2/nump/2 
+        xx = Vector(dike.Center[1]:dx:dike.W/2)
+        x  = [xx; xx[end:-1:1]];
+        z  = [ones(size(xx))*dike.H; -ones(size(xx))*dike.H/2 ] .+ Dikes.Center[2];
+        poly = [x,z];
     
-    elseif Type=="ElasticDike"
-        error("To be added")
-
-    elseif Type == "ElipticalIntrusion" 
-        @unpack W, H, Center = dike;   
-        
-        p = 0:.1:2*pi
-        x    =  cos(p)*W/2.0;
-        z    = -sin(p)*H/2.0;
-
-
+    elseif Type=="ElipticalIntrusion"
+        dp = 2*pi/nump
+        p = 0.0:.01:2*pi;
+        a_ellipse = dike.W/2.0;
+        b_ellipse = dike.H/2.0;
+        x =  cos.(p)*a_ellipse
+        z = -sin.(p)*b_ellipse .+ dike.Center[2];
+        poly = [x,z];
+    
     else
-        error("Unknown dike type $Type")
+        println("WARNING: Polygon not yet implemented for dike type $Type; leaving it empty")
+        poly = [];
     end
-
+    
     return poly 
+end
+
+"""
+    dike_poly = CreatDikePolygon(dike::Dike, numpoints=101)
+
+    Creates a new dike polygon with given orientation and width. 
+    This polygon is used for plotting, and described by the struct dike
+
+"""
+function CreatDikePolygon(dike::Dike, nump=101)
+    @unpack Type = dike;
+
+    if Type=="CylindricalDike_TopAccretion"
+
+        dx = dike.W/2/nump/2 
+        xx = Vector(dike.Center[1]:dx:dike.W/2)
+        x  = [xx; xx[end:-1:1]];
+        z  = [ones(size(xx))*dike.H; -ones(size(xx))*dike.H/2 ] .+ Dikes.Center[2];
+        poly = [x,z];
+    
+    elseif Type=="ElipticalIntrusion"
+        dp = 2*pi/nump
+        p = 0.0:.01:2*pi;
+        a_ellipse = dike.W/2.0;
+        b_ellipse = dike.H/2.0;
+        x =  cos.(p)*a_ellipse
+        z = -sin.(p)*b_ellipse .+ dike.Center[2];
+        poly = [x,z];
+    
+    else
+        println("WARNING: Polygon not yet implemented for dike type $Type; leaving it empty")
+        poly = [];
+    end
+    
+    return poly 
+end
+
+"""
+    advect_dike_polygon!(poly, Grid, Velocity, dt=1.0)
+
+Advects a dike polygon
+"""
+function advect_dike_polygon!(poly, Grid, Velocity, dt=1.0)
+    
+    poly_vel = AdvectPoints( (poly[1],poly[2]), Grid, Velocity, dt);
+
+    for i=1:length(poly)
+        poly[i] .=+ poly_vel[i]*dt;
+    end
+    
+    return nothing
 end
 
 
@@ -742,4 +785,13 @@ function DisplacementAroundPennyShapedDike(dike::Dike, CartesianPoint::SVector, 
     end
 
     return Displacement, B, p   
+end
+
+"""
+
+Creates a polygon that describes the initial diking area
+"""
+function CreateDikePolygon(Dike, nump=100)
+
+
 end
