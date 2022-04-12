@@ -264,21 +264,24 @@ Threads.@threads for i in eachindex(Vz_rot)
 
         elseif Type == "ElipticalIntrusion" 
                 @unpack H,W = dike
-                AR = H/W        # aspect ratio of ellipse
-                H = Δ           # we don't open the dike @ once but piece by piece
-                W = H/AR;
-                a_inject2   =   W^2; 
-                AR2         =   AR^2;
+                AR  = H/W         # aspect ratio of ellipse
+                H   = Δ           # we don't open the dike @ once but piece by piece
+                W   = H/AR;
+                a_inject    =   W/2.0;                  # half axis
+                Vol_inject  =   4/3*pi*a_inject^3*AR    # b axis = a_inject*AR
                 for I in eachindex(Points[1])
-                    x = Points[1][I]
-                    z = Points[2][I]
-                    
-                    Vx_rot[I]  = x*a_inject2/(z^2/AR2 + x^2.0)/2.0;
-                    Vz_rot[I]  = z*a_inject2/(z^2/AR2 + x^2.0)/2.0;
+                    x  =    Points[1][I]
+                    z  =    Points[2][I]
+                    a  =    sqrt(z^2/AR^2 + x^2);
+                    a3 =    a^3;
+                    da =   ((Vol_inject + 4/3*pi*a3*AR)/(4/3*pi*AR))^(1/3) - a; # incremental displcement
+
+                    # note the the coordinates are already rotated & centered around the sill intrusion region
+                    Vx_rot[I]  = x*(da./a);
+                    Vz_rot[I]  = z*(da./a);
                     if x==0 && z==0.0
                         Vx_rot[I]=0.0
                         Vz_rot[I]=0.0
-                        
                     end
                 end
 
