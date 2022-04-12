@@ -141,11 +141,11 @@ function InjectDike(Tracers, T::Array, Grid, dike::Dike, nTr_dike::Int64; Advect
     end
     d           =   minimum(Spacing)*0.5;                              # maximum distance the dike can open per pseudotimestep 
     nsteps      =   maximum([ceil(H/d), 2]);                           # the number of steps (>=10)
-
+    
     # Compute velocity required to create space for dike
-    Δ           =   H/(nsteps);
-    dt          =   1.0
-    Velocity    =   HostRockVelocityFromDike(Grid,GridFull, Δ, dt,dike);       # compute velocity field
+    dt          =   1.0/nsteps
+    Δ           =   H
+    Velocity    =   HostRockVelocityFromDike(Grid,GridFull, Δ, 1.0,dike);       # compute velocity field/displacement used for a full dt. 
 
     # Move hostrock & already existing tracers to the side to create space for new dike
     Tnew        =   zeros(size(T));
