@@ -255,7 +255,7 @@ end
 
     end
 
-    return x,z,T, Time_vec, Melt_Time, Tracers, VEL;
+    return x,z,T, Time_vec, Melt_Time, Tracers, dike_poly;
 end # end of main function
 
 
@@ -354,7 +354,7 @@ if 1==1
 end
 
 # Call the main code with the specified material parameters
-x,z,T, Time_vec,Melt_Time, Tracers, VEL = MainCode_2D(MatParam, Num, Dike_params); # start the main code
+x,z,T, Time_vec,Melt_Time, Tracers, dike_poly = MainCode_2D(MatParam, Num, Dike_params); # start the main code
 
 
 #plot(Time_vec/kyr, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example2D") #Create plot
