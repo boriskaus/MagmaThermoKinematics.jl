@@ -35,11 +35,13 @@ km³         = 1000^3
     Tsurface_Celcius::Float64   =   0               # Surface T in celcius
     Geotherm::Float64           =   40/1e3          # in K/m
     maxTime_Myrs::Float64       =   1.5             # maximum timestep 
-    maxTime::Float64            =   1.5*SecYear*1e6 # maximum timestep  in seconds
+    maxTime::Float64            =   maxTime_Myrs*SecYear*1e6 # maximum timestep  in seconds
     SaveOutput_steps::Int64     =   1e3;            # saves output every x steps 
     CreateFig_steps::Int64      =   500;            # Create a figure every X steps
     flux_free_bottom_BC::Bool   =   false           # zero flux bottom BC?
-    deactivate_La_at_depth::Bool=   false           # deactivate latent heatimng @ the bottom of the model box?
+    deactivate_La_at_depth::Bool=   false           # deactivate latent heating @ the bottom of the model box?
+    plot_tracers::Bool          =   true            # adds passive tracers to the plot
+    advect_polygon::Bool        =   false           # adds a polygon around the intrusion area
     κ_time::Float64             =   3.3/(1000*2700) # κ to determine the stable timestep 
     fac_dt::Float64             =   0.4;            # prefactor with which dt is multiplied   
     dt::Float64                 =   fac_dt*min(dx^2, dz^2)./κ_time/4;   # timestep
@@ -59,7 +61,7 @@ end
     SillRadius::Float64             =   W_in/2                  # Sill radius            
     SillArea::Float64               =   pi*SillRadius^2         # Horizontal area  of sill
     InjectionInterval_year::Float64 =   10e3;                   # Injection interval [years]
-    InjectionInterval::Float64      =   10e3*SecYear;           # Injection interval [s]
+    InjectionInterval::Float64      =   InjectionInterval_year*SecYear;           # Injection interval [s]
     nTr_dike::Int64                 =   300                     # Number of tracers 
 end
 
@@ -138,13 +140,17 @@ end
     Rc                      =   (R[2:end,:] + R[1:end-1,:])/2 
     Grid                    =   (x,z);                                                  # Grid 
     Tracers                 =   StructArray{Tracer}(undef, 1)                           # Initialize tracers   
-    dike                    =   Dike(W=Dikes.W_in,H=Dikes.H_in,Type=Dikes.Type,T=Dikes.T_in_Celsius);               # "Reference" dike with given thickness,radius and T
+    dike                    =   Dike(W=Dikes.W_in,H=Dikes.H_in,Type=Dikes.Type,T=Dikes.T_in_Celsius, Center=Dikes.Center[:]);               # "Reference" dike with given thickness,radius and T
     T_init                 .=   Num.Tsurface_Celcius .- Z.*Num.Geotherm;                # Initial (linear) temperature profile
 
-    # Set initial sill in temperature structure
+    # Set initial sill in temperature structure for Geneva type models
+    dike_poly   = []
     if Dikes.Type  == "CylindricalDike_TopAccretion"
         ind = findall(R.<=Dikes.W_in/2 .&& abs.(Z.-Dikes.Center[2]) .< Dikes.H_in/2 );
         T_init[ind] .= Dikes.T_in_Celsius;
+        if Num.advect_polygon==true
+            dike_poly   =   CreateDikePolygon(dike);
+        end
     end
 
     @parallel assign!(Tnew, T_init)
@@ -154,6 +160,7 @@ end
     Phases                  =   ones(Int64,Nx,Nz)
     time, dike_inj, InjectVol, Time_vec,Melt_Time = 0.0, 0.0, 0.0,zeros(nt,1),zeros(nt,1);
 
+
     if isdir(Num.SimName)==false mkdir(Num.SimName) end;    # create simulation directory if needed
     global VEL
     for it = 1:nt   # Time loop
@@ -162,12 +169,16 @@ end
         if floor(time/Dikes.InjectionInterval)> dike_inj      
             dike_inj            =   floor(time/Dikes.InjectionInterval)                     # Keeps track on what was injected already
             dike                =   Dike(dike, Center=Dikes.Center[:],Angle=[0]);           # Specify dike with random location/angle but fixed size/T 
-            Tracers, T,Vol,VEL  =   InjectDike(Tracers, T, Grid, dike, Dikes.nTr_dike);     # Add dike, move hostrocks
+            Tracers, T,Vol,dike_poly  =   InjectDike(Tracers, T, Grid, dike, Dikes.nTr_dike, dike_poly=dike_poly);     # Add dike, move hostrocks
             InjectVol           +=  Vol                                                     # Keep track of injected volume
             Qrate               =   InjectVol/time
             Qrate_km3_yr        =   Qrate*SecYear/km³
             Qrate_km3_yr_km2    =   Qrate_km3_yr/(pi*(Dike_params.W_in/2/1e3)^2)
-            @printf "  Added new dike; time=%.3f kyrs, total injected magma volume = %.2f km³; rate Q= %.2e km³yr⁻¹ = %.2e km³yr⁻¹km⁻² \n" time/kyr InjectVol/km³ Qrate_km3_yr Qrate_km3_yr_km2
+            @printf "  Added new dike; time=%.3f kyrs, total injected magma volume = %.2f km³; rate Q= %.2e km³yr⁻¹  \n" time/kyr InjectVol/km³ Qrate_km3_yr 
+            
+            if Num.advect_polygon==true && isempty(dike_poly)
+                dike_poly   =   CreateDikePolygon(dike);            # create dike for the 1th time
+            end
         end
 
         # Do a diffusion step, while taking T-dependencies into account
@@ -212,6 +223,14 @@ end
             # 2D melt fraction plots:
             ax3=Axis(fig[1, 4],xlabel = "Width [km]", ylabel = "Depth [km]", title = " ϕ (melt fraction)")
             co = heatmap!(fig[1, 4], x/1e3, z/1e3, Phi_melt, colormap = :vik, colorrange=(0, 1))
+            if Num.plot_tracers==true
+                # Add tracers to plot
+                scatter!(fig[1, 4],getindex.(Tracers.coord,1)/1e3, getindex.(Tracers.coord,2)/1e3, color=:white)
+            end
+            if Num.advect_polygon==true 
+                # Add polygon
+                pl = lines!(fig[1, 4], dike_poly[1]/1e3, dike_poly[2]/1e3,   color = :yellow, linestyle=:dot, linewidth=1.0)
+            end
             limits!(ax3, 0, 20, -20, 0)
             Colorbar(fig[1, 5], co)
 
@@ -249,23 +268,23 @@ if 1==0
                             SaveOutput_steps=1e4, CreateFig_steps=1000, FigTitle = "Geneva setup");
     Dike_params = DikeParam(Type="CylindricalDike_TopAccretion", InjectionInterval = 1e40, W_in=40e3)
 
-    MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
+    MatParam    = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
                                     Density    = ConstantDensity(ρ=2700/m^3),
-                            EnergySourceTerms = ConstantLatentHeat(Q_L=3.13e5J/kg),
+                             EnergySourceTerms = ConstantLatentHeat(Q_L=3.13e5J/kg),
                             #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),     # in case we use constant k
-                                Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
-                                #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
-                                        Melting = MeltingParam_4thOrder()),                     # Marxer & Ulmer data
+                                  Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
+                                 #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
+                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                       Melting = MeltingParam_4thOrder()),                     # Marxer & Ulmer data
                     # add more parameters here, in case you have >1 phase in the model                                    
                     )
 end
 
-if 1==1
-    # 2D, Geneva-type models 
+if 1==0
+    # 2D, Geneva-type models  
     Num         = NumParam(Nx=269, Nz=269, SimName="Zassy_Geneva_zeroFlux_variable_k_1", 
                             flux_free_bottom_BC=true, deactivate_La_at_depth=true, 
-                            SaveOutput_steps=1e4, CreateFig_steps=1000,
+                            SaveOutput_steps=1e4, CreateFig_steps=1000, plot_tracers=false, advect_polygon=false,
                             FigTitle="Geneva Models");
 
     Dike_params = DikeParam(Type="CylindricalDike_TopAccretion", InjectionInterval_year = 10e3, 
@@ -273,43 +292,69 @@ if 1==1
 
     MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
                                     Density    = ConstantDensity(ρ=2700/m^3),
-                            EnergySourceTerms = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                            #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),     # in case we use constant k
-                                Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
-                                #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
-                                        Melting = MeltingParam_4thOrder()),                     # Marxer & Ulmer data
+                             EnergySourceTerms = ConstantLatentHeat(Q_L=3.13e5J/kg),
+                            #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
+                                  Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
+                                 #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
+                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                       Melting = MeltingParam_4thOrder()),                     # Marxer & Ulmer data
                     # add more parameters here, in case you have >1 phase in the model                                    
                     )
 end
 
 
-#=
-# 2D, Geneva-type models 
-Num         = NumParam(Nx=101, Nz=101);    # specify numerical parameters of the simulation (employ default otherwise)
-Dike_params = DikeParam()
+if 1==1
+    # 2D, UCLA-type models (WiP)
+    Num          = NumParam(Nx=101, Nz=101, SimName="Zassy_UCLA_ellipticalIntrusion", 
+                            SaveOutput_steps=1e4, CreateFig_steps=100,
+                            maxTime_Myrs=1.13,
+                            FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);
 
-MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
-                                 Density    = ConstantDensity(ρ=2700/m^3),
-                          EnergySourceTerms = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                          #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),     # in case we use constant k
-                               Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
-                               #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                               HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
-                                    Melting = MeltingParam_4thOrder()),                     # Marxer & Ulmer data
-                # add more parameters here, in case you have >1 phase in the model                                    
-                )
+    #                             
+    Flux         = 7.5e-6;                              # in km3/km2/a 
+    Total_r_km   = 10;                                  # final radius of area
+    V_inject_km3 = 10;                                  # injection volume per sill injection
+    
+    Total_A_km2  = pi*Total_r_km^2;                     # final area in km^2
+    Flux_km3_a   = Flux*Total_A_km2;                    # flux in km3/year
 
-=#
+    V_total_km3  = Flux_km3_a*Num.maxTime_Myrs*1e6;
+    h_total_km   = V_total_km3/(Total_A_km2)            # final height [km]
+    
+    mid_depth_km = -6.5-h_total_km/2;                   # mid depth of injection area [km]
+    r_h          = Total_r_km/h_total_km;               # aspect ratio of spheroid [] (well strictly speaking not, but following the Excel spreadsheet)
 
+    V_final_a    = (3/2*V_total_km3*r_h/pi)^(1/3)         # a axis in km
+    V_final_b    = V_final_a/r_h*0.5;                     # b axis in km                        
+    V_fin_check  = 4/3*pi*V_final_a^2*V_final_b;          # final area in km3 (just checking, should be == V_total_km3 )
 
+    V_inj_a      = (3/2*V_inject_km3*r_h/pi)^(1/3)        # a axis in km of injected ellipsoid
+    V_inj_b      = V_inj_a/r_h*0.5;                    # b axis in km                        
+    V_inj_check  = 4/3*pi*V_inj_a^2*V_inj_b;              # checking
+
+    nInjections     =   V_total_km3/V_inject_km3                # the number of required injections
+    InjectionInterval_yr = Num.maxTime_Myrs*1e6/nInjections;    # Time inbetween injections
+
+    # Use the parameters. Note that we specify the diameter of the ellipse in here
+    Dike_params  = DikeParam(Type="ElipticalIntrusion", InjectionInterval_year = InjectionInterval_yr, 
+                            W_in=V_inj_a*2*1e3, 
+                            H_in=V_inj_b*2*1e3, 
+                            Center=[0, mid_depth_km*1e3])
+
+    MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
+                                    Density    = ConstantDensity(ρ=2700/m^3),
+                             EnergySourceTerms = ConstantLatentHeat(Q_L=3.13e5J/kg),
+                            #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
+                                 #Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
+                                  Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
+                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                       Melting = MeltingParam_4thOrder()),                     # Marxer & Ulmer data
+                    # add more parameters here, in case you have >1 phase in the model                                    
+                    )
+end
 
 # Call the main code with the specified material parameters
 x,z,T, Time_vec,Melt_Time, Tracers, VEL = MainCode_2D(MatParam, Num, Dike_params); # start the main code
-
-
-
-
 
 
 #plot(Time_vec/kyr, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example2D") #Create plot
