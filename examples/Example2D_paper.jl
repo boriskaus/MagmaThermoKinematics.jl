@@ -93,7 +93,7 @@ function Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, P
         if Num.flux_free_bottom_BC==true
             @parallel (1:size(T,1)) bc2D_z_bottom!(Tnew);           # flux-free bottom BC  (if false=isothermal)
         end
-        
+ 
         # Update T_K (used above to compute material properties)
         @parallel assign!(T_K, Tnew,  273.15)   # all GeoParams routines expect T in K
         err     = norm(Tnew-T_it_old)           # compute error
@@ -169,7 +169,7 @@ end
         if floor(time/Dikes.InjectionInterval)> dike_inj      
             dike_inj            =   floor(time/Dikes.InjectionInterval)                     # Keeps track on what was injected already
             dike                =   Dike(dike, Center=Dikes.Center[:],Angle=[0]);           # Specify dike with random location/angle but fixed size/T 
-            Tracers, T,Vol,dike_poly  =   InjectDike(Tracers, T, Grid, dike, Dikes.nTr_dike, dike_poly=dike_poly);     # Add dike, move hostrocks
+            Tracers, T,Vol,dike_poly, VEL  =   InjectDike(Tracers, T, Grid, dike, Dikes.nTr_dike, dike_poly=dike_poly);     # Add dike, move hostrocks
             InjectVol           +=  Vol                                                     # Keep track of injected volume
             Qrate               =   InjectVol/time
             Qrate_km3_yr        =   Qrate*SecYear/km³
@@ -227,9 +227,9 @@ end
                 # Add tracers to plot
                 scatter!(fig[1, 4],getindex.(Tracers.coord,1)/1e3, getindex.(Tracers.coord,2)/1e3, color=:white)
             end
-            if Num.advect_polygon==true 
+            if Num.advect_polygon==true & ~isempty(dike_poly)
                 # Add polygon
-                pl = lines!(fig[1, 4], dike_poly[1]/1e3, dike_poly[2]/1e3,   color = :yellow, linestyle=:dot, linewidth=1.0)
+                pl = lines!(fig[1, 4], dike_poly[1]/1e3, dike_poly[2]/1e3,   color = :yellow, linestyle=:dot, linewidth=1.5)
             end
             limits!(ax3, 0, 20, -20, 0)
             Colorbar(fig[1, 5], co)
@@ -248,14 +248,15 @@ end
                             Dict("Tnew"=> Tnew, 
                                 "time"=> time, 
                                 "x"   => Vector(x), 
-                                "z"   => Vector(z))
+                                "z"   => Vector(z),
+                                "dike_poly" => dike_poly)
                 )
             println("  Saved matlab output to $filename")    
         end
 
     end
 
-    return x,z,T, Time_vec, Melt_Time, Tracers, dike_poly;
+    return x,z,T, Time_vec, Melt_Time, Tracers, dike_poly, VEL;
 end # end of main function
 
 
@@ -305,9 +306,9 @@ end
 
 if 1==1
     # 2D, UCLA-type models (WiP)
-    Num          = NumParam(Nx=101, Nz=101, SimName="Zassy_UCLA_ellipticalIntrusion", 
-                            SaveOutput_steps=1e4, CreateFig_steps=100,
-                            maxTime_Myrs=1.13,
+    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="Zassy_UCLA_ellipticalIntrusion", 
+                            SaveOutput_steps=400, CreateFig_steps=100,
+                            maxTime_Myrs=1.13, Tsurface_Celcius=25,
                             FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);
 
     #                             
@@ -329,7 +330,7 @@ if 1==1
     V_fin_check  = 4/3*pi*V_final_a^2*V_final_b;          # final area in km3 (just checking, should be == V_total_km3 )
 
     V_inj_a      = (3/2*V_inject_km3*r_h/pi)^(1/3)        # a axis in km of injected ellipsoid
-    V_inj_b      = V_inj_a/r_h*0.5;                    # b axis in km                        
+    V_inj_b      = V_inj_a/r_h*0.5;                       # b axis in km                        
     V_inj_check  = 4/3*pi*V_inj_a^2*V_inj_b;              # checking
 
     nInjections     =   V_total_km3/V_inject_km3                # the number of required injections
@@ -342,19 +343,17 @@ if 1==1
                             Center=[0, mid_depth_km*1e3])
 
     MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
-                                    Density    = ConstantDensity(ρ=2700/m^3),
+                                    Density    = ConstantDensity(ρ=2700/m^3),                  # used in the parameterisation of Whittington 
                              EnergySourceTerms = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                            #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
-                                 #Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
                                   Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
-                                       Melting = MeltingParam_4thOrder()),                     # Marxer & Ulmer data
-                    # add more parameters here, in case you have >1 phase in the model                                    
+                                  #Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
+                                  HeatCapacity = T_HeatCapacity_Whittington(),                 # T-dependent cp
+                                  #HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                       Melting = MeltingParam_Quadratic()),                    # Quadratic parameterization as in Tierney et al.
                     )
 end
 
 # Call the main code with the specified material parameters
-x,z,T, Time_vec,Melt_Time, Tracers, dike_poly = MainCode_2D(MatParam, Num, Dike_params); # start the main code
-
+x,z,T, Time_vec,Melt_Time, Tracers, dike_poly, VEL = MainCode_2D(MatParam, Num, Dike_params); # start the main code
 
 #plot(Time_vec/kyr, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example2D") #Create plot
