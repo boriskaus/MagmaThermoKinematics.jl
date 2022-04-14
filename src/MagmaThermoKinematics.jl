@@ -40,7 +40,7 @@ export AdvectTemperature, Interpolate!, CorrectBounds, evaluate_interp_2D, evalu
 # Routines that deal with tracers
 include("Tracers.jl")
 export UpdateTracers, AdvectTracers!, InitializeTracers,PhaseRatioFromTracers, CorrectTracersForTopography!
-export RockAssemblage  
+export RockAssemblage, update_Tvec!  
 
 # Routines related to Parameters.jl, which come in handy in the main routine
 export @unpack

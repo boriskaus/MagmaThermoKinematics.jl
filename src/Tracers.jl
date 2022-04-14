@@ -14,14 +14,18 @@
                     2D - [x; z]
                     3D - [x; y; z]
             
-            T:      Temperature of the tracer [Celcius]                              
+            T:          Temperature of the tracer [Celcius]     
+            time_vec:   Vector with time
+            T_vec :     Vector with temperature values                         
 """
-@with_kw struct Tracer
+@with_kw mutable struct Tracer
     num         ::  Int64     =  0           # number
     coord       ::  Vector{Float64}          # holds coordinates [2D or 3D]
     T           ::  Float64   =  900         # temperature
     Phase       ::  Int64     =  1           # Phase (aka rock type) of the Tracer      
     Phi_melt    ::  Float64   =  0           # Melt fraction on Tracers
+    time_vec    ::  Vector{Float64} = []     # Time vector
+    T_vec       ::  Vector{Float64} = []     # Temperature vector
 end
 #    Chemistry   ::  Vector{Float64} = []    # Could @ some stage hold the evolving chemistry of the magma
 
@@ -732,4 +736,21 @@ function AdvectTracers!(Tracers, Grid, Velocity, dt, Method="RK2");
         testnoalloc_3D(Tracers, Points_new);
     end
 
+end
+
+"""
+    update_Tvec!(Tracers::StructArray, time)
+
+Updates temperature & time vector on every tracer  
+"""
+function update_Tvec!(Tracers::StructArray, time_val::Float64)
+
+    if isassigned(Tracers,1) 
+        for iT = 1:length(Tracers)
+            LazyRow(Tracers, iT).time_vec = push!(LazyRow(Tracers, iT).time_vec, time_val);             
+            LazyRow(Tracers, iT).T_vec    = push!(LazyRow(Tracers, iT).T_vec,     LazyRow(Tracers, iT).T);     
+        end
+    end
+
+    return Tracers
 end
