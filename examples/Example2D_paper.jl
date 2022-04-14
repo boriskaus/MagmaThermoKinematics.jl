@@ -42,6 +42,7 @@ km³         = 1000^3
     deactivate_La_at_depth::Bool=   false           # deactivate latent heating @ the bottom of the model box?
     plot_tracers::Bool          =   true            # adds passive tracers to the plot
     advect_polygon::Bool        =   false           # adds a polygon around the intrusion area
+    axisymmetric::Bool          =   true            # axisymmetric (if true) of 2D geometry?
     κ_time::Float64             =   3.3/(1000*2700) # κ to determine the stable timestep 
     fac_dt::Float64             =   0.4;            # prefactor with which dt is multiplied   
     dt::Float64                 =   fac_dt*min(dx^2, dz^2)./κ_time/4;   # timestep
@@ -88,7 +89,12 @@ function Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, P
         end
         
         # Diffusion step:
-        @parallel diffusion2D_AxiSymm_step!(Tnew, T, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, Num.dt, Num.dx, Num.dz, La, dϕdT) # diffusion step
+        if Num.axisymmetric==true
+            @parallel diffusion2D_AxiSymm_step!(Tnew, T, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, Num.dt, Num.dx, Num.dz, La, dϕdT) # axisymmetric diffusion step
+        else
+            @parallel diffusion2D_step!(Tnew, T, qr, qz, Kc, Kr, Kz, Rho, Cp, Num.dt, Num.dx, Num.dz, La, dϕdT) # 2D diffusion step
+        end
+
         @parallel (1:size(T,2)) bc2D_x!(Tnew);                      # flux-free lateral boundary conditions
         if Num.flux_free_bottom_BC==true
             @parallel (1:size(T,1)) bc2D_z_bottom!(Tnew);           # flux-free bottom BC  (if false=isothermal)
@@ -179,6 +185,7 @@ end
             if Num.advect_polygon==true && isempty(dike_poly)
                 dike_poly   =   CreateDikePolygon(dike);            # create dike for the 1th time
             end
+           # @show maximum(T[:,1])-minimum(T[:,1]) maximum(VEL[2][:,1])-minimum(VEL[2][:,1]) 
         end
 
         # Do a diffusion step, while taking T-dependencies into account
@@ -307,8 +314,8 @@ end
 if 1==1
     # 2D, UCLA-type models (WiP)
     Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="Zassy_UCLA_ellipticalIntrusion", 
-                            SaveOutput_steps=400, CreateFig_steps=100,
-                            maxTime_Myrs=1.13, Tsurface_Celcius=25,
+                            SaveOutput_steps=400, CreateFig_steps=100, axisymmetric=true,
+                            maxTime_Myrs=1.13, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
                             FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);
 
     #                             
@@ -346,7 +353,7 @@ if 1==1
                                     Density    = ConstantDensity(ρ=2700/m^3),                  # used in the parameterisation of Whittington 
                              EnergySourceTerms = ConstantLatentHeat(Q_L=3.13e5J/kg),
                                   Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                  #Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
+                                  #Conductivity = ConstantConductivity(k=3.3Watt/K/m),         # in case we use constant k
                                   HeatCapacity = T_HeatCapacity_Whittington(),                 # T-dependent cp
                                   #HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
                                        Melting = MeltingParam_Quadratic()),                    # Quadratic parameterization as in Tierney et al.
