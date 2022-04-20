@@ -38,7 +38,8 @@ km³         = 1000^3
     maxTime::Float64            =   maxTime_Myrs*SecYear*1e6 # maximum timestep  in seconds
     SaveOutput_steps::Int64     =   1e3;            # saves output every x steps 
     CreateFig_steps::Int64      =   500;            # Create a figure every X steps
-    flux_free_bottom_BC::Bool   =   false           # zero flux bottom BC?
+    flux_free_bottom_BC::Bool   =   false           # flux bottom BC?
+    flux_bottom::Float64        =   167e-3          # Flux in W/m2 in case flux_free_bottom_BC=true
     deactivate_La_at_depth::Bool=   false           # deactivate latent heating @ the bottom of the model box?
     plot_tracers::Bool          =   true            # adds passive tracers to the plot
     advect_polygon::Bool        =   false           # adds a polygon around the intrusion area
@@ -68,19 +69,21 @@ end
 
 # This performs one diffusion timestep while doing nonlinear iterations (for latent heat and conductivity which depends on T)
 function Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, Phases, 
-                P, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, La, dϕdT, Z, Num)
+                P, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, Hr, La, dϕdT, Z, Num)
    
     err, iter = 1., 1
     @parallel assign!(T_K, T, 273.15)
     @parallel assign!(T_it_old, T)
     while err>1e-6 && iter<20
         
-        # Update material properties (as some are a function of T)
-        compute_meltfraction!(Phi_melt, Mat_tup, Phases, P, T_K) 
-        compute_density!(Rho, Mat_tup, Phases, P,     T_K)
-        compute_heatcapacity!(Cp, Mat_tup, Phases, P, T_K)
-        compute_conductivity!(Kc, Mat_tup, Phases, P, T_K)
-        compute_dϕdT!(dϕdT, Mat_tup, Phases, P,       T_K)
+        # Update material properties (as some can be a function of T)
+        compute_meltfraction!(Phi_melt, Mat_tup, Phases, (;T=T_K)) 
+        compute_dϕdT!(dϕdT, Mat_tup, Phases, (;T=T_K))            
+        compute_density!(Rho, Mat_tup, Phases, (;T=T_K) )
+        compute_heatcapacity!(Cp, Mat_tup, Phases, (;T=T_K) )
+        compute_conductivity!(Kc, Mat_tup, Phases, (;T=T_K) )
+        compute_radioactive_heat!(Hr, Mat_tup, Phases, (; z=-Z))    
+        #compute_latent_heat!(Hl, Mat_tup, Phases, (;))    
 
         # Switch off latent heat below a certain depth 
         if Num.deactivate_La_at_depth==true
@@ -90,14 +93,16 @@ function Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, P
         
         # Diffusion step:
         if Num.axisymmetric==true
-            @parallel diffusion2D_AxiSymm_step!(Tnew, T, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, Num.dt, Num.dx, Num.dz, La, dϕdT) # axisymmetric diffusion step
+            @parallel diffusion2D_AxiSymm_step!(Tnew, T, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, Hr, Num.dt, Num.dx, Num.dz, La, dϕdT) # axisymmetric diffusion step
         else
-            @parallel diffusion2D_step!(Tnew, T, qr, qz, Kc, Kr, Kz, Rho, Cp, Num.dt, Num.dx, Num.dz, La, dϕdT) # 2D diffusion step
+            @parallel diffusion2D_step!(Tnew, T, qr, qz, Kc, Kr, Kz, Rho, Cp, Hr, Num.dt, Num.dx, Num.dz, La, dϕdT) # 2D diffusion step
         end
 
         @parallel (1:size(T,2)) bc2D_x!(Tnew);                      # flux-free lateral boundary conditions
         if Num.flux_free_bottom_BC==true
-            @parallel (1:size(T,1)) bc2D_z_bottom!(Tnew);           # flux-free bottom BC  (if false=isothermal)
+            #@parallel (1:size(T,1)) bc2D_z_bottom!(Tnew);           # flux-free bottom BC  (if false=isothermal)
+            @parallel (1:size(T,1)) bc2D_z_bottom_flux!(Tnew, Kc, Num.dz, Num.flux_bottom);     # flux-free bottom BC with specified flux (if false=isothermal) 
+
         end
  
         # Update T_K (used above to compute material properties)
@@ -117,8 +122,8 @@ end
     # Retrieve some parameters
     @unpack Nx,Nz, nt = Num 
 
-    if ~isempty(Mat_tup[1].EnergySourceTerms)
-        La =  NumValue(Mat_tup[1].EnergySourceTerms[1].Q_L);             # latent heat 
+    if ~isempty(Mat_tup[1].LatentHeat)
+        La =  NumValue(Mat_tup[1].LatentHeat[1].Q_L);             # latent heat 
     else
         La = 0.
     end
@@ -132,6 +137,7 @@ end
     Kc                      =   @ones(Nx,    Nz);
     Rho                     =   @ones(Nx,    Nz);       
     Cp                      =   @ones(Nx,    Nz);
+    Hr                      =   @zeros(Nx,   Nz);  # radioactive heat
     Phi_melt, dϕdT,dϕdT_o   =   @zeros(Nx,   Nz), @zeros(Nx,   Nz  ), @zeros(Nx,   Nz  )                   # Melt fraction and derivative of melt fraction vs T
 
     # Work array initialization
@@ -189,16 +195,20 @@ end
         end
 
         # Do a diffusion step, while taking T-dependencies into account
-        Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, Phases, P, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, La, dϕdT, Z, Num)
+        Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, Phases, P, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, Hr, La, dϕdT, Z, Num)
         
         # Update variables
-        Tracers             =   UpdateTracers(Tracers, Grid, Tnew, Phi_melt);      # Update info on tracers 
+        Tracers             =   UpdateTracers(Tracers, Grid, Tnew, Phi_melt,"Linear");      # Update info on tracers 
         @parallel assign!(T, Tnew)
         @parallel assign!(Tnew, T)
         time                =   time + Num.dt;                                     # Keep track of evolved time
         Melt_Time[it]       =   sum( Phi_melt)/(Nx*Nz)                             # Melt fraction in crust    
         Time_vec[it]        =   time;                                              # Vector with time
         
+        if mod(it,10)==0
+            update_Tvec!(Tracers, time/SecYear/1e6)                                 # update T & time vectors on tracers
+        end
+
         # Visualize results
         if mod(it,Num.CreateFig_steps)==0  || it==nt 
             time_Myrs = time/Myr;
@@ -272,12 +282,12 @@ end # end of main function
 if 1==0
     # 1D, Geneva-type models without magmatic injections (for comparison with 1D code)
     Num         = NumParam(Nx=21, Nz=269, SimName="Zassy_Geneva_zeroFlux_1D_variablek_1", 
-                            flux_free_bottom_BC=true, deactivate_La_at_depth=false, 
+                            flux_free_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=false, 
                             SaveOutput_steps=1e4, CreateFig_steps=1000, FigTitle = "Geneva setup");
     Dike_params = DikeParam(Type="CylindricalDike_TopAccretion", InjectionInterval = 1e40, W_in=40e3)
 
     MatParam    = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
-                                    Density    = ConstantDensity(ρ=2700/m^3),
+                                    Density    = ConstantDensity(ρ=2700kg/m^3),
                              EnergySourceTerms = ConstantLatentHeat(Q_L=3.13e5J/kg),
                             #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),     # in case we use constant k
                                   Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
@@ -291,7 +301,7 @@ end
 if 1==0
     # 2D, Geneva-type models  
     Num         = NumParam(Nx=269, Nz=269, SimName="Zassy_Geneva_zeroFlux_variable_k_1", 
-                            flux_free_bottom_BC=true, deactivate_La_at_depth=true, 
+                            flux_free_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=true, 
                             SaveOutput_steps=1e4, CreateFig_steps=1000, plot_tracers=false, advect_polygon=false,
                             FigTitle="Geneva Models");
 
@@ -299,7 +309,7 @@ if 1==0
                             W_in=20e3, H_in=74.6269)
 
     MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
-                                    Density    = ConstantDensity(ρ=2700/m^3),
+                                    Density    = ConstantDensity(ρ=2700kg/m^3),
                              EnergySourceTerms = ConstantLatentHeat(Q_L=3.13e5J/kg),
                             #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
                                   Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
@@ -313,12 +323,33 @@ end
 
 if 1==1
     # 2D, UCLA-type models (WiP)
-    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="Zassy_UCLA_ellipticalIntrusion", 
-                            SaveOutput_steps=400, CreateFig_steps=100, axisymmetric=true,
-                            maxTime_Myrs=1.13, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
-                            FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);
 
-    #                             
+    # In the UCLA model, the following geotherm is used, with Tsurface as top BC & qm (mantle heatflux) as bottom BC.
+    # Exponential depth-dependent radioactive heating (in W/m3) is assumed to follow:
+    #  H_r = H0 * exp(-z/h)r)
+    # with hr=10km & qs,qm are manipulated to obtain an approximately linear initial geotherm over the first 20 km:
+    #
+    # The analytical solution for this case, assuming constant k, comes from Turcotte & Schubert:  
+    #  T = Tsurface + (qm/k)*z + (qs-qm)hr/k *(1.-exp(-z/hr)) 
+    #
+    # which can also be written as:
+    #  T = Tsurface + (qm/k)*z + H0*hr^2/k *(1.-exp(-z/hr)) 
+    #  so: H0  = (qs-qm)/hr
+    #
+    # If we manipulate this, we obtain a good fit with qm=76e-3, qs=86e-3, H0=1e-6, k=1.9 (~value that Whittington gives for 1000C)
+
+    #Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="Zassy_UCLA_ellipticalIntrusion_variable_k_radioactiveheating", 
+    #                        SaveOutput_steps=400, CreateFig_steps=100, axisymmetric=true,
+    #                        flux_free_bottom_BC=true, flux_bottom=40/1e3*1.9,
+    #                        maxTime_Myrs=1.13, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
+    #                        FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);
+
+    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="Zassy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating", 
+                            SaveOutput_steps=400, CreateFig_steps=100, axisymmetric=true,
+                            flux_free_bottom_BC=true, flux_bottom=40/1e3*3.35,
+                            maxTime_Myrs=1.13, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
+                            FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);                            
+                                 
     Flux         = 7.5e-6;                              # in km3/km2/a 
     Total_r_km   = 10;                                  # final radius of area
     V_inject_km3 = 10;                                  # injection volume per sill injection
@@ -343,19 +374,21 @@ if 1==1
     nInjections     =   V_total_km3/V_inject_km3                # the number of required injections
     InjectionInterval_yr = Num.maxTime_Myrs*1e6/nInjections;    # Time inbetween injections
 
+
     # Use the parameters. Note that we specify the diameter of the ellipse in here
-    Dike_params  = DikeParam(Type="ElipticalIntrusion", InjectionInterval_year = InjectionInterval_yr, 
+    Dike_params  = DikeParam(Type="EllipticalIntrusion", InjectionInterval_year = InjectionInterval_yr, 
                             W_in=V_inj_a*2*1e3, 
                             H_in=V_inj_b*2*1e3, 
                             Center=[0, mid_depth_km*1e3])
 
     MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
-                                    Density    = ConstantDensity(ρ=2700/m^3),                  # used in the parameterisation of Whittington 
-                             EnergySourceTerms = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                                  Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                  #Conductivity = ConstantConductivity(k=3.3Watt/K/m),         # in case we use constant k
-                                  HeatCapacity = T_HeatCapacity_Whittington(),                 # T-dependent cp
-                                  #HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                    Density    = ConstantDensity(ρ=2700kg/m^3),                # used in the parameterisation of Whittington 
+                                    LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
+                               RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=1e-6Watt/m^3),
+                                  #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
+                                  Conductivity = ConstantConductivity(k=3.35Watt/K/m),        # in case we use constant k
+                                  #HeatCapacity = T_HeatCapacity_Whittington(),                 # T-dependent cp
+                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
                                        Melting = MeltingParam_Quadratic()),                    # Quadratic parameterization as in Tierney et al.
                     )
 end
