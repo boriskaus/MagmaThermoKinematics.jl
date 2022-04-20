@@ -229,7 +229,8 @@ end
 
 # Volume of dike
 @testset "Dike_Volume" begin
-  @test volume_dike(Dike(Center=[0; 0],Angle=[45; 90], T=800, Type="ElasticDike", Q=1e6, ΔP=1e7, E=1e10))[1] ≈   2539.6349734808196 atol=1e-8;  
+ # @test volume_dike(Dike(Center=[0; 0],Angle=[45; 90], T=800, Type="ElasticDike", Q=1e6, ΔP=1e7, E=1e10))[1] ≈   2539.6349734808196 atol=1e-8;  
+  @test volume_dike(Dike(Center=[0; 0],Angle=[45; 90], T=800, Type="ElasticDike", Q=1e6, ΔP=1e7, E=1e10))[1] ≈   634.9087433702049 atol=1e-8;  
   @test volume_dike(Dike(Center=[0; 0],Angle=[45],     T=900, Type="SquareDike",  W=1000, H=100 ))[1] ≈ 100000.0  atol=1e-8;  
 end
 

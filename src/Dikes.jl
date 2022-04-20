@@ -33,7 +33,7 @@ temperature field
                             "CylindricalDike_TopAccretion"      -   cylindrical dike area, which grows by underaccreting   
                             "CylindricalDike_TopAccretion_FullModelAdvection"      -   cylindrical dike area, which grows by underaccreting; also material to the side of the dike is moved downwards   
                             "ElasticDike"   -   penny-shaped elastic dike in elastic halfspace
-                            "ElipticalIntrusion" - elliptical dike intrusion area with radius Width/2 and height Height/2 
+                            "EllipticalIntrusion" - elliptical dike intrusion area with radius Width/2 and height Height/2 
             
             T:          Temperature of the dike [Celcius]   
             
@@ -271,7 +271,7 @@ Threads.@threads for i in eachindex(Vz_rot)
              
                 end
 
-        elseif Type == "ElipticalIntrusion" 
+        elseif Type == "EllipticalIntrusion" 
                 @unpack H,W = dike
                 AR  = H/W         # aspect ratio of ellipse
                 H   = Δ           # we don't open the dike @ once but piece by piece
@@ -425,7 +425,7 @@ function CreateDikePolygon(dike::Dike, nump=101)
         z  = [ones(size(xx))*dike.H; -ones(size(xx))*dike.H/2 ] .+ dike.Center[2];
         poly = [x,z];
     
-    elseif Type=="ElipticalIntrusion"
+    elseif Type=="EllipticalIntrusion"
         dp = 2*pi/nump
         p = 0.0:.01:2*pi;
         a_ellipse = dike.W/2.0;
@@ -460,7 +460,7 @@ function CreatDikePolygon(dike::Dike, nump=101)
         z  = [ones(size(xx))*dike.H; -ones(size(xx))*dike.H/2 ] .+ Dikes.Center[2];
         poly = [x,z];
     
-    elseif Type=="ElipticalIntrusion"
+    elseif Type=="EllipticalIntrusion"
         dp = 2*pi/nump
         p = 0.0:.01:2*pi;
         a_ellipse = dike.W/2.0;
@@ -526,7 +526,7 @@ function isinside_dike(pt, dike::Dike)
                 in = true
             end
         end
-    elseif (Type=="ElasticDike") || (Type=="ElipticalIntrusion")
+    elseif (Type=="ElasticDike") || (Type=="EllipticalIntrusion")
         eq_ellipse = 100.0;
 
         if dim==2
@@ -573,7 +573,7 @@ function volume_dike(dike::Dike)
         area    = W*H;                  #  (in 2D, in m^2)
         volume  = pi*(W/2.0)^2*H;       #  (equivalent 3D volume, in m^3)
 
-    elseif (Type=="ElasticDike") || (Type=="ElipticalIntrusion")
+    elseif (Type=="ElasticDike") || (Type=="EllipticalIntrusion")
         area    = pi*W/2*H/2                    #   (in 2D, in m^2)  - note that W,H are the diameters
         volume  = 4/3*pi*(W/2)*(W/2)*(H/2)      #   (equivalent 3D volume, in m^3)
     else

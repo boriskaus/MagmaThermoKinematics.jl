@@ -12,7 +12,6 @@ using StructArrays                              # for tracers and dike polygon
 using Parameters                                # More flexible definition of parameters
 using Interpolations                            # Fast interpolations
 using StaticArrays                      
-#using CSV                                       # for reading phase diagrams
 
 include("Units.jl")                             # various useful units
 

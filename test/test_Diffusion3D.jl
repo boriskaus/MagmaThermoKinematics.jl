@@ -15,9 +15,9 @@ function Diffusion_Gaussian3D(Setup="3D")
     # Test the 
     
     # Model parameters
-    W,L,H                   =   300., 300., 300.;                      # Width, Length,    Height in km
+    W,L,H                   =   300., 300., 300.;                               # Width, Length,    Height in km
     k_rock1                 =   3;
-    Nx, Ny, Nz              =   100, 100, 100;                      # resolution
+    Nx, Ny, Nz              =   100, 100, 100;                                  # resolution
     Tbot                    =   0;
     SecYear                 =   365.25*24*3600
     σ                       =   15e3;                                           # halfwidth of gaussian
@@ -40,6 +40,7 @@ function Diffusion_Gaussian3D(Setup="3D")
     Rho                     =   @ones(Nx,Ny,Nz)*ρ;       
     Cp                      =   @ones(Nx,Ny,Nz)*cp;
     dPhi_dt                 =   @zeros(Nx,Ny,Nz);    
+    Hs                      =   @zeros(Nx,Ny,Nz);    
     
     # Work array initialization
     Tnew, qx,qy,qz          =   @zeros(Nx,Ny,Nz),       @zeros(Nx-1,Ny,Nz),     @zeros(Nx, Ny-1, Nz),   @zeros(Nx,Ny,Nz-1)  # thermal solver
@@ -65,7 +66,7 @@ function Diffusion_Gaussian3D(Setup="3D")
     
         # Perform a diffusion step
         if Setup=="3D"
-            @parallel diffusion3D_step_varK!(Tnew, T, qx, qy, qz, K, Kx, Ky, Kz, Rho, Cp, dt, dx, dy, dz,  La, dPhi_dt);  
+            @parallel diffusion3D_step_varK!(Tnew, T, qx, qy, qz, K, Kx, Ky, Kz, Rho, Cp, Hs, dt, dx, dy, dz,  La, dPhi_dt);  
             #@parallel diffusion3D_step!(Tnew, T, K, 1.0/(ρ*cp), dt, dx, dy, dz)
         end
 
