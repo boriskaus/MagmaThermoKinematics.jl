@@ -280,7 +280,7 @@ end
             if it==nt   
                 # save tracers & material parameters of the simulation in jld2 format so we can reproduce this
                 filename = "$(Num.SimName)/Tracers_SimParams.jld2"
-                jldsave(filename; Tracers, Dikes, Num, Mat_tup, time_vec, Melt_Time)
+                jldsave(filename; Tracers, Dikes, Num, Mat_tup, Time_vec, Melt_Time)
                 println("  Saved Tracers & simulation parameters to file $filename ")    
 
                 filename = "$(Num.SimName)/Tracers.mat"
