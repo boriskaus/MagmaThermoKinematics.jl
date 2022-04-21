@@ -85,10 +85,11 @@ function Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, P
         compute_radioactive_heat!(Hr, Mat_tup, Phases, (; z=-Z))    
         #compute_latent_heat!(Hl, Mat_tup, Phases, (;))    
 
-        # Switch off latent heat below a certain depth 
+        # Switch off latent heat & melting below a certain depth 
         if Num.deactivate_La_at_depth==true
             ind = findall(Z.<-15e3)
             dϕdT[ind] .= 0.0
+            Phi_melt[ind] .= 0.0
         end
         
         # Diffusion step:
@@ -172,7 +173,6 @@ end
 
 
     if isdir(Num.SimName)==false mkdir(Num.SimName) end;    # create simulation directory if needed
-    global VEL
     for it = 1:nt   # Time loop
 
         # Add new dike every X years:
@@ -184,12 +184,12 @@ end
             Qrate               =   InjectVol/time
             Qrate_km3_yr        =   Qrate*SecYear/km³
             Qrate_km3_yr_km2    =   Qrate_km3_yr/(pi*(Dike_params.W_in/2/1e3)^2)
+
             @printf "  Added new dike; time=%.3f kyrs, total injected magma volume = %.2f km³; rate Q= %.2e km³yr⁻¹  \n" time/kyr InjectVol/km³ Qrate_km3_yr 
             
             if Num.advect_polygon==true && isempty(dike_poly)
                 dike_poly   =   CreateDikePolygon(dike);            # create dike for the 1th time
             end
-           # @show maximum(T[:,1])-minimum(T[:,1]) maximum(VEL[2][:,1])-minimum(VEL[2][:,1]) 
         end
 
         # Do a diffusion step, while taking T-dependencies into account
@@ -253,7 +253,16 @@ end
             save("$(Num.SimName)/$(Num.SimName)_$it.png", fig)
             #
             # ---------------------------------
-            println("Timestep $it = $(round(time/kyr*100)/100) kyrs, maxT = $(round(maximum(T),digits=3)) ᵒC")
+
+            # compute average T of molten zone (1% melt)
+            ind = findall(Phi_melt.>0.01);
+            if ~isempty(ind)
+                T_av_melt = round(sum(T[ind])/length(ind), digits=3)
+            else
+                T_av_melt = NaN;
+            end
+            # print results:  
+            println("Timestep $it = $(round(time/kyr*100)/100) kyrs, max(T)=$(round(maximum(T),digits=3))ᵒC, Taverage_magma=$(T_av_melt)ᵒC, max(ϕ)=$(round(maximum(Phi_melt),digits=2))")
         end
 
         # Save output to disk once in a while
@@ -271,13 +280,12 @@ end
             if it==nt   
                 # save tracers & material parameters of the simulation in jld2 format so we can reproduce this
                 filename = "$(Num.SimName)/Tracers_SimParams.jld2"
-                jldsave(filename; Tracers, Dikes, Num, Mat_tup)
+                jldsave(filename; Tracers, Dikes, Num, Mat_tup, time_vec, Melt_Time)
                 println("  Saved Tracers & simulation parameters to file $filename ")    
 
                 filename = "$(Num.SimName)/Tracers.mat"
                 matwrite(filename,  Dict("Tracers"=> Tracers))
                 println("  Saved Tracers to file $filename ")    
-                
             end
 
         end
@@ -285,7 +293,7 @@ end
     end
     
 
-    return x,z,T, Time_vec, Melt_Time, Tracers, dike_poly, VEL;
+    return x,z,T, Time_vec, Melt_Time, Tracers, dike_poly;
 end # end of main function
 
 
@@ -310,8 +318,8 @@ if 1==0
                     )
 end
 
-if 1==1
-    # 2D, Geneva-type models  
+if 1==0
+    # 2D, Geneva-type models with Greg's parameters 
     Num         = NumParam(Nx=269, Nz=269, SimName="Zassy_Geneva_zeroFlux_variable_k_2", 
                             maxTime_Myrs=1.5,
                             flux_free_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=true, 
@@ -333,6 +341,28 @@ if 1==1
                     )
 end
 
+if 1==1
+    # 2D, Geneva-type models with Caricchi parameters (as described in ZASSy paper)
+    Num         = NumParam(Nx=269, Nz=269, SimName="Zassy_Geneva_zeroFlux_variable_k_CaricchiMelting", 
+                            maxTime_Myrs=1.5,
+                            flux_free_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=true, 
+                            SaveOutput_steps=1e4, CreateFig_steps=1000, plot_tracers=false, advect_polygon=true,
+                            FigTitle="Geneva Models");
+
+    Dike_params = DikeParam(Type="CylindricalDike_TopAccretion", InjectionInterval_year = 10e3, 
+                            W_in=20e3, H_in=74.6269)
+
+    MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
+                                    Density    = ConstantDensity(ρ=2700kg/m^3),
+                                    LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
+                            #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
+                                  Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
+                                 #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
+                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                       Melting = MeltingParam_Caricchi()),                     # Caricchi melting
+                    # add more parameters here, in case you have >1 phase in the model                                    
+                    )
+end
 
 if 1==0
     # 2D, UCLA-type models (WiP)
@@ -407,6 +437,6 @@ if 1==0
 end
 
 # Call the main code with the specified material parameters
-x,z,T, Time_vec,Melt_Time, Tracers, dike_poly, VEL = MainCode_2D(MatParam, Num, Dike_params); # start the main code
+x,z,T, Time_vec,Melt_Time, Tracers, dike_poly = MainCode_2D(MatParam, Num, Dike_params); # start the main code
 
 #plot(Time_vec/kyr, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example2D") #Create plot
