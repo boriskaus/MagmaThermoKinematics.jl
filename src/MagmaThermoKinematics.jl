@@ -12,6 +12,8 @@ using StructArrays                              # for tracers and dike polygon
 using Parameters                                # More flexible definition of parameters
 using Interpolations                            # Fast interpolations
 using StaticArrays                      
+using GeoParams                                 # Material parameters calculations
+using JLD2                                      # Load/save data to disk
 
 include("Units.jl")                             # various useful units
 
@@ -41,7 +43,13 @@ include("Tracers.jl")
 export UpdateTracers, AdvectTracers!, InitializeTracers,PhaseRatioFromTracers, CorrectTracersForTopography!
 export RockAssemblage, update_Tvec!  
 
+# Post-processing routines
+include("Utils.jl")
+export Process_ZirconAges
+
 # Routines related to Parameters.jl, which come in handy in the main routine
 export @unpack
+
+
 
 end # module
