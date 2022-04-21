@@ -5,7 +5,7 @@ using ParallelStencil.FiniteDifferences2D
 using CairoMakie    # plotting
 using GeoParams     # material parameters
 using Printf        # print    
-using MAT           # saves files in matlab format
+using MAT, JLD2     # saves files in matlab format & JLD2 (hdf5) format
 using Parameters
 
 using Statistics
@@ -242,7 +242,7 @@ end
                 # Add tracers to plot
                 scatter!(fig[1, 4],getindex.(Tracers.coord,1)/1e3, getindex.(Tracers.coord,2)/1e3, color=:white)
             end
-            if Num.advect_polygon==true & ~isempty(dike_poly)
+            if (Num.advect_polygon==true) & (~isempty(dike_poly))
                 # Add polygon
                 pl = lines!(fig[1, 4], dike_poly[1]/1e3, dike_poly[2]/1e3,   color = :yellow, linestyle=:dot, linewidth=1.5)
             end
@@ -269,9 +269,15 @@ end
             println("  Saved matlab output to $filename")    
 
             if it==nt   
+                # save tracers & material parameters of the simulation in jld2 format so we can reproduce this
+                filename = "$(Num.SimName)/Tracers_SimParams.jld2"
+                jldsave(filename; Tracers, Dikes, Num, Mat_tup)
+                println("  Saved Tracers & simulation parameters to file $filename ")    
+
                 filename = "$(Num.SimName)/Tracers.mat"
-                matwrite(filename, Dict("Tracers"=> Tracers))
-                println("  Saved Tracers to matlab file $filename")    
+                matwrite(filename,  Dict("Tracers"=> Tracers))
+                println("  Saved Tracers to file $filename ")    
+                
             end
 
         end
@@ -287,7 +293,7 @@ end # end of main function
 
 if 1==0
     # 1D, Geneva-type models without magmatic injections (for comparison with 1D code)
-    Num         = NumParam(Nx=21, Nz=269, SimName="Zassy_Geneva_zeroFlux_1D_variablek_1", 
+    Num         = NumParam(Nx=21, Nz=269, SimName="Zassy_Geneva_zeroFlux_1D_variablek_2", 
                             flux_free_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=false, 
                             SaveOutput_steps=1e4, CreateFig_steps=1000, FigTitle = "Geneva setup");
     Dike_params = DikeParam(Type="CylindricalDike_TopAccretion", InjectionInterval = 1e40, W_in=40e3)
@@ -304,11 +310,12 @@ if 1==0
                     )
 end
 
-if 1==0
+if 1==1
     # 2D, Geneva-type models  
-    Num         = NumParam(Nx=269, Nz=269, SimName="Zassy_Geneva_zeroFlux_variable_k_1", 
+    Num         = NumParam(Nx=269, Nz=269, SimName="Zassy_Geneva_zeroFlux_variable_k_2", 
+                            maxTime_Myrs=1.5,
                             flux_free_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=true, 
-                            SaveOutput_steps=1e4, CreateFig_steps=1000, plot_tracers=false, advect_polygon=false,
+                            SaveOutput_steps=1e4, CreateFig_steps=1000, plot_tracers=false, advect_polygon=true,
                             FigTitle="Geneva Models");
 
     Dike_params = DikeParam(Type="CylindricalDike_TopAccretion", InjectionInterval_year = 10e3, 
@@ -327,7 +334,7 @@ if 1==0
 end
 
 
-if 1==1
+if 1==0
     # 2D, UCLA-type models (WiP)
 
     # In the UCLA model, the following geotherm is used, with Tsurface as top BC & qm (mantle heatflux) as bottom BC.
