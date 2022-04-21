@@ -100,9 +100,7 @@ function Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, P
 
         @parallel (1:size(T,2)) bc2D_x!(Tnew);                      # flux-free lateral boundary conditions
         if Num.flux_free_bottom_BC==true
-            #@parallel (1:size(T,1)) bc2D_z_bottom!(Tnew);           # flux-free bottom BC  (if false=isothermal)
             @parallel (1:size(T,1)) bc2D_z_bottom_flux!(Tnew, Kc, Num.dz, Num.flux_bottom);     # flux-free bottom BC with specified flux (if false=isothermal) 
-
         end
  
         # Update T_K (used above to compute material properties)
@@ -269,9 +267,17 @@ end
                                 "dike_poly" => dike_poly)
                 )
             println("  Saved matlab output to $filename")    
+
+            if it==nt   
+                filename = "$(Num.SimName)/Tracers.mat"
+                matwrite(filename, Dict("Tracers"=> Tracers))
+                println("  Saved Tracers to matlab file $filename")    
+            end
+
         end
 
     end
+    
 
     return x,z,T, Time_vec, Melt_Time, Tracers, dike_poly, VEL;
 end # end of main function
@@ -288,7 +294,7 @@ if 1==0
 
     MatParam    = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
                                     Density    = ConstantDensity(ρ=2700kg/m^3),
-                             EnergySourceTerms = ConstantLatentHeat(Q_L=3.13e5J/kg),
+                                    LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
                             #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),     # in case we use constant k
                                   Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
                                  #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
@@ -310,7 +316,7 @@ if 1==0
 
     MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
                                     Density    = ConstantDensity(ρ=2700kg/m^3),
-                             EnergySourceTerms = ConstantLatentHeat(Q_L=3.13e5J/kg),
+                                    LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
                             #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
                                   Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
                                  #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
@@ -346,7 +352,7 @@ if 1==1
 
     Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="Zassy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating", 
                             SaveOutput_steps=400, CreateFig_steps=100, axisymmetric=true,
-                            flux_free_bottom_BC=true, flux_bottom=40/1e3*3.35,
+                            flux_free_bottom_BC=true, flux_bottom=38.7/1e3*3.35,
                             maxTime_Myrs=1.13, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
                             FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);                            
                                  
