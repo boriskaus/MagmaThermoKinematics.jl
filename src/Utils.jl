@@ -23,7 +23,7 @@ julia> Age_Ma, cum_PDF, norm_PDF, T_av_time  = JLD2.load("Zassy_Geneva_zeroFlux_
 """
 function Process_ZirconAges(dirname; ZirconData=ZirconAgeData())
     filename = dirname*"/Tracers_SimParams.jld2"
-    Tracers = JLD2.load(filename,"Tracers")
+    Tracers, Tav_magma_Time = JLD2.load(filename,"Tracers","Tav_magma_Time")
 
     # Compute zircon ages
     time_Ma, PDF_zircons, time_Ma_average, PDF_zircon_average, time_years, prob, ages_eruptible, number_zircons, T_av_time, T_sd_time = 
@@ -37,7 +37,7 @@ function Process_ZirconAges(dirname; ZirconData=ZirconAgeData())
     # save stuff as jld2 file (easier to plot later)
     filename_save = dirname*"/ZirconAges.jld2"
     jldsave(filename_save; time_Ma, PDF_zircons, time_Ma_average, PDF_zircon_average, 
-                            time_years, prob, ages_eruptible, number_zircons, T_av_time, T_sd_time,
+                            time_years, prob, ages_eruptible, number_zircons, T_av_time, T_sd_time, Tav_magma_Time, 
                             Age_Ma, cum_PDF, norm_PDF)
     println("Save processed zircon age data to file: $filename_save")
 

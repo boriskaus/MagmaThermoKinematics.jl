@@ -157,7 +157,7 @@ end
     # Set initial sill in temperature structure for Geneva type models
     dike_poly   = []
     if Dikes.Type  == "CylindricalDike_TopAccretion"
-        ind = findall(R.<=Dikes.W_in/2 .&& abs.(Z.-Dikes.Center[2]) .< Dikes.H_in/2 );
+        ind = findall( (R.<=Dikes.W_in/2) .& (abs.(Z.-Dikes.Center[2]) .< Dikes.H_in/2) );
         T_init[ind] .= Dikes.T_in_Celsius;
         if Num.advect_polygon==true
             dike_poly   =   CreateDikePolygon(dike);
@@ -169,8 +169,7 @@ end
 
     P                       =   @zeros(Nx,Nz);
     Phases                  =   ones(Int64,Nx,Nz)
-    time, dike_inj, InjectVol, Time_vec,Melt_Time = 0.0, 0.0, 0.0,zeros(nt,1),zeros(nt,1);
-
+    time, dike_inj, InjectVol, Time_vec,Melt_Time,Tav_magma_Time = 0.0, 0.0, 0.0,zeros(nt,1),zeros(nt,1),zeros(nt,1);
 
     if isdir(Num.SimName)==false mkdir(Num.SimName) end;    # create simulation directory if needed
     for it = 1:nt   # Time loop
@@ -201,8 +200,16 @@ end
         @parallel assign!(Tnew, T)
         time                =   time + Num.dt;                                     # Keep track of evolved time
         Melt_Time[it]       =   sum( Phi_melt)/(Nx*Nz)                             # Melt fraction in crust    
-        Time_vec[it]        =   time;                                              # Vector with time
         
+        ind = findall(T.>700);          
+        if ~isempty(ind)
+            Tav_magma_Time[it] = sum(T[ind])/length(ind)                            # average T of part with magma
+        else
+            Tav_magma_Time[it] = NaN;
+        end
+
+        Time_vec[it]        =   time;                                              # Vector with time
+
         if mod(it,10)==0
             update_Tvec!(Tracers, time/SecYear/1e6)                                 # update T & time vectors on tracers
         end
@@ -280,7 +287,7 @@ end
             if it==nt   
                 # save tracers & material parameters of the simulation in jld2 format so we can reproduce this
                 filename = "$(Num.SimName)/Tracers_SimParams.jld2"
-                jldsave(filename; Tracers, Dikes, Num, Mat_tup, Time_vec, Melt_Time)
+                jldsave(filename; Tracers, Dikes, Num, Mat_tup, Time_vec, Melt_Time, Tav_magma_Time)
                 println("  Saved Tracers & simulation parameters to file $filename ")    
 
                 filename = "$(Num.SimName)/Tracers.mat"
