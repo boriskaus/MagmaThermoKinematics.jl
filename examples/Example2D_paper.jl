@@ -48,6 +48,10 @@ km³         = 1000^3
     fac_dt::Float64             =   0.4;            # prefactor with which dt is multiplied   
     dt::Float64                 =   fac_dt*min(dx^2, dz^2)./κ_time/4;   # timestep
     nt::Int64                   =   floor(maxTime/dt);
+    ω::Float64                  =   1.0;            # relaxation parameter for nonlinear iterations    
+    max_iter::Int64             =   50;             # max. number of nonlinear iterations        
+    verbose::Bool               =   false;    
+    convergence::Float64        =   1e-5;           # nonlinear convergence criteria       
 end
 
 """
@@ -71,25 +75,32 @@ end
 function Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, Phases, 
                 P, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, Hr, La, dϕdT, Z, Num)
    
-    err, iter, maxit = 1., 1, 40
+    err, iter = 1., 1
     @parallel assign!(T_K, T, 273.15)
     @parallel assign!(T_it_old, T)
-    while err>1e-6 && iter<maxit
+    Tupdate = similar(Tnew)                 # relaxed picard update
+    Tbuffer = similar(Tnew)
+    args1 = (; T=T_K)
+    args2 = (; z=-Z)
+    while err>Num.convergence && iter<Num.max_iter
         
         # Update material properties (as some can be a function of T)
-        compute_meltfraction!(Phi_melt, Mat_tup, Phases, (;T=T_K)) 
-        compute_dϕdT!(dϕdT, Mat_tup, Phases, (;T=T_K))            
-        compute_density!(Rho, Mat_tup, Phases, (;T=T_K) )
-        compute_heatcapacity!(Cp, Mat_tup, Phases, (;T=T_K) )
-        compute_conductivity!(Kc, Mat_tup, Phases, (;T=T_K) )
-        compute_radioactive_heat!(Hr, Mat_tup, Phases, (; z=-Z))    
+        compute_meltfraction!(Phi_melt, Mat_tup, Phases, args1) 
+        compute_dϕdT!(dϕdT, Mat_tup, Phases, args1)  
+        compute_density!(Rho, Mat_tup, Phases, args1)
+        compute_heatcapacity!(Cp, Mat_tup, Phases, args1 )
+        compute_conductivity!(Kc, Mat_tup, Phases, args1 )
+        compute_radioactive_heat!(Hr, Mat_tup, Phases, args2)    
         #compute_latent_heat!(Hl, Mat_tup, Phases, (;))    
 
         # Switch off latent heat & melting below a certain depth 
         if Num.deactivate_La_at_depth==true
-            ind = findall(Z.<-15e3)
-            dϕdT[ind] .= 0.0
-            Phi_melt[ind] .= 0.0
+            for i in eachindex(Z) 
+                @inbounds if Z[i]<-15e3
+                    dϕdT[i] = 0.0
+                    Phi_melt[i] = 0.0
+                end
+            end
         end
         
         # Diffusion step:
@@ -104,15 +115,32 @@ function Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, P
             @parallel (1:size(T,1)) bc2D_z_bottom_flux!(Tnew, Kc, Num.dz, Num.flux_bottom);     # flux-free bottom BC with specified flux (if false=isothermal) 
         end
  
+        # Use a relaxed Picard iteration to update the (nonlinear) material properties:
+        Threads.@threads for i in eachindex(Tupdate)
+            @inbounds Tupdate[i] =Num.ω*Tnew[i] + (1.0 - Num.ω)*T_it_old[i]  
+        end
+
         # Update T_K (used above to compute material properties)
-        @parallel assign!(T_K, Tnew,  273.15)   # all GeoParams routines expect T in K
-        err     = norm(Tnew-T_it_old)           # compute error
-    
-        @parallel assign!(T_it_old, Tnew)       # Store Tnew of last iteration step
+        @parallel assign!(args1.T, Tupdate,  273.15)   # all GeoParams routines expect T in K
+
+        Threads.@threads for i in eachindex(Tbuffer)
+            @inbounds Tbuffer[i] =Tnew[i]-T_it_old[i]
+        end
+        err     = norm(Tbuffer)/maximum(abs.(Tnew))     
+        if Num.verbose==true
+            println("  Nonlinear iteration $(iter), error=$(err)")
+        end
+        
+        @parallel assign!(T_it_old, Tupdate)                   # Store Tnew of last iteration step
         iter   += 1
+
+
     end
-    if iter==maxit
-        println("WARNING: nonlinear iterations not converging. Reduce Δt! Final error=$(err)")
+    if iter==Num.max_iter
+        println("WARNING: nonlinear iterations not converging. Final error=$(err). Reduce Δt, or the relaxation parameter Num.ω (=$(Num.ω)) [0-1]")
+    end
+    if Num.verbose==true
+        println("  ----")
     end
 
     return nothing
@@ -351,11 +379,11 @@ if 1==0
                     )
 end
 
-if 1==1
+if 1==0
 
     # 2D, run 02.2 Geneva-type models with Greg's parameters 
     Num         = NumParam(Nx=269, Nz=269, SimName="ZASSy_Geneva_zeroFlux_variable_k_run02.2_withlatent_depth_1", 
-                            maxTime_Myrs=1.5, fac_dt=0.05,
+                            maxTime_Myrs=1.5, fac_dt=0.05, ω=0.9, max_iter=50, verbose=false,
                             flux_free_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=false, 
                             SaveOutput_steps=4000, CreateFig_steps=1000, plot_tracers=false, advect_polygon=true,
                             FigTitle="Geneva Models");
@@ -471,7 +499,7 @@ if 1==0
 end
 
 
-if 1==0
+if 1==1
     # 2D, UCLA-type models
 
     # In the UCLA model, the following geotherm is used, with Tsurface as top BC & qm (mantle heatflux) as bottom BC.
@@ -494,9 +522,9 @@ if 1==0
     #                        maxTime_Myrs=1.13, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
     #                        FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);
 
-    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="Zassy_UCLA_ellipticalIntrusion_variable_k_radioactiveheating", 
-                            SaveOutput_steps=400, CreateFig_steps=100, axisymmetric=false,
-                            flux_free_bottom_BC=true, flux_bottom=38.7/1e3*3.35,
+    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="Zassy_UCLA_ellipticalIntrusion_variable_k_radioactiveheating_1", 
+                            SaveOutput_steps=2000, CreateFig_steps=1000, axisymmetric=false,
+                            flux_free_bottom_BC=true, flux_bottom=38.7/1e3*3.35, fac_dt=0.01, ω=0.9, max_iter=100, verbose=false,
                             maxTime_Myrs=1.13, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
                             FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);                            
                                  
@@ -535,10 +563,10 @@ if 1==0
                                     Density    = ConstantDensity(ρ=2700kg/m^3),                # used in the parameterisation of Whittington 
                                     LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=1e-6Watt/m^3),
-                                  #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
+                                  Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
                                   #Conductivity = ConstantConductivity(k=3.35Watt/K/m),        # in case we use constant k
-                                 # HeatCapacity = T_HeatCapacity_Whittington(),                 # T-dependent cp
-                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                  HeatCapacity = T_HeatCapacity_Whittington(),                 # T-dependent cp
+                                 # HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
                                        Melting = MeltingParam_Quadratic()),                    # Quadratic parameterization as in Tierney et al.
                     )
 end
