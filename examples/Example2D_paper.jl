@@ -71,10 +71,10 @@ end
 function Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, Phases, 
                 P, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, Hr, La, dϕdT, Z, Num)
    
-    err, iter = 1., 1
+    err, iter, maxit = 1., 1, 40
     @parallel assign!(T_K, T, 273.15)
     @parallel assign!(T_it_old, T)
-    while err>1e-6 && iter<20
+    while err>1e-6 && iter<maxit
         
         # Update material properties (as some can be a function of T)
         compute_meltfraction!(Phi_melt, Mat_tup, Phases, (;T=T_K)) 
@@ -110,6 +110,9 @@ function Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, P
     
         @parallel assign!(T_it_old, Tnew)       # Store Tnew of last iteration step
         iter   += 1
+    end
+    if iter==maxit
+        println("WARNING: nonlinear iterations not converging. Reduce Δt! Final error=$(err)")
     end
 
     return nothing
@@ -351,7 +354,7 @@ end
 if 1==1
 
     # 2D, run 02.2 Geneva-type models with Greg's parameters 
-    Num         = NumParam(Nx=269, Nz=269, SimName="ZASSy_Geneva_zeroFlux_variable_k_run02.2_withlatent_depth", 
+    Num         = NumParam(Nx=269, Nz=269, SimName="ZASSy_Geneva_zeroFlux_variable_k_run02.2_withlatent_depth_1", 
                             maxTime_Myrs=1.5, fac_dt=0.05,
                             flux_free_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=false, 
                             SaveOutput_steps=4000, CreateFig_steps=1000, plot_tracers=false, advect_polygon=true,
