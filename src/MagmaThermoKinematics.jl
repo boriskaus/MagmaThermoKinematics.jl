@@ -50,12 +50,6 @@ function environment!(model_device, precission, dimension)
         export Data
     end
 
-    # function namedtupleindex(args::NamedTuple, I...)
-    #     k = keys(args)
-    #     v = getindex.(values(args), I...)
-    #     return (; zip(k, v)...)
-    # end
-
     for fni in ("meltfraction","dϕdT","density","heatcapacity","conductivity","radioactive_heat")
         fn = Symbol(string("compute_$(fni)_ps!"))
         _fn = Symbol(string("compute_$(fni)"))
@@ -74,9 +68,6 @@ function environment!(model_device, precission, dimension)
 end
 
 export environment!
-# ## Alphabetical include of computation-submodules (must be at end as needs to import from ParallelStencil).
-# include("Diffusion.jl")
-# export Diffusion2D, Diffusion3D  #
 
 include("MeltingRelationships.jl")
 export SolidFraction, ComputeLithostaticPressure, LoadPhaseDiagrams, PhaseDiagramData, ComputeDensityAndPressure
