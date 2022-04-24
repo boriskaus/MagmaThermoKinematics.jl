@@ -86,7 +86,7 @@ for fni in ("meltfraction","dϕdT","density","heatcapacity","conductivity","radi
 end
 
 function update_dϕdT_Phi!(dϕdT, Phi_melt, Z)
-    for i in eachindex(Z)
+    Threads.@Threads for i in eachindex(Z)
         @inbounds if Z[i] < -15e3
             dϕdT[i] = 0.0
             Phi_melt[i] = 0.0
@@ -117,7 +117,7 @@ function Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, P
 
         # Switch off latent heat & melting below a certain depth 
         if Num.deactivate_La_at_depth==true
-            @parallel (1:Nx,1:Nz) update_dϕdT_Phi!(dϕdT, Phi_melt, Z)
+            update_dϕdT_Phi!(dϕdT, Phi_melt, Z)
         end
 
         # Diffusion step:
@@ -201,7 +201,7 @@ end
     time, dike_inj, InjectVol, Time_vec,Melt_Time,Tav_magma_Time = 0.0, 0.0, 0.0,zeros(nt,1),zeros(nt,1),zeros(nt,1);
 
     if isdir(Num.SimName)==false mkdir(Num.SimName) end;    # create simulation directory if needed
-    for it = 1:100   # Time loop
+    for it = 1:nt   # Time loop
 
         # Add new dike every X years:
         if floor(time/Dikes.InjectionInterval)> dike_inj      
@@ -475,6 +475,6 @@ if 1==0
 end
 
 # Call the main code with the specified material parameters
-x,z,T, Time_vec,Melt_Time, Tracers, dike_poly = MainCode_2D(MatParam, Num, Dike_params); # start the main code
+@time x,z,T, Time_vec,Melt_Time, Tracers, dike_poly = MainCode_2D(MatParam, Num, Dike_params); # start the main code
 
 #plot(Time_vec/kyr, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example2D") #Create plot
