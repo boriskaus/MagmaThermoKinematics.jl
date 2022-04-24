@@ -4,15 +4,29 @@ Diffusion2D provides 2D diffusion codes (pure 2D and axisymmetric)
 module Diffusion2D
 export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!, bc2D_z!, bc2D_z_bottom!, 
         bc2D_z_bottom_flux!, assign!, diffusion2D_AxiSymm_residual!, 
-        RungaKutta1!, RungaKutta2!,RungaKutta4!;
+        RungaKutta1!, RungaKutta2!,RungaKutta4!, update_dϕdT_Phi!, update_Tbuffer!
 
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
 
 @init_parallel_stencil(Threads, Float64, 2);    # initialize parallel stencil in 2D
+# @init_parallel_stencil(CUDA, Float64, 2);    # initialize parallel stencil in 2D
+
+@parallel_indices (i,j) function update_dϕdT_Phi!(dϕdT, Phi_melt, Z)
+    @inbounds if Z[i,j] < -15e3
+        dϕdT[i,j] = 0.0
+        Phi_melt[i,j] = 0.0
+    end
+    return 
+end
+
+@parallel function update_Tbuffer!(A::Data.Array, B::Data.Array, C::Data.Array)
+    @all(A) = @all(B) - @all(C)
+    return 
+end
 
 @parallel function assign!(A::Data.Array, B::Data.Array, add::Data.Number)
-    @all(A) = @all(B) .+ add
+    @all(A) = @all(B) + add
     return
 end
 
@@ -45,11 +59,11 @@ end
 @parallel function diffusion2D_AxiSymm_step!(Tnew, T, R, Rc, qr, qz, K, Kr, Kz, Rho, Cp, H, dt, dr, dz, L, dϕdT)   
     @all(Kr)    =  @av_xa(K);                                       # average K in r direction
     @all(Kz)    =  @av_ya(K);                                       # average K in z direction
-    @all(qr)    =  @all(Rc).*@all(Kr).*@d_xa(T)./dr;                # heatflux in r
-    @all(qz)    =            @all(Kz).*@d_ya(T)./dz;                # heatflux in z
-    @inn(Tnew)  =  @inn(T) + dt./(@inn(Rho).*(@inn(Cp) + L.*@inn(dϕdT))).* 
-                                 ( 1.0./@inn(R).*@d_xi(qr)./dr +     # 2nd derivative in r
-                                                 @d_yi(qz)./dz +     # 2nd derivative in z
+    @all(qr)    =  @all(Rc)*@all(Kr)*@d_xa(T)/dr;                # heatflux in r
+    @all(qz)    =            @all(Kz)*@d_ya(T)/dz;                # heatflux in z
+    @inn(Tnew)  =  @inn(T) + dt/(@inn(Rho)*(@inn(Cp) + L*@inn(dϕdT)))* 
+                                 ( 1.0/@inn(R)*@d_xi(qr)/dr +     # 2nd derivative in r
+                                                 @d_yi(qz)/dz +     # 2nd derivative in z
                                                  @inn(H)             # heat sources 
                                 );  
 
@@ -59,11 +73,11 @@ end
 @parallel function diffusion2D_AxiSymm_residual!(Residual, T, R, Rc, qr, qz, K, Kr, Kz, Rho, Cp, H, dr, dz, L, dϕdT)   
     @all(Kr)        =  @av_xa(K);                                       # average K in r direction
     @all(Kz)        =  @av_ya(K);                                       # average K in z direction
-    @all(qr)        =  @all(Rc).*@all(Kr).*@d_xa(T)./dr;                # heatflux in r
-    @all(qz)        =            @all(Kz).*@d_ya(T)./dz;                # heatflux in z
-    @inn(Residual)  =  1.0./(@inn(Rho).*(@inn(Cp) + L.*@inn(dϕdT))).* 
-                                        ( 1.0./@inn(R).*@d_xi(qr)./dr +     # 2nd derivative in r
-                                                        @d_yi(qz)./dz +     # 2nd derivative in z 
+    @all(qr)        =  @all(Rc)*@all(Kr)*@d_xa(T)/dr;                # heatflux in r
+    @all(qz)        =            @all(Kz)*@d_ya(T)/dz;                # heatflux in z
+    @inn(Residual)  =  1.0/(@inn(Rho)*(@inn(Cp) + L*@inn(dϕdT)))* 
+                                        ( 1.0/@inn(R)*@d_xi(qr)/dr +     # 2nd derivative in r
+                                                        @d_yi(qz)/dz +     # 2nd derivative in z 
                                                         @inn(H)             # heat sources
                                         );   
     
@@ -74,11 +88,11 @@ end
 @parallel function diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, H, dt, dx, dz, L, dϕdT)   
     @all(Kx)    =  @av_xa(K);                                       # average K in x direction
     @all(Kz)    =  @av_ya(K);                                       # average K in z direction
-    @all(qx)    =  @all(Kx).*@d_xa(T)./dx;                          # heatflux in x
-    @all(qz)    =  @all(Kz).*@d_ya(T)./dz;                          # heatflux in z
-    @inn(Tnew)  =  @inn(T) + dt./(@inn(Rho).*(@inn(Cp) + L.*@inn(dϕdT))).* 
-                                 (        @d_xi(qx)./dx + 
-                                          @d_yi(qz)./dz +           # 2nd derivative 
+    @all(qx)    =  @all(Kx)*@d_xa(T)/dx;                          # heatflux in x
+    @all(qz)    =  @all(Kz)*@d_ya(T)/dz;                          # heatflux in z
+    @inn(Tnew)  =  @inn(T) + dt/(@inn(Rho)*(@inn(Cp) + L*@inn(dϕdT)))* 
+                                 (        @d_xi(qx)/dx + 
+                                          @d_yi(qz)/dz +           # 2nd derivative 
                                           @inn(H)                   # heat sources
                                  );          
 
@@ -145,14 +159,14 @@ end
     @all(Kx)    =  @av_xa(K);                                       # average K in x direction
     @all(Ky)    =  @av_ya(K);                                       # average K in y direction
     @all(Kz)    =  @av_za(K);                                       # average K in z direction
-    @all(qx)    =  @all(Kx).*@d_xa(T)./dx;                          # heatflux in x
-    @all(qy)    =  @all(Ky).*@d_ya(T)./dy;                          # heatflux in y
-    @all(qz)    =  @all(Kz).*@d_za(T)./dz;                          # heatflux in z
+    @all(qx)    =  @all(Kx)*@d_xa(T)/dx;                          # heatflux in x
+    @all(qy)    =  @all(Ky)*@d_ya(T)/dy;                          # heatflux in y
+    @all(qz)    =  @all(Kz)*@d_za(T)/dz;                          # heatflux in z
 
-    @inn(Tnew)  =  @inn(T) + dt./(@inn(Rho)*(@inn(Cp) + L.*@inn(dϕdT))).* 
-                   (  @d_xi(qx)./dx +
-                      @d_yi(qy)./dy + 
-                      @d_zi(qz)./dz +               # 2nd derivative 
+    @inn(Tnew)  =  @inn(T) + dt/(@inn(Rho)*(@inn(Cp) + L*@inn(dϕdT)))* 
+                   (  @d_xi(qx)/dx +
+                      @d_yi(qy)/dy + 
+                      @d_zi(qz)/dz +               # 2nd derivative 
                       @inn(H)  );                   # heat sources  
 
     return

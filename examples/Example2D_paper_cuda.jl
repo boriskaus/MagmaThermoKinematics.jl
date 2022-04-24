@@ -7,12 +7,12 @@ using GeoParams     # material parameters
 using Printf        # print    
 using MAT, JLD2     # saves files in matlab format & JLD2 (hdf5) format
 using Parameters
-
+using CUDA
 using Statistics
 using LinearAlgebra: norm
 
 # Initialize 
-@init_parallel_stencil(Threads, Float64, 2);    # initialize parallel stencil in 2D
+@init_parallel_stencil(CUDA, Float64, 2);    # initialize parallel stencil in 2D
 
 # These are useful parameters                                       
 SecYear     = 3600*24*365.25
@@ -85,15 +85,6 @@ for fni in ("meltfraction","dϕdT","density","heatcapacity","conductivity","radi
     end
 end
 
-function update_dϕdT_Phi!(dϕdT, Phi_melt, Z)
-    for i in eachindex(Z)
-        @inbounds if Z[i] < -15e3
-            dϕdT[i] = 0.0
-            Phi_melt[i] = 0.0
-        end
-    end
-end
-
 # This performs one diffusion timestep while doing nonlinear iterations (for latent heat and conductivity which depends on T)
 function Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, Phases, 
                 P, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, Hr, La, dϕdT, Z, Num)
@@ -106,7 +97,7 @@ function Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, P
     args2 = (;z=-Z)
     Tbuffer = similar(T)
     while err>1e-6 && iter<20
-    
+        
         @parallel (1:Nx, 1:Nz) compute_meltfraction_ps!(Phi_melt, Mat_tup, Phases, args1) 
         @parallel (1:Nx, 1:Nz) compute_dϕdT_ps!(dϕdT, Mat_tup, Phases, args1)     
         @parallel (1:Nx, 1:Nz) compute_density_ps!(Rho, Mat_tup, Phases, args1)
@@ -114,7 +105,7 @@ function Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, P
         @parallel (1:Nx, 1:Nz) compute_conductivity_ps!(Kc, Mat_tup, Phases, args1 )
         @parallel (1:Nx, 1:Nz) compute_radioactive_heat_ps!(Hr, Mat_tup, Phases, args2)   
         #compute_latent_heat!(Hl, Mat_tup, Phases, (;))    
-
+        
         # Switch off latent heat & melting below a certain depth 
         if Num.deactivate_La_at_depth==true
             @parallel (1:Nx,1:Nz) update_dϕdT_Phi!(dϕdT, Phi_melt, Z)
@@ -134,6 +125,7 @@ function Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, P
  
         # Update T_K (used above to compute material properties)
         @parallel assign!(args1.T, Tnew,  273.15)   # all GeoParams routines expect T in K
+       
         @parallel update_Tbuffer!(Tbuffer, Tnew, T_it_old)
         err     = norm(Tbuffer)           # compute error
     
@@ -169,19 +161,23 @@ end
     Phi_melt, dϕdT,dϕdT_o   =   @zeros(Nx,   Nz), @zeros(Nx,   Nz  ), @zeros(Nx,   Nz  )                   # Melt fraction and derivative of melt fraction vs T
 
     # Work array initialization
-    Tnew,T_init,qr,qz,Kr,Kz =   @zeros(Nx,   Nz), @zeros(Nx,   Nz), @zeros(Nx-1, Nz),     @zeros(Nx,   Nz-1), @zeros(Nx-1, Nz), @zeros(Nx,   Nz-1)    # thermal solver
+    Tnew,qr,qz,Kr,Kz        =   @zeros(Nx,   Nz), @zeros(Nx-1, Nz),     @zeros(Nx,   Nz-1), @zeros(Nx-1, Nz), @zeros(Nx,   Nz-1)    # thermal solver
     T_it_old                =   @zeros(Nx,   Nz)
     R,Rc,Z                  =   @zeros(Nx,   Nz), @zeros(Nx-1, Nz-1),   @zeros(Nx,   Nz)    # 2D gridpoints
 
     # Set up model geometry & initial T structure
     x,z                     =   (0:Nx-1)*Num.dx, (-(Nz-1):0)*Num.dz;                    # 1-D coordinate arrays
     crd                     =   collect(Iterators.product(x,z))                         # Generate coordinates from 1D coordinate vectors   
-    R,Z                     =   (x->x[1]).(crd), (x->x[2]).(crd);                       # Transfer coords to 3D arrays
+    R,Z                     =   Data.Array((x->x[1]).(crd)), Data.Array((x->x[2]).(crd));                       # Transfer coords to 3D arrays
     Rc                      =   (R[2:end,:] + R[1:end-1,:])/2 
     Grid                    =   (x,z);                                                  # Grid 
     Tracers                 =   StructArray{Tracer}(undef, 1)                           # Initialize tracers   
     dike                    =   Dike(W=Dikes.W_in,H=Dikes.H_in,Type=Dikes.Type,T=Dikes.T_in_Celsius, Center=Dikes.Center[:]);               # "Reference" dike with given thickness,radius and T
-    T_init                 .=   Num.Tsurface_Celcius .- Z.*Num.Geotherm;                # Initial (linear) temperature profile
+    T_init                  =   @. Num.Tsurface_Celcius - Z*Num.Geotherm;                # Initial (linear) temperature profile
+
+    # CPU buffers for advection
+    Tnew_cpu= Matrix{Float64}(undef, Nx, Nz)
+    Phi_melt_cpu = similar(Tnew_cpu)
 
     # Set initial sill in temperature structure for Geneva type models
     dike_poly   = []
@@ -197,17 +193,19 @@ end
     @parallel assign!(T, T_init)
 
     P                       =   @zeros(Nx,Nz);
-    Phases                  =   ones(Int64,Nx,Nz)
+    Phases                  =   CUDA.ones(Int64,Nx,Nz)
     time, dike_inj, InjectVol, Time_vec,Melt_Time,Tav_magma_Time = 0.0, 0.0, 0.0,zeros(nt,1),zeros(nt,1),zeros(nt,1);
 
     if isdir(Num.SimName)==false mkdir(Num.SimName) end;    # create simulation directory if needed
-    for it = 1:100   # Time loop
+    for it = 1:nt  # Time loop
 
         # Add new dike every X years:
         if floor(time/Dikes.InjectionInterval)> dike_inj      
             dike_inj            =   floor(time/Dikes.InjectionInterval)                     # Keeps track on what was injected already
             dike                =   Dike(dike, Center=Dikes.Center[:],Angle=[0]);           # Specify dike with random location/angle but fixed size/T 
-            Tracers, T,Vol,dike_poly, VEL  =   InjectDike(Tracers, T, Grid, dike, Dikes.nTr_dike, dike_poly=dike_poly);     # Add dike, move hostrocks
+            Tnew_cpu           .=   Array(T)
+            Tracers, Tnew_cpu,Vol,dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid, dike, Dikes.nTr_dike, dike_poly=dike_poly);     # Add dike, move hostrocks
+            T .= Data.Array(Tnew_cpu)
             InjectVol           +=  Vol                                                     # Keep track of injected volume
             Qrate               =   InjectVol/time
             Qrate_km3_yr        =   Qrate*SecYear/km³
@@ -221,12 +219,23 @@ end
         end
 
         # Do a diffusion step, while taking T-dependencies into account
+        # if T isa Matrix{Float64}
+        #     println("WTF it $(it)")
+        # end
         Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, Phases, P, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, Hr, La, dϕdT, Z, Num)
         # @btime Nonlinear_Diffusion_step!($Tnew, $T,  $T_K, $T_it_old, $Mat_tup, $Phi_melt, $Phases, $P, $R, $Rc, $qr, $qz, $Kc, $Kr, $Kz, $Rho, $Cp, $Hr, $La, $dϕdT, $Z, $Num)
         # 1.2 ms
 
         # Update variables
-        Tracers             =   UpdateTracers(Tracers, Grid, Tnew, Phi_melt,"Linear");      # Update info on tracers 
+        # copy to cpu
+        Tnew_cpu .= Array(Tnew)
+        Phi_melt_cpu .= Array(Phi_melt)
+        # Do tracer stuff
+        Tracers  =   UpdateTracers(Tracers, Grid, Tnew_cpu, Phi_melt_cpu,"Linear");      # Update info on tracers 
+        # copy back to gpu
+        Tnew .= Data.Array(Tnew_cpu)
+        Phi_melt .= Data.Array(Phi_melt_cpu)
+
         @parallel assign!(T, Tnew)
         @parallel assign!(Tnew, T)
         time                =   time + Num.dt;                                     # Keep track of evolved time
@@ -234,7 +243,7 @@ end
         
         ind = findall(T.>700);          
         if ~isempty(ind)
-            Tav_magma_Time[it] = sum(T[i] for i in ind)/length(ind)                            # average T of part with magma
+            Tav_magma_Time[it] = sum(T[ind])/length(ind)                            # average T of part with magma
         else
             Tav_magma_Time[it] = NaN;
         end
@@ -248,6 +257,9 @@ end
         # Visualize results
         if mod(it,Num.CreateFig_steps)==0  || it==nt 
             time_Myrs = time/Myr;
+
+            T_plot = Array(T)
+            T_init_plot = Array(T_init)
             # ---------------------------------
             # Create plot (using Makie)
             fig = Figure(resolution = (2000,1000))
@@ -255,9 +267,9 @@ end
             # 1D figure with cross-sections
             time_Myrs_rnd = round(time_Myrs,digits=3)
             ax1 = Axis(fig[1,1], xlabel = "Temperature [ᵒC]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs")
-            lines!(fig[1,1],T[1,:],z/1e3,label="Center")
-            lines!(fig[1,1],T[end,:],z/1e3,label="Side")
-            lines!(fig[1,1],T_init[end,:],z/1e3,label="Initial")
+            lines!(fig[1,1],T_plot[1,:],z/1e3,label="Center")
+            lines!(fig[1,1],T_plot[end,:],z/1e3,label="Side")
+            lines!(fig[1,1],T_init_plot[end,:],z/1e3,label="Initial")
             axislegend(ax1)
             limits!(ax1, 0, 1100, -20, 0)
         
@@ -265,17 +277,17 @@ end
             #ax2=Axis(fig[1, 2],xlabel = "Width [km]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs, Geneva model; Temperature [ᵒC]")
             ax2=Axis(fig[1, 2],xlabel = "Width [km]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs, $(Num.FigTitle); Temperature [ᵒC]")
             
-            co = contourf!(fig[1, 2], x/1e3, z/1e3, T, levels = 0:50:1050,colormap = :jet)
+            co = contourf!(fig[1, 2], x/1e3, z/1e3, T_plot, levels = 0:50:1050,colormap = :jet)
         
             if maximum(T)>691
-            co1 = contour!(fig[1, 2], x/1e3, z/1e3, T, levels = 690:691)       # solidus
+            co1 = contour!(fig[1, 2], x/1e3, z/1e3, T_plot, levels = 690:691)       # solidus
             end
             limits!(ax2, 0, 20, -20, 0)
             Colorbar(fig[1, 3], co)
             
             # 2D melt fraction plots:
             ax3=Axis(fig[1, 4],xlabel = "Width [km]", ylabel = "Depth [km]", title = " ϕ (melt fraction)")
-            co = heatmap!(fig[1, 4], x/1e3, z/1e3, Phi_melt, colormap = :vik, colorrange=(0, 1))
+            co = heatmap!(fig[1, 4], x/1e3, z/1e3, Array(Phi_melt), colormap = :vik, colorrange=(0, 1))
             if Num.plot_tracers==true
                 # Add tracers to plot
                 scatter!(fig[1, 4],getindex.(Tracers.coord,1)/1e3, getindex.(Tracers.coord,2)/1e3, color=:white)
@@ -303,11 +315,12 @@ end
             println("Timestep $it = $(round(time/kyr*100)/100) kyrs, max(T)=$(round(maximum(T),digits=3))ᵒC, Taverage_magma=$(T_av_melt)ᵒC, max(ϕ)=$(round(maximum(Phi_melt),digits=2))")
         end
 
+
         # Save output to disk once in a while
         if mod(it,Num.SaveOutput_steps)==0  || it==nt 
             filename = "$(Num.SimName)/$(Num.SimName)_$it.mat"
             matwrite(filename, 
-                            Dict("Tnew"=> Tnew, 
+                            Dict("Tnew"=> Array(Tnew), 
                                 "time"=> time, 
                                 "x"   => Vector(x), 
                                 "z"   => Vector(z),
