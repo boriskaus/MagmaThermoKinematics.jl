@@ -8,9 +8,7 @@ export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!, bc2D_z!, bc2D_z_bo
 
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
-
-@init_parallel_stencil(Threads, Float64, 2);    # initialize parallel stencil in 2D
-# @init_parallel_stencil(CUDA, Float64, 2);    # initialize parallel stencil in 2D
+using CUDA
 
 @parallel_indices (i,j) function update_dϕdT_Phi!(dϕdT, Phi_melt, Z)
     @inbounds if Z[i,j] < -15e3
@@ -20,17 +18,17 @@ using ParallelStencil.FiniteDifferences2D
     return 
 end
 
-@parallel function update_Tbuffer!(A::Data.Array, B::Data.Array, C::Data.Array)
+@parallel function update_Tbuffer!(A::AbstractArray, B::AbstractArray, C::AbstractArray)
     @all(A) = @all(B) - @all(C)
     return 
 end
 
-@parallel function assign!(A::Data.Array, B::Data.Array, add::Data.Number)
+@parallel function assign!(A::AbstractArray, B::AbstractArray, add::Number)
     @all(A) = @all(B) + add
     return
 end
 
-@parallel function assign!(A::Data.Array, B::Data.Array)
+@parallel function assign!(A::AbstractArray, B::AbstractArray)
     @all(A) = @all(B)
     return
 end
@@ -101,26 +99,26 @@ end
 
 
 # Set x- boundary conditions to be zero-flux
-@parallel_indices (iy) function bc2D_x!(T::Data.Array) 
+@parallel_indices (iy) function bc2D_x!(T::AbstractArray) 
     T[1  , iy] = T[2    , iy]
     T[end, iy] = T[end-1, iy]
     return
 end
 
 # Set z- boundary conditions to be zero-flux
-@parallel_indices (ix) function bc2D_z!(T::Data.Array) 
+@parallel_indices (ix) function bc2D_z!(T::AbstractArray) 
     T[ix,1 ]    = T[ix, 2    ]
     T[ix, end]  = T[ix, end-1]
     return
 end
 
 # Set z- boundary conditions @ bottom to be zero-flux
-@parallel_indices (ix) function bc2D_z_bottom!(T::Data.Array) 
+@parallel_indices (ix) function bc2D_z_bottom!(T::AbstractArray) 
     T[ix,1 ]    = T[ix, 2    ]
     return
 end
 
-@parallel_indices (ix) function bc2D_z_bottom_flux!(T::Data.Array, K::Data.Array, dz::Data.Number, q_z::Data.Number) 
+@parallel_indices (ix) function bc2D_z_bottom_flux!(T::AbstractArray, K::AbstractArray, dz::Number, q_z::Number) 
     T[ix,1 ]    = T[ix, 2    ] + q_z*dz / K[ix, 1]
 
     #q_z = -K*(T[ix,2]-T[ix,1])/dz
@@ -144,11 +142,7 @@ using ParallelStencil.FiniteDifferences3D
 
 export diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_flux!, assign!
 
-ParallelStencil.@reset_parallel_stencil()       # reset, as we initialized parallel_stencil already above (if we don't do this here, we dont seem to be able to define the functions below)    
-
-@init_parallel_stencil(Threads, Float64, 3);    # initialize parallel stencil in 2D
-
-@parallel function assign!(A::Data.Array, B::Data.Array)
+@parallel function assign!(A::AbstractArray, B::AbstractArray)
     @all(A) = @all(B)
     return
 end
@@ -187,12 +181,12 @@ end
 end
 
 # Set z- boundary conditions @ bottom to be zero-flux
-@parallel_indices (ix,iy) function bc3D_z_bottom!(T::Data.Array) 
+@parallel_indices (ix,iy) function bc3D_z_bottom!(T::AbstractArray) 
     T[ix,iy,1 ]    = T[ix, iy,2  ]
     return
 end
 
-@parallel_indices (ix,iy) function bc3D_z_bottom_flux!(T::Data.Array, K::Data.Array, dz::Data.Number, q_z::Data.Number) 
+@parallel_indices (ix,iy) function bc3D_z_bottom_flux!(T::AbstractArray, K::AbstractArray, dz::Number, q_z::Number) 
     T[ix,iy,1 ]    = T[ix, iy, 2    ] + q_z*dz / K[ix, iy, 1]
 
     return

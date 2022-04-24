@@ -1,18 +1,14 @@
 using MagmaThermoKinematics
-using MagmaThermoKinematics.Diffusion2D
-using ParallelStencil
-using ParallelStencil.FiniteDifferences2D
+environment!(:gpu, Float64, 2)   # initialize parallel stencil in 2D
+using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
+
 using CairoMakie    # plotting
-using GeoParams     # material parameters
 using Printf        # print    
 using MAT, JLD2     # saves files in matlab format & JLD2 (hdf5) format
 using Parameters
-using CUDA
 using Statistics
 using LinearAlgebra: norm
 
-# Initialize 
-@init_parallel_stencil(CUDA, Float64, 2);    # initialize parallel stencil in 2D
 
 # These are useful parameters                                       
 SecYear     = 3600*24*365.25
@@ -67,23 +63,22 @@ end
     nTr_dike::Int64                 =   300                     # Number of tracers 
 end
 
+# function namedtupleindex(args::NamedTuple, I...)
+#     k = keys(args)
+#     v = getindex.(values(args), I...)
+#     return (; zip(k, v)...)
+# end
 
-function namedtupleindex(args::NamedTuple, I...)
-    k = keys(args)
-    v = getindex.(values(args), I...)
-    return (; zip(k, v)...)
-end
-
-for fni in ("meltfraction","dϕdT","density","heatcapacity","conductivity","radioactive_heat")
-    fn = Symbol(string("compute_$(fni)_ps!"))
-    _fn = Symbol(string("compute_$(fni)"))
-    @eval begin
-        @parallel_indices (i, j) function $(fn)(A,MatParam, Phases, args)
-            A[i, j] = $(Symbol(_fn))(MatParam[Phases[i,j]], namedtupleindex(args, i, j))
-            return
-        end
-    end
-end
+# for fni in ("meltfraction","dϕdT","density","heatcapacity","conductivity","radioactive_heat")
+#     fn = Symbol(string("compute_$(fni)_ps!"))
+#     _fn = Symbol(string("compute_$(fni)"))
+#     @eval begin
+#         @parallel_indices (i, j) function $(fn)(A,MatParam, Phases, args)
+#             A[i, j] = $(Symbol(_fn))(MatParam[Phases[i,j]], namedtupleindex(args, i, j))
+#             return
+#         end
+#     end
+# end
 
 # This performs one diffusion timestep while doing nonlinear iterations (for latent heat and conductivity which depends on T)
 function Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, Phases, 
