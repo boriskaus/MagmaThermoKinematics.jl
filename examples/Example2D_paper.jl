@@ -1,12 +1,13 @@
 using MagmaThermoKinematics
-using MagmaThermoKinematics.Diffusion2D
-using ParallelStencil
-using ParallelStencil.FiniteDifferences2D
+environment!(:cpu, Float64, 2)   # initialize parallel stencil in 2D
+using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
+
 using CairoMakie    # plotting
-using GeoParams     # material parameters
 using Printf        # print    
 using MAT, JLD2     # saves files in matlab format & JLD2 (hdf5) format
 using Parameters
+using Statistics
+using LinearAlgebra: norm
 
 using Statistics
 using LinearAlgebra: norm
@@ -593,6 +594,6 @@ if 1==1
 end
 
 # Call the main code with the specified material parameters
-@time x,z,T, Time_vec,Melt_Time, Tracers, dike_poly = MainCode_2D(MatParam, Num, Dike_params); # start the main code
+x,z,T, Time_vec,Melt_Time, Tracers, dike_poly = MainCode_2D(MatParam, Num, Dike_params); # start the main code
 
 #plot(Time_vec/kyr, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example2D") #Create plot
