@@ -14,6 +14,9 @@ using Parameters
 using Statistics
 using LinearAlgebra: norm
 
+using TimerOutputs
+
+
 
 # These are useful parameters                                       
 SecYear     = 3600*24*365.25
@@ -239,7 +242,7 @@ end
             dike_inj            =   floor(time/Dikes.InjectionInterval)                     # Keeps track on what was injected already
             dike                =   Dike(dike, Center=Dikes.Center[:],Angle=[0]);           # Specify dike with random location/angle but fixed size/T 
             Tnew_cpu           .=   Array(T)
-            Tracers, Tnew_cpu,Vol,dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid, dike, Dikes.nTr_dike, dike_poly=dike_poly);     # Add dike, move hostrocks
+            @timeit to "Dike intrusion" Tracers, Tnew_cpu,Vol,dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid, dike, Dikes.nTr_dike, dike_poly=dike_poly);     # Add dike, move hostrocks
             T .= Data.Array(Tnew_cpu)
             InjectVol           +=  Vol                                                     # Keep track of injected volume
             Qrate               =   InjectVol/time
@@ -254,7 +257,7 @@ end
         end
 
         # Do a diffusion step, while taking T-dependencies into account
-        Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, Phases, P, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, Hr, La, dϕdT, Z, Num)
+        @timeit to "Diffusion solver" Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, Phases, P, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, Hr, La, dϕdT, Z, Num)
         # @btime Nonlinear_Diffusion_step!($Tnew, $T,  $T_K, $T_it_old, $Mat_tup, $Phi_melt, $Phases, $P, $R, $Rc, $qr, $qz, $Kc, $Kr, $Kz, $Rho, $Cp, $Hr, $La, $dϕdT, $Z, $Num)
         # 1.2 ms
 
@@ -264,7 +267,7 @@ end
         Tnew_cpu .= Array(Tnew)
         Phi_melt_cpu .= Array(Phi_melt)
         
-        Tracers             =   UpdateTracers(Tracers, Grid, Tnew_cpu, Phi_melt_cpu,"Linear");      # Update info on tracers \
+        @timeit to "Update tracers"  Tracers =   UpdateTracers(Tracers, Grid, Tnew_cpu, Phi_melt_cpu,"Linear");      # Update info on tracers \
 
         # copy back to gpu
         Tnew .= Data.Array(Tnew_cpu)
@@ -290,64 +293,66 @@ end
 
         # Visualize results
         if mod(it,Num.CreateFig_steps)==0  || it==nt 
-            time_Myrs = time/Myr;
+            @timeit to "visualisation" begin
+                time_Myrs = time/Myr;
 
-            T_plot = Array(T)
-            T_init_plot = Array(T_init)
-            Phi_melt_plot = Array(Phi_melt)
-            # ---------------------------------
-            # Create plot (using Makie)
-            fig = Figure(resolution = (2000,1000))
-
-            # 1D figure with cross-sections
-            time_Myrs_rnd = round(time_Myrs,digits=3)
-            ax1 = Axis(fig[1,1], xlabel = "Temperature [ᵒC]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs")
-            lines!(fig[1,1],T_plot[1,:],z/1e3,label="Center")
-            lines!(fig[1,1],T_plot[end,:],z/1e3,label="Side")
-            lines!(fig[1,1],T_init_plot[end,:],z/1e3,label="Initial")
-            axislegend(ax1)
-            limits!(ax1, 0, 1100, -20, 0)
-        
-            # 2D temperature plot 
-            #ax2=Axis(fig[1, 2],xlabel = "Width [km]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs, Geneva model; Temperature [ᵒC]")
-            ax2=Axis(fig[1, 2],xlabel = "Width [km]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs, $(Num.FigTitle); Temperature [ᵒC]")
+                T_plot = Array(T)
+                T_init_plot = Array(T_init)
+                Phi_melt_plot = Array(Phi_melt)
+                # ---------------------------------
+                # Create plot (using Makie)
+                fig = Figure(resolution = (2000,1000))
+                
+                # 1D figure with cross-sections
+                time_Myrs_rnd = round(time_Myrs,digits=3)
+                ax1 = Axis(fig[1,1], xlabel = "Temperature [ᵒC]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs")
+                lines!(fig[1,1],T_plot[1,:],z/1e3,label="Center")
+                lines!(fig[1,1],T_plot[end,:],z/1e3,label="Side")
+                lines!(fig[1,1],T_init_plot[end,:],z/1e3,label="Initial")
+                axislegend(ax1)
+                limits!(ax1, 0, 1100, -20, 0)
+                
+                # 2D temperature plot 
+                #ax2=Axis(fig[1, 2],xlabel = "Width [km]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs, Geneva model; Temperature [ᵒC]")
+                ax2=Axis(fig[1, 2],xlabel = "Width [km]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs, $(Num.FigTitle); Temperature [ᵒC]")
+                
+                co = contourf!(fig[1, 2], x/1e3, z/1e3, T_plot, levels = 0:50:1050,colormap = :jet)
+                
+                if maximum(T)>691
+                co1 = contour!(fig[1, 2], x/1e3, z/1e3, T_plot, levels = 690:691)       # solidus
+                end
+                limits!(ax2, 0, 20, -20, 0)
+                Colorbar(fig[1, 3], co)
+                
+                # 2D melt fraction plots:
+                ax3=Axis(fig[1, 4],xlabel = "Width [km]", ylabel = "Depth [km]", title = " ϕ (melt fraction)")
+                co = heatmap!(fig[1, 4], x/1e3, z/1e3, Phi_melt_plot, colormap = :vik, colorrange=(0, 1))
+                if Num.plot_tracers==true
+                    # Add tracers to plot
+                    scatter!(fig[1, 4],getindex.(Tracers.coord,1)/1e3, getindex.(Tracers.coord,2)/1e3, color=:white)
+                end
+                if (Num.advect_polygon==true) & (~isempty(dike_poly))
+                    # Add polygon
+                    pl = lines!(fig[1, 4], dike_poly[1]/1e3, dike_poly[2]/1e3,   color = :yellow, linestyle=:dot, linewidth=1.5)
+                end
+                limits!(ax3, 0, 20, -20, 0)
+                Colorbar(fig[1, 5], co)
             
-            co = contourf!(fig[1, 2], x/1e3, z/1e3, T_plot, levels = 0:50:1050,colormap = :jet)
-        
-            if maximum(T)>691
-            co1 = contour!(fig[1, 2], x/1e3, z/1e3, T_plot, levels = 690:691)       # solidus
-            end
-            limits!(ax2, 0, 20, -20, 0)
-            Colorbar(fig[1, 3], co)
+                # Save figure
+                save("$(Num.SimName)/$(Num.SimName)_$it.png", fig)
+                #
+                # ---------------------------------
             
-            # 2D melt fraction plots:
-            ax3=Axis(fig[1, 4],xlabel = "Width [km]", ylabel = "Depth [km]", title = " ϕ (melt fraction)")
-            co = heatmap!(fig[1, 4], x/1e3, z/1e3, Phi_melt_plot, colormap = :vik, colorrange=(0, 1))
-            if Num.plot_tracers==true
-                # Add tracers to plot
-                scatter!(fig[1, 4],getindex.(Tracers.coord,1)/1e3, getindex.(Tracers.coord,2)/1e3, color=:white)
+                # compute average T of molten zone (1% melt)
+                ind = findall(Phi_melt.>0.01);
+                if ~isempty(ind)
+                    T_av_melt = round(sum(T[ind])/length(ind), digits=3)
+                else
+                    T_av_melt = NaN;
+                end
+                # print results:  
+                println("Timestep $it = $(round(time/kyr*100)/100) kyrs, max(T)=$(round(maximum(T),digits=3))ᵒC, Taverage_magma=$(T_av_melt)ᵒC, max(ϕ)=$(round(maximum(Phi_melt),digits=2))")
             end
-            if (Num.advect_polygon==true) & (~isempty(dike_poly))
-                # Add polygon
-                pl = lines!(fig[1, 4], dike_poly[1]/1e3, dike_poly[2]/1e3,   color = :yellow, linestyle=:dot, linewidth=1.5)
-            end
-            limits!(ax3, 0, 20, -20, 0)
-            Colorbar(fig[1, 5], co)
-
-            # Save figure
-            save("$(Num.SimName)/$(Num.SimName)_$it.png", fig)
-            #
-            # ---------------------------------
-
-            # compute average T of molten zone (1% melt)
-            ind = findall(Phi_melt.>0.01);
-            if ~isempty(ind)
-                T_av_melt = round(sum(T[ind])/length(ind), digits=3)
-            else
-                T_av_melt = NaN;
-            end
-            # print results:  
-            println("Timestep $it = $(round(time/kyr*100)/100) kyrs, max(T)=$(round(maximum(T),digits=3))ᵒC, Taverage_magma=$(T_av_melt)ᵒC, max(ϕ)=$(round(maximum(Phi_melt),digits=2))")
         end
 
         # Save output to disk once in a while
@@ -572,7 +577,7 @@ if 1==1
     Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="Zassy_UCLA_ellipticalIntrusion_variable_k_radioactiveheating_1", 
                             SaveOutput_steps=2000, CreateFig_steps=1000, axisymmetric=false,
                             flux_free_bottom_BC=true, flux_bottom=38.7/1e3*3.35, fac_dt=0.01, ω=0.9, max_iter=100, verbose=false,
-                            maxTime_Myrs=1.13, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
+                            maxTime_Myrs=0.0113, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
                             FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);                            
                                  
     Flux         = 7.5e-6;                              # in km3/km2/a 
@@ -618,7 +623,12 @@ if 1==1
                     )
 end
 
+# Keep track of time
+const to = TimerOutput()
+
 # Call the main code with the specified material parameters
 x,z,T, Time_vec,Melt_Time, Tracers, dike_poly = MainCode_2D(MatParam, Num, Dike_params); # start the main code
+
+@show(to)
 
 #plot(Time_vec/kyr, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example2D") #Create plot
