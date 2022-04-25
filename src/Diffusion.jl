@@ -4,13 +4,155 @@ Diffusion2D provides 2D diffusion codes (pure 2D and axisymmetric)
 module Diffusion2D
 export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!, bc2D_z!, bc2D_z_bottom!, 
         bc2D_z_bottom_flux!, assign!, diffusion2D_AxiSymm_residual!, 
-        RungaKutta1!, RungaKutta2!,RungaKutta4!, update_dϕdT_Phi!, update_Tbuffer!
+        RungaKutta1!, RungaKutta2!,RungaKutta4!, update_dϕdT_Phi!, update_Tbuffer!,
+        update_relaxed_picard!
 
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
 
 @init_parallel_stencil(Threads, Float64, 2);    # initialize parallel stencil in 2D
-# @init_parallel_stencil(CUDA, Float64, 2);    # initialize parallel stencil in 2D
+
+@parallel_indices (i,j) function update_dϕdT_Phi!(dϕdT, Phi_melt, Z)
+    @inbounds if Z[i,j] < -15e3
+        dϕdT[i,j] = 0.0
+        Phi_melt[i,j] = 0.0
+    end
+    return 
+end
+
+@parallel function update_Tbuffer!(A::Data.Array, B::Data.Array, C::Data.Array)
+    @all(A) = @all(B) - @all(C)
+    return 
+end
+
+@parallel function update_relaxed_picard!(Tupdate::Data.Array, Tnew::Data.Array, T_it_old::Data.Array, ω::Data.Number)
+    @all(Tupdate) = ω*@all(Tnew) + (1.0-ω)*@all(T_it_old)
+    return 
+end
+
+@parallel function assign!(A::Data.Array, B::Data.Array, add::Data.Number)
+    @all(A) = @all(B) + add
+    return
+end
+
+@parallel function assign!(A::Data.Array, B::Data.Array)
+    @all(A) = @all(B)
+    return
+end
+
+# 1th order RK update (or Euler update)
+@parallel function RungaKutta1!(Tnew, T, Residual, dt)   
+    @all(Tnew) =  @all(T) + dt*@all(Residual)
+    return
+end
+
+# 2nd order RK update
+@parallel function RungaKutta2!(Tnew, T, Residual, Residual1, dt)   
+    @all(Tnew) =  @all(T) + dt/2.0*(@all(Residual) + @all(Residual1))
+    return
+end
+
+# 4th order RK update
+@parallel function RungaKutta4!(Tnew, T, Residual, Residual1,  Residual2,  Residual3, dt)   
+    @all(Tnew) =  @all(T) + dt/6.0*(@all(Residual) + 2.0*@all(Residual1) + 2.0*@all(Residual2) + @all(Residual3))
+    return
+end
+
+
+#------------------------------------------------------------------------------------------
+# Solve one diffusion timestep in axisymmetric geometry, including latent heat, with spatially variable Rho, Cp and K 
+@parallel function diffusion2D_AxiSymm_step!(Tnew, T, R, Rc, qr, qz, K, Kr, Kz, Rho, Cp, H, dt, dr, dz, L, dϕdT)   
+    @all(Kr)    =  @av_xa(K);                                       # average K in r direction
+    @all(Kz)    =  @av_ya(K);                                       # average K in z direction
+    @all(qr)    =  @all(Rc)*@all(Kr)*@d_xa(T)/dr;                # heatflux in r
+    @all(qz)    =            @all(Kz)*@d_ya(T)/dz;                # heatflux in z
+    @inn(Tnew)  =  @inn(T) + dt/(@inn(Rho)*(@inn(Cp) + L*@inn(dϕdT)))* 
+                                 ( 1.0/@inn(R)*@d_xi(qr)/dr +     # 2nd derivative in r
+                                                 @d_yi(qz)/dz +     # 2nd derivative in z
+                                                 @inn(H)             # heat sources 
+                                );  
+
+    return
+end
+
+@parallel function diffusion2D_AxiSymm_residual!(Residual, T, R, Rc, qr, qz, K, Kr, Kz, Rho, Cp, H, dr, dz, L, dϕdT)   
+    @all(Kr)        =  @av_xa(K);                                       # average K in r direction
+    @all(Kz)        =  @av_ya(K);                                       # average K in z direction
+    @all(qr)        =  @all(Rc)*@all(Kr)*@d_xa(T)/dr;                # heatflux in r
+    @all(qz)        =            @all(Kz)*@d_ya(T)/dz;                # heatflux in z
+    @inn(Residual)  =  1.0/(@inn(Rho)*(@inn(Cp) + L*@inn(dϕdT)))* 
+                                        ( 1.0/@inn(R)*@d_xi(qr)/dr +     # 2nd derivative in r
+                                                        @d_yi(qz)/dz +     # 2nd derivative in z 
+                                                        @inn(H)             # heat sources
+                                        );   
+    
+    return
+end
+
+# Solve one diffusion timestep in 2D geometry, including latent heat, with spatially variable Rho, Cp and K 
+@parallel function diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, H, dt, dx, dz, L, dϕdT)   
+    @all(Kx)    =  @av_xa(K);                                       # average K in x direction
+    @all(Kz)    =  @av_ya(K);                                       # average K in z direction
+    @all(qx)    =  @all(Kx)*@d_xa(T)/dx;                          # heatflux in x
+    @all(qz)    =  @all(Kz)*@d_ya(T)/dz;                          # heatflux in z
+    @inn(Tnew)  =  @inn(T) + dt/(@inn(Rho)*(@inn(Cp) + L*@inn(dϕdT)))* 
+                                 (        @d_xi(qx)/dx + 
+                                          @d_yi(qz)/dz +           # 2nd derivative 
+                                          @inn(H)                   # heat sources
+                                 );          
+
+    return
+end
+
+
+# Set x- boundary conditions to be zero-flux
+@parallel_indices (iy) function bc2D_x!(T::Data.Array) 
+    T[1  , iy] = T[2    , iy]
+    T[end, iy] = T[end-1, iy]
+    return
+end
+
+# Set z- boundary conditions to be zero-flux
+@parallel_indices (ix) function bc2D_z!(T::Data.Array) 
+    T[ix,1 ]    = T[ix, 2    ]
+    T[ix, end]  = T[ix, end-1]
+    return
+end
+
+# Set z- boundary conditions @ bottom to be zero-flux
+@parallel_indices (ix) function bc2D_z_bottom!(T::Data.Array) 
+    T[ix,1 ]    = T[ix, 2    ]
+    return
+end
+
+@parallel_indices (ix) function bc2D_z_bottom_flux!(T::Data.Array, K::Data.Array, dz::Data.Number, q_z::Data.Number) 
+    T[ix,1 ]    = T[ix, 2    ] + q_z*dz / K[ix, 1]
+
+    #q_z = -K*(T[ix,2]-T[ix,1])/dz
+    #dz*q_z/K_z + +T[ix,2]= T[ix,1]
+
+    return
+end
+
+end
+
+module Diffusion2D_CUDA
+export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!, bc2D_z!, bc2D_z_bottom!, 
+        bc2D_z_bottom_flux!, assign!, diffusion2D_AxiSymm_residual!, 
+        RungaKutta1!, RungaKutta2!,RungaKutta4!, update_dϕdT_Phi!, update_Tbuffer!,
+        update_relaxed_picard!
+
+using ParallelStencil
+using ParallelStencil.FiniteDifferences2D
+
+
+ParallelStencil.@reset_parallel_stencil()       # reset, as we initialized parallel_stencil already above (if we don't do this here, we dont seem to be able to define the functions below)    
+@init_parallel_stencil(CUDA, Float64, 2);    # initialize parallel stencil in 2D
+
+@parallel function update_relaxed_picard!(Tupdate::Data.Array, Tnew::Data.Array, T_it_old::Data.Array, ω::Data.Number)
+    @all(Tupdate) = ω*@all(Tnew) + (1.0-ω)*@all(T_it_old)
+    return 
+end
 
 @parallel_indices (i,j) function update_dϕdT_Phi!(dϕdT, Phi_melt, Z)
     @inbounds if Z[i,j] < -15e3
@@ -130,7 +272,6 @@ end
 end
 
 end
-
 
 
 """

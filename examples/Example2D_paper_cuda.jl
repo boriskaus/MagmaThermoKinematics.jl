@@ -1,5 +1,6 @@
+const USE_GPU = true 
+
 using MagmaThermoKinematics
-using MagmaThermoKinematics.Diffusion2D
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
 using CairoMakie    # plotting
@@ -12,7 +13,12 @@ using Statistics
 using LinearAlgebra: norm
 
 # Initialize 
-@init_parallel_stencil(CUDA, Float64, 2);    # initialize parallel stencil in 2D
+if USE_GPU
+    @init_parallel_stencil(CUDA, Float64, 2);    # initialize parallel stencil in 2D
+else
+    @init_parallel_stencil(Threads, Float64, 2);    # initialize parallel stencil in 2D
+end
+using MagmaThermoKinematics.Diffusion2D
 
 # These are useful parameters                                       
 SecYear     = 3600*24*365.25

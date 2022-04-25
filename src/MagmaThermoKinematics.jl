@@ -19,7 +19,7 @@ include("Units.jl")                             # various useful units
 
 ## Alphabetical include of computation-submodules (must be at end as needs to import from ParallelStencil).
 include("Diffusion.jl")
-export Diffusion2D, Diffusion3D  #
+export Diffusion2D, Diffusion2D_CUDA, Diffusion3D  #
 
 include("MeltingRelationships.jl")
 export SolidFraction, ComputeLithostaticPressure, LoadPhaseDiagrams, PhaseDiagramData, ComputeDensityAndPressure
