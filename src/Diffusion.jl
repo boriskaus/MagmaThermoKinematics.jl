@@ -4,7 +4,8 @@ Diffusion2D provides 2D diffusion codes (pure 2D and axisymmetric)
 module Diffusion2D
 export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!, bc2D_z!, bc2D_z_bottom!, 
         bc2D_z_bottom_flux!, assign!, diffusion2D_AxiSymm_residual!, 
-        RungaKutta1!, RungaKutta2!,RungaKutta4!, update_dϕdT_Phi!, update_Tbuffer!
+        RungaKutta1!, RungaKutta2!,RungaKutta4!, update_dϕdT_Phi!, update_Tbuffer!,
+        update_relaxed_picard!
 
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
@@ -20,6 +21,11 @@ end
 
 @parallel function update_Tbuffer!(A::AbstractArray, B::AbstractArray, C::AbstractArray)
     @all(A) = @all(B) - @all(C)
+    return 
+end
+
+@parallel function update_relaxed_picard!(Tupdate::AbstractArray, Tnew::AbstractArray, T_it_old::AbstractArray, ω::Number)
+    @all(Tupdate) = ω*@all(Tnew) + (1.0-ω)*@all(T_it_old)
     return 
 end
 
@@ -128,8 +134,6 @@ end
 end
 
 end
-
-
 
 """
 Diffusion3D provides 3D diffusion routines

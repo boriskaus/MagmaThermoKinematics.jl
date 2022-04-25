@@ -1,3 +1,5 @@
+const USE_GPU = true 
+
 using MagmaThermoKinematics
 environment!(:gpu, Float64, 2)   # initialize parallel stencil in 2D
 using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
