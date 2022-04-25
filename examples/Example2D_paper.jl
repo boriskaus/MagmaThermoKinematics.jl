@@ -1,4 +1,3 @@
-const USE_GPU = false 
 using MagmaThermoKinematics
 environment!(:cpu, Float64, 2)   # initialize parallel stencil in 2D
 using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
@@ -10,19 +9,7 @@ using Parameters
 using Statistics
 using LinearAlgebra: norm
 
-using Statistics
-using LinearAlgebra: norm
-
-@static if USE_GPU
-    ParallelStencil.@reset_parallel_stencil()       # reset, as we initialized parallel_stencil already above (if we don't do this here, we dont seem to be able to define the functions below)    
-    @init_parallel_stencil(CUDA, Float64, 2);       # initialize parallel stencil in 2D
-
-else
-    ParallelStencil.@reset_parallel_stencil()       # reset, as we initialized parallel_stencil already above (if we don't do this here, we dont seem to be able to define the functions below)    
-    @init_parallel_stencil(Threads, Float64, 2);    # initialize parallel stencil in 2D
-    using MagmaThermoKinematics.Diffusion2D
-end
-
+const USE_GPU=false;
 
 # These are useful parameters                                       
 SecYear     = 3600*24*365.25

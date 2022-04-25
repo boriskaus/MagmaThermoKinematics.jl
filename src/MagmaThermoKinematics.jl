@@ -19,7 +19,7 @@ using JLD2                                      # Load/save data to disk
 
 include("Units.jl")                             # various useful units
 
-function environment!(model_device, precission, dimension)
+function environment!(model_device, precision, dimension)
     gpu = model_device == :gpu ? true : false
 
     # environment variable for XPU
@@ -33,12 +33,12 @@ function environment!(model_device, precission, dimension)
 
     # start ParallelStencil
     if model_device == :gpu
-        # eval(:(@init_parallel_stencil(CUDA, $(precission), $(dimension))))
-        Base.eval(@__MODULE__, :(@init_parallel_stencil(CUDA, $(precission), $(dimension))))
+        # eval(:(@init_parallel_stencil(CUDA, $(precision), $(dimension))))
+        Base.eval(@__MODULE__, :(@init_parallel_stencil(CUDA, $(precision), $(dimension))))
         Base.eval(Main, Meta.parse("using CUDA"))
     else
         @eval begin
-            @init_parallel_stencil(Threads, $(precission), $(dimension))
+            @init_parallel_stencil(Threads, $(precssion), $(dimension))
         end
     end
 
@@ -50,6 +50,7 @@ function environment!(model_device, precission, dimension)
         export Data
     end
 
+    # GeoParams routines we want to work on GPU:
     for fni in ("meltfraction","dϕdT","density","heatcapacity","conductivity","radioactive_heat")
         fn = Symbol(string("compute_$(fni)_ps!"))
         _fn = Symbol(string("compute_$(fni)"))
