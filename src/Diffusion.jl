@@ -9,7 +9,6 @@ export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!, bc2D_z!, bc2D_z_bo
 
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
-#using CUDA
 
 @parallel_indices (i,j) function update_dϕdT_Phi!(dϕdT, Phi_melt, Z)
     @inbounds if Z[i,j] < -15e3

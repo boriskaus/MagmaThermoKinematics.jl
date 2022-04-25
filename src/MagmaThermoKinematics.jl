@@ -38,7 +38,7 @@ function environment!(model_device, precision, dimension)
         Base.eval(Main, Meta.parse("using CUDA"))
     else
         @eval begin
-            @init_parallel_stencil(Threads, $(precssion), $(dimension))
+            @init_parallel_stencil(Threads, $(precision), $(dimension))
         end
     end
 

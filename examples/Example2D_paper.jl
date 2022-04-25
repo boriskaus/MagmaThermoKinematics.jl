@@ -1,5 +1,10 @@
+const USE_GPU=false;
 using MagmaThermoKinematics
-environment!(:cpu, Float64, 2)   # initialize parallel stencil in 2D
+if USE_GPU
+    environment!(:gpu, Float64, 2)   # initialize parallel stencil in 2D
+else
+    environment!(:cpu, Float64, 2)   # initialize parallel stencil in 2D
+end
 using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
 
 using CairoMakie    # plotting
@@ -9,7 +14,6 @@ using Parameters
 using Statistics
 using LinearAlgebra: norm
 
-const USE_GPU=false;
 
 # These are useful parameters                                       
 SecYear     = 3600*24*365.25
