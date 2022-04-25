@@ -296,62 +296,62 @@ end
             @timeit to "visualisation" begin
                 time_Myrs = time/Myr;
 
-                T_plot = Array(T)
-                T_init_plot = Array(T_init)
-                Phi_melt_plot = Array(Phi_melt)
-                # ---------------------------------
-                # Create plot (using Makie)
-                fig = Figure(resolution = (2000,1000))
-                
-                # 1D figure with cross-sections
-                time_Myrs_rnd = round(time_Myrs,digits=3)
-                ax1 = Axis(fig[1,1], xlabel = "Temperature [ᵒC]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs")
-                lines!(fig[1,1],T_plot[1,:],z/1e3,label="Center")
-                lines!(fig[1,1],T_plot[end,:],z/1e3,label="Side")
-                lines!(fig[1,1],T_init_plot[end,:],z/1e3,label="Initial")
-                axislegend(ax1)
-                limits!(ax1, 0, 1100, -20, 0)
-                
-                # 2D temperature plot 
-                #ax2=Axis(fig[1, 2],xlabel = "Width [km]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs, Geneva model; Temperature [ᵒC]")
-                ax2=Axis(fig[1, 2],xlabel = "Width [km]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs, $(Num.FigTitle); Temperature [ᵒC]")
-                
-                co = contourf!(fig[1, 2], x/1e3, z/1e3, T_plot, levels = 0:50:1050,colormap = :jet)
-                
-                if maximum(T)>691
-                co1 = contour!(fig[1, 2], x/1e3, z/1e3, T_plot, levels = 690:691)       # solidus
-                end
-                limits!(ax2, 0, 20, -20, 0)
-                Colorbar(fig[1, 3], co)
-                
-                # 2D melt fraction plots:
-                ax3=Axis(fig[1, 4],xlabel = "Width [km]", ylabel = "Depth [km]", title = " ϕ (melt fraction)")
-                co = heatmap!(fig[1, 4], x/1e3, z/1e3, Phi_melt_plot, colormap = :vik, colorrange=(0, 1))
-                if Num.plot_tracers==true
-                    # Add tracers to plot
-                    scatter!(fig[1, 4],getindex.(Tracers.coord,1)/1e3, getindex.(Tracers.coord,2)/1e3, color=:white)
-                end
-                if (Num.advect_polygon==true) & (~isempty(dike_poly))
-                    # Add polygon
-                    pl = lines!(fig[1, 4], dike_poly[1]/1e3, dike_poly[2]/1e3,   color = :yellow, linestyle=:dot, linewidth=1.5)
-                end
-                limits!(ax3, 0, 20, -20, 0)
-                Colorbar(fig[1, 5], co)
+            T_plot = Array(T)
+            T_init_plot = Array(T_init)
+            Phi_melt_plot = Array(Phi_melt)
+            # ---------------------------------
+            # Create plot (using Makie)
+            fig = Figure(resolution = (2000,1000))
+
+            # 1D figure with cross-sections
+            time_Myrs_rnd = round(time_Myrs,digits=3)
+            ax1 = Axis(fig[1,1], xlabel = "Temperature [ᵒC]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs")
+            lines!(fig[1,1],T_plot[1,:],z/1e3,label="Center")
+            lines!(fig[1,1],T_plot[end,:],z/1e3,label="Side")
+            lines!(fig[1,1],T_init_plot[end,:],z/1e3,label="Initial")
+            axislegend(ax1)
+            limits!(ax1, 0, 1100, -20, 0)
+        
+            # 2D temperature plot 
+            #ax2=Axis(fig[1, 2],xlabel = "Width [km]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs, Geneva model; Temperature [ᵒC]")
+            ax2=Axis(fig[1, 2],xlabel = "Width [km]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs, $(Num.FigTitle); Temperature [ᵒC]")
             
-                # Save figure
-                save("$(Num.SimName)/$(Num.SimName)_$it.png", fig)
-                #
-                # ---------------------------------
+            co = contourf!(fig[1, 2], x/1e3, z/1e3, T_plot, levels = 0:50:1050,colormap = :jet)
+        
+            if maximum(T)>691
+            co1 = contour!(fig[1, 2], x/1e3, z/1e3, T_plot, levels = 690:691)       # solidus
+            end
+            limits!(ax2, 0, 20, -20, 0)
+            Colorbar(fig[1, 3], co)
             
-                # compute average T of molten zone (1% melt)
-                ind = findall(Phi_melt.>0.01);
-                if ~isempty(ind)
-                    T_av_melt = round(sum(T[ind])/length(ind), digits=3)
-                else
-                    T_av_melt = NaN;
-                end
-                # print results:  
-                println("Timestep $it = $(round(time/kyr*100)/100) kyrs, max(T)=$(round(maximum(T),digits=3))ᵒC, Taverage_magma=$(T_av_melt)ᵒC, max(ϕ)=$(round(maximum(Phi_melt),digits=2))")
+            # 2D melt fraction plots:
+            ax3=Axis(fig[1, 4],xlabel = "Width [km]", ylabel = "Depth [km]", title = " ϕ (melt fraction)")
+            co = heatmap!(fig[1, 4], x/1e3, z/1e3, Phi_melt_plot, colormap = :vik, colorrange=(0, 1))
+            if Num.plot_tracers==true
+                # Add tracers to plot
+                scatter!(fig[1, 4],getindex.(Tracers.coord,1)/1e3, getindex.(Tracers.coord,2)/1e3, color=:white)
+            end
+            if (Num.advect_polygon==true) & (~isempty(dike_poly))
+                # Add polygon
+                pl = lines!(fig[1, 4], dike_poly[1]/1e3, dike_poly[2]/1e3,   color = :yellow, linestyle=:dot, linewidth=1.5)
+            end
+            limits!(ax3, 0, 20, -20, 0)
+            Colorbar(fig[1, 5], co)
+
+            # Save figure
+            save("$(Num.SimName)/$(Num.SimName)_$it.png", fig)
+            #
+            # ---------------------------------
+
+            # compute average T of molten zone (1% melt)
+            ind = findall(Phi_melt.>0.01);
+            if ~isempty(ind)
+                T_av_melt = round(sum(T[ind])/length(ind), digits=3)
+            else
+                T_av_melt = NaN;
+            end
+            # print results:  
+            println("Timestep $it = $(round(time/kyr*100)/100) kyrs, max(T)=$(round(maximum(T),digits=3))ᵒC, Taverage_magma=$(T_av_melt)ᵒC, max(ϕ)=$(round(maximum(Phi_melt),digits=2))")
             end
         end
 
