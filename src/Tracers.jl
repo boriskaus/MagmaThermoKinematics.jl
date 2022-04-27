@@ -61,6 +61,7 @@ function UpdateTracers(Tracers, Grid, T, Phi, InterpolationMethod="Quadratic");
 
     dim = length(Grid)    
     if isassigned(Tracers,1)        # only if the Tracers StructArray is non-empty
+        
         # extract coordinates
         coord = Tracers.coord; coord = hcat(coord...)';       # extract array with coordinates of tracers
     
@@ -73,7 +74,7 @@ function UpdateTracers(Tracers, Grid, T, Phi, InterpolationMethod="Quadratic");
             Points_irregular = (x,y,z);  
         end
 
-        # Correct coordinates (to stay withoin bounds of models)
+        # Correct coordinates (to stay within bounds of models)
         CorrectBounds!(Points_irregular, Grid);
  
         # Interpolate temperature from grid to tracers
@@ -88,10 +89,168 @@ function UpdateTracers(Tracers, Grid, T, Phi, InterpolationMethod="Quadratic");
             LazyRow(Tracers, iT).T          = T_tracers[1][iT];             # Temperature
             LazyRow(Tracers, iT).Phi_melt   = Phi_melt_tracers[1][iT];      # Melt fraction
         end
-    end
+        
 
+        #=
+        Bound_min = minimum.(Grid)
+        Bound_max = maximum.(Grid)
+
+        # Create linear interpolation objects
+        itp_T     =   interpolate(T, BSpline(Linear()));
+        interp_T  =   scale(itp_T,Grid...);
+        
+        itp_Phi   =   interpolate(Phi, BSpline(Linear()));
+        interp_ϕ  =   scale(itp_Phi,Grid...);
+        
+        for iT = 1:length(Tracers)  
+            Trac = Tracers[iT];
+            x = Trac.coord[1];
+            z = Trac.coord[2];
+
+            # correct points for bounds
+            if x<Bound_min[1]; x=Bound_min[1]; end
+            if x>Bound_max[1]; x=Bound_max[1]; end
+            if z<Bound_min[2]; z=Bound_min[2]; end
+            if z>Bound_max[2]; z=Bound_max[2]; end
+
+            if dim==2;                      
+                Points_irregular = (x,z);
+            else       
+                y   = coord[:,3];   
+                if z<Bound_min[3]; z=Bound_min[3]; end
+                if z>Bound_max[3]; z=Bound_max[3]; end
+                Points_irregular = (x,z,y);  
+            end
+
+            # Interpolate:
+            Trac_T              = interp_T(Points_irregular...);
+            Trac_ϕ              = interp_ϕ(Points_irregular...);
+
+            # Update values on tracer
+            LazyRow(Tracers, iT).T        = Trac_T;
+            LazyRow(Tracers, iT).Phi_melt = Trac_ϕ;
+        end
+        
+    =#
+    end
+    
     return Tracers
 
+end
+
+
+"""
+    UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T, Phi);
+    
+In-place function that interpolates `T` & `Phi`, defined on the `Grid`, to `Tracers`.
+
+- Tracers:  StructArray that contains tracers, where we want to update  
+- Grid:     Regular grid on which the parameters to be interpolated are defined
+                2D - (X,Z)
+                3D - (X,Y,Z)
+- T:  `T` field that is defined on the grid, to be interpolated to tracers 
+- Phi:  `Phi` field that is defined on the grid, to be interpolated to tracers 
+
+Note that we employ linear interpolation 
+"""
+function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T,dim}, Phi::AbstractArray{_T,dim}) where {_T, dim}
+
+    if isassigned(Tracers,1)        # only if the Tracers StructArray is non-empty
+        
+        # Boundaries of the grid
+        Bound_min = minimum.(Grid)
+        Bound_max = maximum.(Grid)
+        
+        if dim==2
+            Δx = Grid[1][2]-Grid[1][1]
+            Δz = Grid[2][2]-Grid[2][1]
+        elseif dim==3
+            Δx = Grid[1][2]-Grid[1][1]
+            Δy = Grid[2][2]-Grid[2][1]
+            Δz = Grid[3][2]-Grid[3][1]
+        end
+
+        for iT = 1:length(Tracers)  
+            Trac = Tracers[iT];
+            pt   = Trac.coord
+
+            # correct point for bounds:
+            for i=1:dim
+                if pt[i]<Bound_min[i]; pt[i] = Bound_min[i]; end
+                if pt[i]>Bound_max[i]; pt[i] = Bound_max[i]; end
+            end                
+            
+            # Linear interpolation:
+            if dim==2
+                Trac_T = interpolate_linear_2D(pt[1], pt[2], Bound_min, Δx, Δz, T   )
+                Trac_ϕ = interpolate_linear_2D(pt[1], pt[2], Bound_min, Δx, Δz, Phi )
+            elseif dim==3
+                Trac_T   = interp_T(pt[1],pt[2],pt[3]);
+                Trac_ϕ   = interp_ϕ(pt[1],pt[2],pt[3]);
+            end
+
+            # Update values on tracer
+            setproperty!(Trac,:T,Trac_T)
+            setproperty!(Trac,:Phi_melt,Trac_ϕ)
+
+            Tracers[iT] = Trac;
+
+        end
+        
+    end
+    
+    return nothing
+
+end
+
+""" 
+
+Implements 2D bilinear interpolation 
+"""
+function interpolate_linear_2D(pt_x, pt_z, Bound_min, Δx, Δz, Field )
+
+    ix = floor(Int64, (pt_x - Bound_min[1])/Δx)
+    iz = floor(Int64, (pt_z - Bound_min[2])/Δz)
+    fac_x = (pt_x - ix*Δx)/Δx     # distance to lower left point
+    fac_z = (pt_z - iz*Δz)/Δz     # distance to lower left point
+
+    # interpolate in x    
+    val_x_bot =  (1.0-fac_x)*Field[ix+1,iz+1] +  ( fac_x)*Field[ix+2,iz+1]
+    val_x_top =  (1.0-fac_x)*Field[ix+1,iz+2] +  ( fac_x)*Field[ix+2,iz+2]
+     
+    # Interpolate value in z
+    val    = (1.0-fac_z)*val_x_bot + fac_z*val_x_top
+
+    return val 
+end
+
+""" 
+
+Implements 3D trilinear interpolation 
+"""
+function interpolate_linear_3D(pt_x, pt_y, pt_z, Bound_min, Δx, Δy, Δz, Field )
+
+    ix = floor(Int64, (pt_x - Bound_min[1])/Δx)
+    ix = floor(Int64, (pt_y - Bound_min[2])/Δy)
+    iz = floor(Int64, (pt_z - Bound_min[3])/Δz)
+    fac_x = (pt_x - ix*Δx)/Δx     # distance to lower left point
+    fac_y = (pt_y - iy*Δy)/Δy     # distance to lower left point
+    fac_z = (pt_z - iz*Δz)/Δz     # distance to lower left point
+
+    # Interpolate in x    
+    val_x_bot_left  =  (1.0-fac_x)*Field[ix+1,iy+1,iz+1] +  ( fac_x)*Field[ix+2,iy+1,iz+1]
+    val_x_top_left  =  (1.0-fac_x)*Field[ix+1,iy+1,iz+2] +  ( fac_x)*Field[ix+2,iy+1,iz+2]
+    val_x_bot_right =  (1.0-fac_x)*Field[ix+1,iy+2,iz+1] +  ( fac_x)*Field[ix+2,iy+2,iz+1]
+    val_x_top_right =  (1.0-fac_x)*Field[ix+1,iy+2,iz+2] +  ( fac_x)*Field[ix+2,iy+2,iz+2]
+    
+    # Interpolate in y    
+    val_y_bot       =  (1.0-fac_y)*val_x_bot_left + fac_y*val_x_bot_right
+    val_y_top       =  (1.0-fac_y)*val_x_top_left + fac_y*val_x_top_right
+    
+    # Interpolate value in z
+    val             = (1.0-fac_z)*val_y_bot + fac_z*val_y_top
+
+    return val 
 end
 
 """
