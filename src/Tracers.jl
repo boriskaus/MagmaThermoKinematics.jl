@@ -200,8 +200,6 @@ function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T,dim}, Phi
         
     end
 
-    @show maximum(Tracers.T)
-    
     return nothing
 
 end
@@ -216,14 +214,7 @@ function interpolate_linear_2D(pt_x, pt_z, Bound_min, Δx, Δz, Field )
     iz = floor(Int64, (pt_z - Bound_min[2])/Δz)
     fac_x = (pt_x - ix*Δx - Bound_min[1])/Δx     # distance to lower left point
     fac_z = (pt_z - iz*Δz - Bound_min[2])/Δz     # distance to lower left point
-    if fac_x<0.0 || fac_x>1.0
-        @show fac_x, pt_x, ix, Δx,  Bound_min[1]
-    end
-    if fac_z<0.0 || fac_z>1.0
-        @show fac_z, pt_z, iz, Δz,  Bound_min[2]
-    end
-
-    
+   
     # interpolate in x    
     val_x_bot =  (1.0-fac_x)*Field[ix+1,iz+1] +  ( fac_x)*Field[ix+2,iz+1]
     val_x_top =  (1.0-fac_x)*Field[ix+1,iz+2] +  ( fac_x)*Field[ix+2,iz+2]
