@@ -189,11 +189,9 @@ function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T,dim}, Phi
                 Trac_ϕ = interpolate_linear_3D(pt[1], pt[2], pt[3], Bound_min, Δx, Δy, Δz, Phi )
             end
 
-            # Update values on tracer
-            setproperty!(Trac,:T,Trac_T)
-            setproperty!(Trac,:Phi_melt,Trac_ϕ)
-
-            Tracers[iT] = Trac;
+            # Update values on tracers
+            LazyRow(Tracers, iT).T        = Trac_T;
+            LazyRow(Tracers, iT).Phi_melt = Trac_ϕ;
 
         end
         
