@@ -184,6 +184,9 @@ function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T,dim}, Phi
             if dim==2
                 Trac_T = interpolate_linear_2D(pt[1], pt[2], Bound_min, Δx, Δz, T   )
                 Trac_ϕ = interpolate_linear_2D(pt[1], pt[2], Bound_min, Δx, Δz, Phi )
+                if Trac_T>1001
+                    @show pt, Bound_min, Δx, Δz, Trac_T
+                end
             elseif dim==3
                 Trac_T = interpolate_linear_3D(pt[1], pt[2], pt[3], Bound_min, Δx, Δy, Δz, T   )
                 Trac_ϕ = interpolate_linear_3D(pt[1], pt[2], pt[3], Bound_min, Δx, Δy, Δz, Phi )
@@ -196,6 +199,8 @@ function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T,dim}, Phi
         end
         
     end
+
+    @show maximum(Tracers.T)
     
     return nothing
 
@@ -209,9 +214,16 @@ function interpolate_linear_2D(pt_x, pt_z, Bound_min, Δx, Δz, Field )
 
     ix = floor(Int64, (pt_x - Bound_min[1])/Δx)
     iz = floor(Int64, (pt_z - Bound_min[2])/Δz)
-    fac_x = (pt_x - ix*Δx)/Δx     # distance to lower left point
-    fac_z = (pt_z - iz*Δz)/Δz     # distance to lower left point
+    fac_x = (pt_x - ix*Δx - Bound_min[1])/Δx     # distance to lower left point
+    fac_z = (pt_z - iz*Δz - Bound_min[2])/Δz     # distance to lower left point
+    if fac_x<0.0 || fac_x>1.0
+        @show fac_x, pt_x, ix, Δx,  Bound_min[1]
+    end
+    if fac_z<0.0 || fac_z>1.0
+        @show fac_z, pt_z, iz, Δz,  Bound_min[2]
+    end
 
+    
     # interpolate in x    
     val_x_bot =  (1.0-fac_x)*Field[ix+1,iz+1] +  ( fac_x)*Field[ix+2,iz+1]
     val_x_top =  (1.0-fac_x)*Field[ix+1,iz+2] +  ( fac_x)*Field[ix+2,iz+2]
@@ -231,9 +243,9 @@ function interpolate_linear_3D(pt_x, pt_y, pt_z, Bound_min, Δx, Δy, Δz, Field
     ix = floor(Int64, (pt_x - Bound_min[1])/Δx)
     ix = floor(Int64, (pt_y - Bound_min[2])/Δy)
     iz = floor(Int64, (pt_z - Bound_min[3])/Δz)
-    fac_x = (pt_x - ix*Δx)/Δx     # distance to lower left point
-    fac_y = (pt_y - iy*Δy)/Δy     # distance to lower left point
-    fac_z = (pt_z - iz*Δz)/Δz     # distance to lower left point
+    fac_x = (pt_x - ix*Δx - Bound_min[1])/Δx     # distance to lower left point
+    fac_y = (pt_y - iy*Δy - Bound_min[2])/Δy     # distance to lower left point
+    fac_z = (pt_z - iz*Δz - Bound_min[3])/Δz     # distance to lower left point
 
     # Interpolate in x    
     val_x_bot_left  =  (1.0-fac_x)*Field[ix+1,iy+1,iz+1] +  ( fac_x)*Field[ix+2,iy+1,iz+1]
