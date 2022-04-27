@@ -184,9 +184,6 @@ function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T,dim}, Phi
             if dim==2
                 Trac_T = interpolate_linear_2D(pt[1], pt[2], Bound_min, Δx, Δz, T   )
                 Trac_ϕ = interpolate_linear_2D(pt[1], pt[2], Bound_min, Δx, Δz, Phi )
-                if Trac_T>1001
-                    @show pt, Bound_min, Δx, Δz, Trac_T
-                end
             elseif dim==3
                 Trac_T = interpolate_linear_3D(pt[1], pt[2], pt[3], Bound_min, Δx, Δy, Δz, T   )
                 Trac_ϕ = interpolate_linear_3D(pt[1], pt[2], pt[3], Bound_min, Δx, Δy, Δz, Phi )
