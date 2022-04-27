@@ -151,7 +151,7 @@ In-place function that interpolates `T` & `Phi`, defined on the `Grid`, to `Trac
 - T:  `T` field that is defined on the grid, to be interpolated to tracers 
 - Phi:  `Phi` field that is defined on the grid, to be interpolated to tracers 
 
-Note that we employ linear interpolation 
+Note that we employ linear interpolation using custom functions
 """
 function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T,dim}, Phi::AbstractArray{_T,dim}) where {_T, dim}
 
@@ -185,8 +185,8 @@ function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T,dim}, Phi
                 Trac_T = interpolate_linear_2D(pt[1], pt[2], Bound_min, Δx, Δz, T   )
                 Trac_ϕ = interpolate_linear_2D(pt[1], pt[2], Bound_min, Δx, Δz, Phi )
             elseif dim==3
-                Trac_T   = interp_T(pt[1],pt[2],pt[3]);
-                Trac_ϕ   = interp_ϕ(pt[1],pt[2],pt[3]);
+                Trac_T = interpolate_linear_3D(pt[1], pt[2], pt[3], Bound_min, Δx, Δy, Δz, T   )
+                Trac_ϕ = interpolate_linear_3D(pt[1], pt[2], pt[3], Bound_min, Δx, Δy, Δz, Phi )
             end
 
             # Update values on tracer
