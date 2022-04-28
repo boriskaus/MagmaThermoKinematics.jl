@@ -1,25 +1,22 @@
+# This example reproduces the cases shown in the ZASSy manuscript, which we are currently preparing.
+#  It includes comparisons with 2D simulations done by the Geneva (Gregor Weber, Luca Caricchi) & UCLA (Oscar Lovera) Tracers_SimParams
+#
+# 
 const USE_GPU=false;
 using MagmaThermoKinematics
 if USE_GPU
-    environment!(:gpu, Float64, 2)   # initialize parallel stencil in 2D
-    #CUDA.device!(0)                  # select the GPU you use (starts @ zero)
+    environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
+    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
 else
-    environment!(:cpu, Float64, 2)   # initialize parallel stencil in 2D
+    environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
 end
 using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
 
 using CairoMakie    # plotting
-using Printf        # print    
+using Printf        # pretty print    
 using MAT, JLD2     # saves files in matlab format & JLD2 (hdf5) format
-using Parameters
 
 using TimerOutputs
-
-# These are useful parameters                                       
-SecYear     = 3600*24*365.25
-kyr         = 1000*SecYear
-Myr         = 1e6*SecYear  
-km³         = 1000^3
 
 """
     Holds numerical parameters for the overall simulation (and sets defaults), 
@@ -91,7 +88,7 @@ end
                                 ))
 
     # Set up model geometry & initial T structure
-    Grid    = CreateGrid(size=(Nx,Nz), extent=(Num.W, Num.H))
+    Grid    = CreateGrid(size=(Num.Nx,Num.Nz), extent=(Num.W, Num.H))
     
     GridArray!(Arrays.R,  Arrays.Z, Grid.coord1D[1], Grid.coord1D[2])               # Initialize 2D coordinate arrays
     Arrays.Rc              .=   (Arrays.R[2:end,:] + Arrays.R[1:end-1,:])/2         # center points in x
@@ -121,13 +118,13 @@ end
     # Update buffer & phases arrays --------------
     if USE_GPU
         # CPU buffers for advection
-        Tnew_cpu        =   Matrix{Float64}(undef, Nx, Nz)
+        Tnew_cpu        =   Matrix{Float64}(undef, Num.Nx, Num.Nz)
         Phi_melt_cpu    =   similar(Tnew_cpu)
-        Phases          =   CUDA.ones(Int64,Nx,Nz)
+        Phases          =   CUDA.ones(Int64,Num.Nx,Num.Nz)
     else
         Tnew_cpu        =   similar(Arrays.T)
         Phi_melt_cpu    =   similar(Arrays.Phi_melt)
-        Phases          =   @ones(Nx,Nz)
+        Phases          =   @ones(Num.Nx,Num.Nz)
 
     end
     # --------------------------------------------
@@ -152,10 +149,10 @@ end
     @parallel assign!(Arrays.Tnew, Arrays.T_init)
     @parallel assign!(Arrays.T, Arrays.T_init)
 
-    time, dike_inj, InjectVol, Time_vec,Melt_Time,Tav_magma_Time = 0.0, 0.0, 0.0,zeros(nt,1),zeros(nt,1),zeros(nt,1);
+    time, dike_inj, InjectVol, Time_vec,Melt_Time,Tav_magma_Time = 0.0, 0.0, 0.0,zeros(Num.nt,1),zeros(Num.nt,1),zeros(Num.nt,1);
 
     if isdir(Num.SimName)==false mkdir(Num.SimName) end;    # create simulation directory if needed
-    for it = 1:nt   # Time loop
+    for it = 1:Num.nt   # Time loop
 
         # Add new dike every X years -----------------
         if floor(time/Dikes.InjectionInterval)> dike_inj      
@@ -195,7 +192,7 @@ end
         @parallel assign!(Arrays.T, Arrays.Tnew)
         @parallel assign!(Arrays.Tnew, Arrays.T)
         time                =   time + Num.dt;                                     # Keep track of evolved time
-        Melt_Time[it]       =   sum( Arrays.Phi_melt)/(Nx*Nz)                             # Melt fraction in crust    
+        Melt_Time[it]       =   sum( Arrays.Phi_melt)/(Num.Nx*Num.Nz)              # Melt fraction in crust    
         
         ind = findall(Arrays.T.>700);          
         if ~isempty(ind)
@@ -213,7 +210,7 @@ end
 
 
         # Visualize results --------------------------
-        if mod(it,Num.CreateFig_steps)==0  || it==nt 
+        if mod(it,Num.CreateFig_steps)==0  || it==Num.nt 
             @timeit to "visualisation" begin
                 time_Myrs = time/Myr;
 
@@ -278,7 +275,7 @@ end
         # --------------------------------------------
 
         # Save output to disk once in a while --------
-        if mod(it,Num.SaveOutput_steps)==0  || it==nt 
+        if mod(it,Num.SaveOutput_steps)==0  || it==Num.nt 
             filename = "$(Num.SimName)/$(Num.SimName)_$it.mat"
             matwrite(filename, 
                             Dict("Tnew"=> Array(Arrays.Tnew), 
@@ -289,7 +286,7 @@ end
                 )
             println("  Saved matlab output to $filename")    
 
-            if it==nt   
+            if it==Num.nt   
                 # save tracers & material parameters of the simulation in jld2 format so we can reproduce this
                 filename = "$(Num.SimName)/Tracers_SimParams.jld2"
                 jldsave(filename; Tracers, Dikes, Num, Mat_tup, Time_vec, Melt_Time, Tav_magma_Time)

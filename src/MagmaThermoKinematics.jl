@@ -78,6 +78,13 @@ end
 
 export environment!
 
+# Few useful parameters                                       
+SecYear     = 3600*24*365.25
+kyr         = 1000*SecYear
+Myr         = 1e6*SecYear  
+km³         = 1000^3
+export SecYear, kyr, Myr, km³
+
 include("Grid.jl")
 using .Grid
 export GridData, CreateGrid, GridArray, GridArray!
