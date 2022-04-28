@@ -38,8 +38,25 @@ function environment!(model_device, precision, dimension)
         Base.eval(Main, Meta.parse("using CUDA"))
     else
         @eval begin
+            ParallelStencil.@reset_parallel_stencil()
             @init_parallel_stencil(Threads, $(precision), $(dimension))
         end
+    end
+
+    # GeoParams routines we want to work on GPU:
+    for fni in ("meltfraction","dϕdT","density","heatcapacity","conductivity","radioactive_heat","latent_heat")
+      fn = Symbol(string("compute_$(fni)_ps!"))
+      _fn = Symbol(string("compute_$(fni)"))
+      @eval begin
+          @parallel_indices (i, j) function $(fn)(A,MatParam, Phases, args)
+              k = keys(args)
+              v = getindex.(values(args), i, j)
+              argsi = (; zip(k, v)...)
+              A[i, j] = $(Symbol(_fn))(MatParam[Phases[i,j]], argsi)
+              return
+          end
+          export $fn
+      end
     end
 
     # conditional submodule load
@@ -50,25 +67,20 @@ function environment!(model_device, precision, dimension)
         export Data
     end
 
-    # GeoParams routines we want to work on GPU:
-    for fni in ("meltfraction","dϕdT","density","heatcapacity","conductivity","radioactive_heat")
-        fn = Symbol(string("compute_$(fni)_ps!"))
-        _fn = Symbol(string("compute_$(fni)"))
-        @eval begin
-            @parallel_indices (i, j) function $(fn)(A,MatParam, Phases, args)
-                k = keys(args)
-                v = getindex.(values(args), i, j)
-                argsi = (; zip(k, v)...)
-                A[i, j] = $(Symbol(_fn))(MatParam[Phases[i,j]], argsi)
-                return
-            end
-            export $fn
-        end
+    # Create arrays (depends on PS, so should be loaded after)
+    include(joinpath(@__DIR__, "Fields.jl"))
+    Base.@eval begin
+        using .Fields
+        export CreateArrays
     end
 
 end
 
 export environment!
+
+include("Grid.jl")
+using .Grid
+export GridData, CreateGrid, GridArray, GridArray!
 
 include("MeltingRelationships.jl")
 export SolidFraction, ComputeLithostaticPressure, LoadPhaseDiagrams, PhaseDiagramData, ComputeDensityAndPressure
@@ -97,7 +109,7 @@ include("Utils.jl")
 export Process_ZirconAges
 
 # Routines related to Parameters.jl, which come in handy in the main routine
-export @unpack
+export @unpack, @with_kw
 
 
 

@@ -207,10 +207,10 @@ Implements 2D bilinear interpolation
 """
 function interpolate_linear_2D(pt_x, pt_z, Bound_min, Δx, Δz, Field )
 
-    ix = floor(Int64, (pt_x - Bound_min[1])/Δx)
-    iz = floor(Int64, (pt_z - Bound_min[2])/Δz)
-    fac_x = (pt_x - ix*Δx - Bound_min[1])/Δx     # distance to lower left point
-    fac_z = (pt_z - iz*Δz - Bound_min[2])/Δz     # distance to lower left point
+    ix      = floor(Int64, (pt_x - Bound_min[1])/Δx)
+    iz      = floor(Int64, (pt_z - Bound_min[2])/Δz)
+    fac_x   = (pt_x - ix*Δx - Bound_min[1])/Δx     # distance to lower left point
+    fac_z   = (pt_z - iz*Δz - Bound_min[2])/Δz     # distance to lower left point
    
     # interpolate in x    
     val_x_bot =  (1.0-fac_x)*Field[ix+1,iz+1] +  ( fac_x)*Field[ix+2,iz+1]

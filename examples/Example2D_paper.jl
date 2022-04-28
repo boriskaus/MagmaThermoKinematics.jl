@@ -2,6 +2,7 @@ const USE_GPU=false;
 using MagmaThermoKinematics
 if USE_GPU
     environment!(:gpu, Float64, 2)   # initialize parallel stencil in 2D
+    #CUDA.device!(0)                  # select the GPU you use (starts @ zero)
 else
     environment!(:cpu, Float64, 2)   # initialize parallel stencil in 2D
 end
@@ -15,8 +16,6 @@ using Statistics
 using LinearAlgebra: norm
 
 using TimerOutputs
-
-
 
 # These are useful parameters                                       
 SecYear     = 3600*24*365.25
@@ -42,8 +41,8 @@ km³         = 1000^3
     maxTime::Float64            =   maxTime_Myrs*SecYear*1e6 # maximum timestep  in seconds
     SaveOutput_steps::Int64     =   1e3;            # saves output every x steps 
     CreateFig_steps::Int64      =   500;            # Create a figure every X steps
-    flux_free_bottom_BC::Bool   =   false           # flux bottom BC?
-    flux_bottom::Float64        =   167e-3          # Flux in W/m2 in case flux_free_bottom_BC=true
+    flux_bottom_BC::Bool        =   false           # flux bottom BC?
+    flux_bottom::Float64        =   167e-3          # Flux in W/m2 in case flux_bottom_BC=true
     deactivate_La_at_depth::Bool=   false           # deactivate latent heating @ the bottom of the model box?
     plot_tracers::Bool          =   true            # adds passive tracers to the plot
     advect_polygon::Bool        =   false           # adds a polygon around the intrusion area
@@ -52,10 +51,18 @@ km³         = 1000^3
     fac_dt::Float64             =   0.4;            # prefactor with which dt is multiplied   
     dt::Float64                 =   fac_dt*min(dx^2, dz^2)./κ_time/4;   # timestep
     nt::Int64                   =   floor(maxTime/dt);
-    ω::Float64                  =   1.0;            # relaxation parameter for nonlinear iterations    
-    max_iter::Int64             =   50;             # max. number of nonlinear iterations        
+    ω::Float64                  =   0.8;            # relaxation parameter for nonlinear iterations    
+    max_iter::Int64             =   5000;           # max. number of nonlinear iterations        
     verbose::Bool               =   false;    
-    convergence::Float64        =   1e-5;           # nonlinear convergence criteria       
+    convergence::Float64        =   1e-5;           # nonlinear convergence criteria      
+    AnalyticalInitialGeo::Bool  =   false;      
+    qs_anal::Float64            =   170e-3;
+    qm_anal::Float64            =   167e-3;
+    hr_anal::Float64            =   10e3;
+    k_anal::Float64             =   3.35;
+    InitialEllipse::Bool        =   false;
+    a_init::Float64             =   2.5e3;
+    b_init::Float64             =   1.5e3;
 end
 
 """
@@ -75,82 +82,62 @@ end
     nTr_dike::Int64                 =   300                     # Number of tracers 
 end
 
-function namedtupleindex(args::NamedTuple, I...)
-    k = keys(args)
-    v = getindex.(values(args), I...)
-    return (; zip(k, v)...)
-end
 
-for fni in ("meltfraction","dϕdT","density","heatcapacity","conductivity","radioactive_heat")
-    fn = Symbol(string("compute_$(fni)_ps!"))
-    _fn = Symbol(string("compute_$(fni)"))
-    @eval begin
-        @parallel_indices (i, j) function $(fn)(A,MatParam, Phases, args)
-            A[i, j] = $(Symbol(_fn))(MatParam[Phases[i,j]], namedtupleindex(args, i, j))
-            return
-        end
-    end
-end
+"""
+    Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Num, Phases)
 
-#@parallel_indices (i,j) function update_dϕdT_Phi!(dϕdT, Phi_melt, Z)
-#    @inbounds if Z[i,j] < -15e3
-#        dϕdT[i,j] = 0.0
-#        Phi_melt[i,j] = 0.0
-#    end
-#    return 
-#end
-
-# This performs one diffusion timestep while doing nonlinear iterations (for latent heat and conductivity which depends on T)
-function Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, Phases, 
-                P, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, Hr, La, dϕdT, Z, Num)
-   
+Performs a single, nonlinear, diffusion step during which temperature dependent properties (density, heat capacity, conductivity), are updated    
+"""
+function Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Num, Phases)
     err, iter = 1., 1
-    @parallel assign!(T_K, T, 273.15)
-    @parallel assign!(T_it_old, T)
+    @parallel assign!(Arrays.T_K, Arrays.T, 273.15)
+    @parallel assign!(Arrays.T_it_old, Arrays.T)
     Nx, Nz = size(Phases)
-    args1 = (;T=T_K)
-    args2 = (;z=-Z)
-    Tupdate = similar(Tnew)                 # relaxed picard update
-    Tbuffer = similar(T)
+    args1 = (;T=Arrays.T_K)
+    args2 = (;z=-Arrays.Z)
+    Tupdate = similar(Arrays.Tnew)                 # relaxed picard update
+    Tbuffer = similar(Arrays.T)
     while err>Num.convergence && iter<Num.max_iter
     
-        @parallel (1:Nx, 1:Nz) compute_meltfraction_ps!(Phi_melt, Mat_tup, Phases, args1) 
-        @parallel (1:Nx, 1:Nz) compute_dϕdT_ps!(dϕdT, Mat_tup, Phases, args1)     
-        @parallel (1:Nx, 1:Nz) compute_density_ps!(Rho, Mat_tup, Phases, args1)
-        @parallel (1:Nx, 1:Nz) compute_heatcapacity_ps!(Cp, Mat_tup, Phases, args1 )
-        @parallel (1:Nx, 1:Nz) compute_conductivity_ps!(Kc, Mat_tup, Phases, args1 )
-        @parallel (1:Nx, 1:Nz) compute_radioactive_heat_ps!(Hr, Mat_tup, Phases, args2)   
-        #compute_latent_heat!(Hl, Mat_tup, Phases, (;))    
+        @parallel (1:Nx, 1:Nz) compute_meltfraction_ps!(Arrays.Phi_melt, Mat_tup, Phases, args1) 
+        @parallel (1:Nx, 1:Nz) compute_dϕdT_ps!(Arrays.dϕdT, Mat_tup, Phases, args1)     
+        @parallel (1:Nx, 1:Nz) compute_density_ps!(Arrays.Rho, Mat_tup, Phases, args1)
+        @parallel (1:Nx, 1:Nz) compute_heatcapacity_ps!(Arrays.Cp, Mat_tup, Phases, args1 )
+        @parallel (1:Nx, 1:Nz) compute_conductivity_ps!(Arrays.Kc, Mat_tup, Phases, args1 )
+        @parallel (1:Nx, 1:Nz) compute_radioactive_heat_ps!(Arrays.Hr, Mat_tup, Phases, args2)   
+        @parallel (1:Nx, 1:Nz) compute_latent_heat_ps!(Arrays.Hl, Mat_tup, Phases, args1)   
 
         # Switch off latent heat & melting below a certain depth 
         if Num.deactivate_La_at_depth==true
-            @parallel (1:Nx,1:Nz) update_dϕdT_Phi!(dϕdT, Phi_melt, Z)
+            @parallel (1:Nx,1:Nz) update_dϕdT_Phi!(Arrays.dϕdT, Arrays.Phi_melt, Arrays.Z)
         end
 
         # Diffusion step:
         if Num.axisymmetric==true
-            @parallel diffusion2D_AxiSymm_step!(Tnew, T, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, Hr, Num.dt, Num.dx, Num.dz, La, dϕdT) # axisymmetric diffusion step
+            @parallel diffusion2D_AxiSymm_step!(Arrays.Tnew, Arrays.T, Arrays.R, Arrays.Rc, Arrays.qr, Arrays.qz, Arrays.Kc, Arrays.Kr, Arrays.Kz, 
+                                                Arrays.Rho, Arrays.Cp, Arrays.Hr, Arrays.Hl, Num.dt, Num.dx, Num.dz, Arrays.dϕdT) # axisymmetric diffusion step
         else
-            @parallel diffusion2D_step!(Tnew, T, qr, qz, Kc, Kr, Kz, Rho, Cp, Hr, Num.dt, Num.dx, Num.dz, La, dϕdT) # 2D diffusion step
+            @parallel diffusion2D_step!(Arrays.Tnew, Arrays.T, Arrays.qr, Arrays.qz, Arrays.Kc, Arrays.Kr, Arrays.Kz, 
+                                        Arrays.Rho, Arrays.Cp, Arrays.Hr, Arrays.Hl, Num.dt, Num.dx, Num.dz, Arrays.dϕdT) # 2D diffusion step
         end
 
-        @parallel (1:size(T,2)) bc2D_x!(Tnew);                      # flux-free lateral boundary conditions
-        if Num.flux_free_bottom_BC==true
-            @parallel (1:size(T,1)) bc2D_z_bottom_flux!(Tnew, Kc, Num.dz, Num.flux_bottom);     # flux-free bottom BC with specified flux (if false=isothermal) 
+        @parallel (1:Nz) bc2D_x!(Arrays.Tnew);                      # flux-free lateral boundary conditions
+        if Num.flux_bottom_BC==true
+            @parallel (1:Nx) bc2D_z_bottom_flux!(Arrays.Tnew, Arrays.Kc, Num.dz, Num.flux_bottom);     # flux-free bottom BC with specified flux (if false=isothermal) 
         end
  
         # Use a relaxed Picard iteration to update T used for (nonlinear) material properties:
-        @parallel update_relaxed_picard!(Tupdate, Tnew, T_it_old, Num.ω)
+        @parallel update_relaxed_picard!(Tupdate, Arrays.Tnew, Arrays.T_it_old, Num.ω)
         
         # Update T_K (used above to compute material properties)
         @parallel assign!(args1.T, Tupdate,  273.15)   # all GeoParams routines expect T in K
-        @parallel update_Tbuffer!(Tbuffer, Tnew, T_it_old)
-        err     = norm(Tbuffer)/maximum(Tnew)
+        @parallel update_Tbuffer!(Tbuffer, Arrays.Tnew, Arrays.T_it_old)
+        err     = norm(Tbuffer)/maximum(Arrays.Tnew)
         if Num.verbose==true
             println("  Nonlinear iteration $(iter), error=$(err)")
         end
         
-        @parallel assign!(T_it_old, Tupdate)                   # Store Tnew of last iteration step
+        @parallel assign!(Arrays.T_it_old, Tupdate)                   # Store Tnew of last iteration step
         iter   += 1
 
     end
@@ -170,63 +157,65 @@ end
     # Retrieve some parameters
     @unpack Nx,Nz, nt = Num 
 
-    if ~isempty(Mat_tup[1].LatentHeat)
-        La =  NumValue(Mat_tup[1].LatentHeat[1].Q_L);             # latent heat 
-    else
-        La = 0.
-    end
-    
-    nInjections             =   Num.maxTime/Dikes.InjectionInterval   
-    # @show Num.dt/SecYear
-
     # Array initializations
-    T                       =   @zeros(Nx,   Nz);   
-    T_K                     =   @zeros(Nx,   Nz);   
-    Kc                      =   @ones(Nx,    Nz);
-    Rho                     =   @ones(Nx,    Nz);       
-    Cp                      =   @ones(Nx,    Nz);
-    Hr                      =   @zeros(Nx,   Nz);  # radioactive heat
-    Phi_melt, dϕdT,dϕdT_o   =   @zeros(Nx,   Nz), @zeros(Nx,   Nz  ), @zeros(Nx,   Nz  )                   # Melt fraction and derivative of melt fraction vs T
-
-    # Work array initialization
-    Tnew,T_init,qr,qz,Kr,Kz =   @zeros(Nx,   Nz), @zeros(Nx,   Nz), @zeros(Nx-1, Nz),     @zeros(Nx,   Nz-1), @zeros(Nx-1, Nz), @zeros(Nx,   Nz-1)    # thermal solver
-    T_it_old                =   @zeros(Nx,   Nz)
-    R,Rc,Z                  =   @zeros(Nx,   Nz), @zeros(Nx-1, Nz-1),   @zeros(Nx,   Nz)    # 2D gridpoints
+    Arrays = CreateArrays(Dict( (Nx,  Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, Phi_melt=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0),
+                                (Nx-1,Nz  )=>(qr=0,Kr=0, Rc=0), 
+                                (Nx  ,Nz-1)=>(qz=0,Kz=0 )
+                                ))
 
     # Set up model geometry & initial T structure
-    x,z                     =   (0:Nx-1)*Num.dx, (-(Nz-1):0)*Num.dz;                    # 1-D coordinate arrays
-    crd                     =   collect(Iterators.product(x,z))                         # Generate coordinates from 1D coordinate vectors   
-    R,Z                     =   Data.Array((x->x[1]).(crd)), Data.Array((x->x[2]).(crd));                       # Transfer coords to 3D arrays
-    Rc                      =   (R[2:end,:] + R[1:end-1,:])/2 
-    Grid                    =   (x,z);                                                  # Grid 
-    Tracers                 =   StructArray{Tracer}(undef, 1)                           # Initialize tracers   
+    Grid    = CreateGrid(size=(Nx,Nz), extent=(Num.W, Num.H))
+    GridArray!(Arrays.R,  Arrays.Z, Grid.coord1D[1], Grid.coord1D[2])               # Initialize 2D coordinate arrays
+    Arrays.Rc              .=   (Arrays.R[2:end,:] + Arrays.R[1:end-1,:])/2         # center points in x
+
+    Tracers                 =   StructArray{Tracer}(undef, 1)                       # Initialize tracers   
     dike                    =   Dike(W=Dikes.W_in,H=Dikes.H_in,Type=Dikes.Type,T=Dikes.T_in_Celsius, Center=Dikes.Center[:]);               # "Reference" dike with given thickness,radius and T
-    T_init                  =   @. Num.Tsurface_Celcius - Z*Num.Geotherm;                # Initial (linear) temperature profile
+
+    if Num.AnalyticalInitialGeo
+        # Turcotte & Schubert  analytical geotherm which takes depth-dependent radioactive heating into account
+        # This is used in the UCLA setup. Parameters in Mat_tup should be consistent with this (we don't check for that)
+        Arrays.T_init      .=  @. Num.Tsurface_Celcius - (Num.qm_anal/Num.k_anal)*Arrays.Z + (Num.qs_anal-Num.qm_anal)*Num.hr_anal/Num.k_anal*( 1.0 - exp(Arrays.Z/Num.hr_anal)) 
+
+        Geothermalgradient_K_km = (maximum(Arrays.T_init) - minimum(Arrays.T_init))/(maximum(Arrays.Z) - minimum(Arrays.Z))*1e3
+        # check that this is selected
+        H0  = (Num.qs_anal-Num.qm_anal)/Num.hr_anal
+        H0_num = Value(Mat_tup[1].RadioactiveHeat[1].H_0) 
+        println("Employing analytical initial geotherm that takes radioactive heating into account with H0=$(H0), H0_num=$(H0_num)")
+        println(" This results in an effective geothermal gradient of $(Geothermalgradient_K_km) K/km")
+
+    else
+        Arrays.T_init       =   @. Num.Tsurface_Celcius - Arrays.Z*Num.Geotherm;                # Initial (linear) temperature profile
+    end
 
     if USE_GPU
         # CPU buffers for advection
         Tnew_cpu= Matrix{Float64}(undef, Nx, Nz)
         Phi_melt_cpu = similar(Tnew_cpu)
     else
-        Tnew_cpu = similar(T)
-        Phi_melt_cpu = similar(Phi_melt)
-        
+        Tnew_cpu = similar(Arrays.T)
+        Phi_melt_cpu = similar(Arrays.Phi_melt)
     end
         
     # Set initial sill in temperature structure for Geneva type models
     dike_poly   = []
     if Dikes.Type  == "CylindricalDike_TopAccretion"
-        ind = findall( (R.<=Dikes.W_in/2) .& (abs.(Z.-Dikes.Center[2]) .< Dikes.H_in/2) );
-        T_init[ind] .= Dikes.T_in_Celsius;
+        ind = findall( (Arrays.R.<=Dikes.W_in/2) .& (abs.(Arrays.Z.-Dikes.Center[2]) .< Dikes.H_in/2) );
+        Arrays.T_init[ind] .= Dikes.T_in_Celsius;
         if Num.advect_polygon==true
             dike_poly   =   CreateDikePolygon(dike);
         end
     end
 
-    @parallel assign!(Tnew, T_init)
-    @parallel assign!(T, T_init)
+    # Set initial ellipse if we wish
+    if Num.InitialEllipse
+        ind =  findall( ((Arrays.R.^2.0)/(Num.a_init^2.0) .+ ((Arrays.Z.-Dikes.Center[2]).^2.0)/((Num.b_init)^2.0)) .< 1.0); # ellipse
+        Arrays.T_init[ind] .= Dikes.T_in_Celsius;
+    end
 
-    P                       =   @zeros(Nx,Nz);
+
+    @parallel assign!(Arrays.Tnew, Arrays.T_init)
+    @parallel assign!(Arrays.T, Arrays.T_init)
+
     if USE_GPU  # can be declares in @ones in next version of PS
         Phases                  =   CUDA.ones(Int64,Nx,Nz)
     else
@@ -241,9 +230,9 @@ end
         if floor(time/Dikes.InjectionInterval)> dike_inj      
             dike_inj            =   floor(time/Dikes.InjectionInterval)                     # Keeps track on what was injected already
             dike                =   Dike(dike, Center=Dikes.Center[:],Angle=[0]);           # Specify dike with random location/angle but fixed size/T 
-            Tnew_cpu           .=   Array(T)
-            @timeit to "Dike intrusion" Tracers, Tnew_cpu,Vol,dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid, dike, Dikes.nTr_dike, dike_poly=dike_poly);     # Add dike, move hostrocks
-            T .= Data.Array(Tnew_cpu)
+            Tnew_cpu           .=   Array(Arrays.T)
+            @timeit to "Dike intrusion" Tracers, Tnew_cpu,Vol,dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, Dikes.nTr_dike, dike_poly=dike_poly);     # Add dike, move hostrocks
+            Arrays.T            .= Data.Array(Tnew_cpu)
             InjectVol           +=  Vol                                                     # Keep track of injected volume
             Qrate               =   InjectVol/time
             Qrate_km3_yr        =   Qrate*SecYear/km³
@@ -257,30 +246,31 @@ end
         end
 
         # Do a diffusion step, while taking T-dependencies into account
-        @timeit to "Diffusion solver" Nonlinear_Diffusion_step!(Tnew, T,  T_K, T_it_old, Mat_tup, Phi_melt, Phases, P, R, Rc, qr, qz, Kc, Kr, Kz, Rho, Cp, Hr, La, dϕdT, Z, Num)
+        @timeit to "Diffusion solver" Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Num, Phases)
+
         # @btime Nonlinear_Diffusion_step!($Tnew, $T,  $T_K, $T_it_old, $Mat_tup, $Phi_melt, $Phases, $P, $R, $Rc, $qr, $qz, $Kc, $Kr, $Kz, $Rho, $Cp, $Hr, $La, $dϕdT, $Z, $Num)
         # 1.2 ms
 
         # Update variables
         
         # copy to cpu
-        Tnew_cpu .= Array(Tnew)
-        Phi_melt_cpu .= Array(Phi_melt)
+        Tnew_cpu      .= Array(Arrays.Tnew)
+        Phi_melt_cpu  .= Array(Arrays.Phi_melt)
         
-        @timeit to "Update tracers"  Tracers =   UpdateTracers(Tracers, Grid, Tnew_cpu, Phi_melt_cpu,"Linear");      # Update info on tracers \
+        @timeit to "Update tracers"  UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);      # Update info on tracers 
 
         # copy back to gpu
-        Tnew .= Data.Array(Tnew_cpu)
-        Phi_melt .= Data.Array(Phi_melt_cpu)
+        Arrays.Tnew          .= Data.Array(Tnew_cpu)
+        Arrays.Phi_melt      .= Data.Array(Phi_melt_cpu)
 
-        @parallel assign!(T, Tnew)
-        @parallel assign!(Tnew, T)
+        @parallel assign!(Arrays.T, Arrays.Tnew)
+        @parallel assign!(Arrays.Tnew, Arrays.T)
         time                =   time + Num.dt;                                     # Keep track of evolved time
-        Melt_Time[it]       =   sum( Phi_melt)/(Nx*Nz)                             # Melt fraction in crust    
+        Melt_Time[it]       =   sum( Arrays.Phi_melt)/(Nx*Nz)                             # Melt fraction in crust    
         
-        ind = findall(T.>700);          
+        ind = findall(Arrays.T.>700);          
         if ~isempty(ind)
-            Tav_magma_Time[it] = sum(T[ind])/length(ind)                            # average T of part with magma
+            Tav_magma_Time[it] = sum(Arrays.T[ind])/length(ind)                            # average T of part with magma
         else
             Tav_magma_Time[it] = NaN;
         end
@@ -296,9 +286,9 @@ end
             @timeit to "visualisation" begin
                 time_Myrs = time/Myr;
 
-            T_plot = Array(T)
-            T_init_plot = Array(T_init)
-            Phi_melt_plot = Array(Phi_melt)
+            T_plot = Array(Arrays.T)
+            T_init_plot = Array(Arrays.T_init)
+            Phi_melt_plot = Array(Arrays.Phi_melt)
             # ---------------------------------
             # Create plot (using Makie)
             fig = Figure(resolution = (2000,1000))
@@ -306,9 +296,9 @@ end
             # 1D figure with cross-sections
             time_Myrs_rnd = round(time_Myrs,digits=3)
             ax1 = Axis(fig[1,1], xlabel = "Temperature [ᵒC]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs")
-            lines!(fig[1,1],T_plot[1,:],z/1e3,label="Center")
-            lines!(fig[1,1],T_plot[end,:],z/1e3,label="Side")
-            lines!(fig[1,1],T_init_plot[end,:],z/1e3,label="Initial")
+            lines!(fig[1,1],T_plot[1,:],Grid.coord1D[2]/1e3,label="Center")
+            lines!(fig[1,1],T_plot[end,:],Grid.coord1D[2]/1e3,label="Side")
+            lines!(fig[1,1],T_init_plot[end,:],Grid.coord1D[2]/1e3,label="Initial")
             axislegend(ax1)
             limits!(ax1, 0, 1100, -20, 0)
         
@@ -316,17 +306,17 @@ end
             #ax2=Axis(fig[1, 2],xlabel = "Width [km]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs, Geneva model; Temperature [ᵒC]")
             ax2=Axis(fig[1, 2],xlabel = "Width [km]", ylabel = "Depth [km]", title = "Time= $time_Myrs_rnd Myrs, $(Num.FigTitle); Temperature [ᵒC]")
             
-            co = contourf!(fig[1, 2], x/1e3, z/1e3, T_plot, levels = 0:50:1050,colormap = :jet)
+            co = contourf!(fig[1, 2], Grid.coord1D[1]/1e3, Grid.coord1D[2]/1e3, T_plot, levels = 0:50:1050,colormap = :jet)
         
-            if maximum(T)>691
-            co1 = contour!(fig[1, 2], x/1e3, z/1e3, T_plot, levels = 690:691)       # solidus
+            if maximum(Arrays.T)>691
+            co1 = contour!(fig[1, 2], Grid.coord1D[1]/1e3, Grid.coord1D[2]/1e3, T_plot, levels = 690:691)       # solidus
             end
             limits!(ax2, 0, 20, -20, 0)
             Colorbar(fig[1, 3], co)
             
             # 2D melt fraction plots:
             ax3=Axis(fig[1, 4],xlabel = "Width [km]", ylabel = "Depth [km]", title = " ϕ (melt fraction)")
-            co = heatmap!(fig[1, 4], x/1e3, z/1e3, Phi_melt_plot, colormap = :vik, colorrange=(0, 1))
+            co = heatmap!(fig[1, 4], Grid.coord1D[1]/1e3, Grid.coord1D[2]/1e3, Phi_melt_plot, colormap = :vik, colorrange=(0, 1))
             if Num.plot_tracers==true
                 # Add tracers to plot
                 scatter!(fig[1, 4],getindex.(Tracers.coord,1)/1e3, getindex.(Tracers.coord,2)/1e3, color=:white)
@@ -344,14 +334,14 @@ end
             # ---------------------------------
 
             # compute average T of molten zone (1% melt)
-            ind = findall(Phi_melt.>0.01);
+            ind = findall(Arrays.Phi_melt.>0.01);
             if ~isempty(ind)
-                T_av_melt = round(sum(T[ind])/length(ind), digits=3)
+                T_av_melt = round(sum(Arrays.T[ind])/length(ind), digits=3)
             else
                 T_av_melt = NaN;
             end
             # print results:  
-            println("Timestep $it = $(round(time/kyr*100)/100) kyrs, max(T)=$(round(maximum(T),digits=3))ᵒC, Taverage_magma=$(T_av_melt)ᵒC, max(ϕ)=$(round(maximum(Phi_melt),digits=2))")
+            println("Timestep $it = $(round(time/kyr*100)/100) kyrs, max(T)=$(round(maximum(Arrays.T),digits=3))ᵒC, Taverage_magma=$(T_av_melt)ᵒC, max(ϕ)=$(round(maximum(Arrays.Phi_melt),digits=2))")
             end
         end
 
@@ -359,10 +349,10 @@ end
         if mod(it,Num.SaveOutput_steps)==0  || it==nt 
             filename = "$(Num.SimName)/$(Num.SimName)_$it.mat"
             matwrite(filename, 
-                            Dict("Tnew"=> Array(Tnew), 
+                            Dict("Tnew"=> Array(Arrays.Tnew), 
                                 "time"=> time, 
-                                "x"   => Vector(x), 
-                                "z"   => Vector(z),
+                                "x"   => Vector(Grid.coord1D[1]), 
+                                "z"   => Vector(Grid.coord1D[2]),
                                 "dike_poly" => dike_poly)
                 )
             println("  Saved matlab output to $filename")    
@@ -383,7 +373,7 @@ end
     end
     
 
-    return x,z,T, Time_vec, Melt_Time, Tracers, dike_poly;
+    return x,z,Arrays.T, Time_vec, Melt_Time, Tracers, dike_poly;
 end # end of main function
 
 
@@ -392,7 +382,7 @@ end # end of main function
 if 1==0
     # 1D, Geneva-type models without magmatic injections (for comparison with 1D code)
     Num         = NumParam(Nx=21, Nz=269, SimName="Zassy_Geneva_zeroFlux_1D_variablek_2", 
-                            flux_free_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=false, 
+                            flux_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=false, 
                             SaveOutput_steps=1e4, CreateFig_steps=1000, FigTitle = "Geneva setup");
     Dike_params = DikeParam(Type="CylindricalDike_TopAccretion", InjectionInterval = 1e40, W_in=40e3)
 
@@ -412,7 +402,7 @@ if 1==0
     # 2D, Geneva-type models with Greg's parameters 
     Num         = NumParam(Nx=269, Nz=269, SimName="Zassy_Geneva_zeroFlux_variable_k_4thordermelt", 
                             maxTime_Myrs=1.5,
-                            flux_free_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=true, 
+                            flux_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=true, 
                             SaveOutput_steps=1e4, CreateFig_steps=1000, plot_tracers=false, advect_polygon=true,
                             FigTitle="Geneva Models");
 
@@ -433,10 +423,10 @@ end
 
 if 1==0
 
-    # 2D, run 02.2 Geneva-type models with Greg's parameters 
-    Num         = NumParam(Nx=269, Nz=269, SimName="ZASSy_Geneva_zeroFlux_variable_k_run02.2_withlatent_depth_1", 
-                            maxTime_Myrs=1.5, fac_dt=0.05, ω=0.9, max_iter=50, verbose=false,
-                            flux_free_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=false, 
+    # 2D, run 02.2 Geneva-type models with Greg's original parameters 
+    Num         = NumParam(Nx=269, Nz=269, SimName="ZASSy_Geneva_zeroFlux_variable_k_run02.2_withlatent_depth", 
+                            maxTime_Myrs=1.5, fac_dt=0.05, ω=0.9, verbose=false,
+                            flux_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=false, 
                             SaveOutput_steps=4000, CreateFig_steps=1000, plot_tracers=false, advect_polygon=true,
                             FigTitle="Geneva Models");
 
@@ -455,11 +445,35 @@ if 1==0
                     )
 end
 
+if 1==1
+
+    # 2D, run 02.2 Geneva-type models with Greg's smooth melting parameterisation
+    Num         = NumParam(Nx=269, Nz=269, SimName="ZASSy_Geneva_zeroFlux_variable_k_run02.2_withlatent_depth_smooth_dt0_4", 
+                            maxTime_Myrs=1.5, fac_dt=0.4, ω=0.5, verbose=false,
+                            flux_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=false, 
+                            SaveOutput_steps=4000, CreateFig_steps=1000, plot_tracers=false, advect_polygon=true,
+                            FigTitle="Geneva Models");
+
+    Dike_params = DikeParam(Type="CylindricalDike_TopAccretion", InjectionInterval_year = 10e3, 
+                            W_in=20e3, H_in=74.6269)
+
+    MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
+                                    Density    = ConstantDensity(ρ=2700kg/m^3),
+                                    LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
+                            #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
+                                  Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
+                                 #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
+                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                       Melting = SmoothMelting(MeltingParam_4thOrder())),                     # Marxer & Ulmer data
+                    # add more parameters here, in case you have >1 phase in the model                                    
+                    )
+end
+
 if 1==0
     # 2D, Geneva-type models with Caricchi parameters (as described in ZASSy paper)
     Num         = NumParam(Nx=512, Nz=512, SimName="Zassy_Geneva_zeroFlux_variable_k_CaricchiMelting", 
                             maxTime_Myrs=1.5,
-                            flux_free_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=true, 
+                            flux_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=true, 
                             SaveOutput_steps=1e4, CreateFig_steps=1000, plot_tracers=false, advect_polygon=true,
                             FigTitle="Geneva Models");
 
@@ -478,8 +492,10 @@ if 1==0
                     )
 end
 
-if 1==0
-    # 2D, UCLA-type models but with constant k
+if 1==1
+   # 2D, UCLA-type models
+    #
+    # Benchmark case with Oscar Lovera
 
     # In the UCLA model, the following geotherm is used, with Tsurface as top BC & qm (mantle heatflux) as bottom BC.
     # Exponential depth-dependent radioactive heating (in W/m3) is assumed to follow:
@@ -493,44 +509,24 @@ if 1==0
     #  T = Tsurface + (qm/k)*z + H0*hr^2/k *(1.-exp(-z/hr)) 
     #  so: H0  = (qs-qm)/hr
     #
-    # If we manipulate this, we obtain a good fit with qm=76e-3, qs=86e-3, H0=1e-6, k=1.9 (~value that Whittington gives for 1000C)
+    #  For the parameters he gave, k=3.35 W/mK  qs=170 mW/m2    qm=167mW/m2  hr=10e3m
+    #  H0  = (qs-qm)/hr= 3.0000e-07
 
-    #Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="Zassy_UCLA_ellipticalIntrusion_variable_k_radioactiveheating", 
-    #                        SaveOutput_steps=400, CreateFig_steps=100, axisymmetric=true,
-    #                        flux_free_bottom_BC=true, flux_bottom=40/1e3*1.9,
-    #                        maxTime_Myrs=1.13, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
-    #                        FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);
-
-    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="Zassy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating_1", 
-                            SaveOutput_steps=400, CreateFig_steps=100, axisymmetric=false,
-                            flux_free_bottom_BC=true, flux_bottom=38.7/1e3*2.7,
-                            maxTime_Myrs=1.13, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
+    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="Zassy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating_smoothQuad_initialEllipse", 
+                            SaveOutput_steps=2000, CreateFig_steps=1000, axisymmetric=false,
+                            flux_bottom_BC=true, flux_bottom=167e-3, fac_dt=0.2, ω=0.6, verbose=false,
+                            maxTime_Myrs=0.7, 
+                            AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=170e-3, qm_anal=167e-3, hr_anal=10e3, k_anal=3.35,
+                            InitialEllipse =   true, a_init= 2.5e3,  b_init  =   1.5e3,
                             FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);                            
                                  
-    Flux         = 7.5e-6;                              # in km3/km2/a 
-    Total_r_km   = 10;                                  # final radius of area
-    V_inject_km3 = 10;                                  # injection volume per sill injection
+    mid_depth_km = -7.0;                   # mid depth of injection area [km]
     
-    Total_A_km2  = pi*Total_r_km^2;                     # final area in km^2
-    Flux_km3_a   = Flux*Total_A_km2;                    # flux in km3/year
+    V_inj_a      = 1.29135;                                    # a axis in km of injected ellipsoid
+    V_inj_b      = 0.7745;                                  # b axis in km                        
+    V_inj_check  = 4/3*pi*V_inj_a^2*V_inj_b;                # checking
 
-    V_total_km3  = Flux_km3_a*Num.maxTime_Myrs*1e6;
-    h_total_km   = V_total_km3/(Total_A_km2)            # final height [km]
-    
-    mid_depth_km = -6.5-h_total_km/2;                   # mid depth of injection area [km]
-    r_h          = Total_r_km/h_total_km;               # aspect ratio of spheroid [] (well strictly speaking not, but following the Excel spreadsheet)
-
-    V_final_a    = (3/2*V_total_km3*r_h/pi)^(1/3)         # a axis in km
-    V_final_b    = V_final_a/r_h*0.5;                     # b axis in km                        
-    V_fin_check  = 4/3*pi*V_final_a^2*V_final_b;          # final area in km3 (just checking, should be == V_total_km3 )
-
-    V_inj_a      = (3/2*V_inject_km3*r_h/pi)^(1/3)        # a axis in km of injected ellipsoid
-    V_inj_b      = V_inj_a/r_h*0.5;                       # b axis in km                        
-    V_inj_check  = 4/3*pi*V_inj_a^2*V_inj_b;              # checking
-
-    nInjections     =   V_total_km3/V_inject_km3                # the number of required injections
-    InjectionInterval_yr = Num.maxTime_Myrs*1e6/nInjections;    # Time inbetween injections
-
+    InjectionInterval_yr = 5000;
 
     # Use the parameters. Note that we specify the diameter of the ellipse in here
     Dike_params  = DikeParam(Type="EllipticalIntrusion", InjectionInterval_year = InjectionInterval_yr, 
@@ -539,19 +535,19 @@ if 1==0
                             Center=[0, mid_depth_km*1e3])
 
     MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
-                                    Density    = ConstantDensity(ρ=2700kg/m^3),                # used in the parameterisation of Whittington 
+                                    Density    = ConstantDensity(ρ=3150kg/m^3),                 # used in the parameterisation of Whittington 
                                     LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                               RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=1e-6Watt/m^3),
-                                  #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                  Conductivity = ConstantConductivity(k=2.7Watt/K/m),        # in case we use constant k
+                               RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=3e-7Watt/m^3),
+                                  Conductivity = ConstantConductivity(k=3.35Watt/K/m),           # in case we use constant k 
+                                  HeatCapacity = ConstantHeatCapacity(cp=1116.7J/kg/K),
+                               # Conductivity = T_Conductivity_Whittington(),                   # T-dependent k
                                   #HeatCapacity = T_HeatCapacity_Whittington(),                 # T-dependent cp
-                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
-                                       Melting = MeltingParam_Quadratic()),                    # Quadratic parameterization as in Tierney et al.
+                                       Melting = SmoothMelting(MeltingParam_Quadratic())),      # Quadratic parameterization as in Tierney et al.
                     )
 end
 
 
-if 1==1
+if 1==0
     # 2D, UCLA-type models
 
     # In the UCLA model, the following geotherm is used, with Tsurface as top BC & qm (mantle heatflux) as bottom BC.
@@ -570,14 +566,14 @@ if 1==1
 
     #Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="Zassy_UCLA_ellipticalIntrusion_variable_k_radioactiveheating", 
     #                        SaveOutput_steps=400, CreateFig_steps=100, axisymmetric=true,
-    #                        flux_free_bottom_BC=true, flux_bottom=40/1e3*1.9,
+    #                        flux_bottom_BC=true, flux_bottom=40/1e3*1.9,
     #                        maxTime_Myrs=1.13, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
     #                        FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);
 
     Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="Zassy_UCLA_ellipticalIntrusion_variable_k_radioactiveheating_1", 
                             SaveOutput_steps=2000, CreateFig_steps=1000, axisymmetric=false,
-                            flux_free_bottom_BC=true, flux_bottom=38.7/1e3*3.35, fac_dt=0.01, ω=0.9, max_iter=100, verbose=false,
-                            maxTime_Myrs=0.0113, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
+                            flux_bottom_BC=true, flux_bottom=38.7/1e3*3.35, fac_dt=0.2, ω=0.6, max_iter=100, verbose=false,
+                            maxTime_Myrs=1.13, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
                             FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);                            
                                  
     Flux         = 7.5e-6;                              # in km3/km2/a 
@@ -619,7 +615,7 @@ if 1==1
                                   #Conductivity = ConstantConductivity(k=3.35Watt/K/m),        # in case we use constant k
                                   HeatCapacity = T_HeatCapacity_Whittington(),                 # T-dependent cp
                                  # HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
-                                       Melting = MeltingParam_Quadratic()),                    # Quadratic parameterization as in Tierney et al.
+                                       Melting = SmoothMelting(MeltingParam_Quadratic())),                    # Quadratic parameterization as in Tierney et al.
                     )
 end
 

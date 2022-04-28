@@ -1,3 +1,5 @@
+using MagmaThermoKinematics
+environment!(:cpu, Float64, 2) 
 using MagmaThermoKinematics.Diffusion2D
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
@@ -47,7 +49,8 @@ dt                      =   min(dx^2, dz^2)./κ/10;             # stable timeste
 T                       =   @zeros(Nx,   Nz);                    
 K                       =   @ones(Nx,    Nz)*k_rock1;
 Rho                     =   @ones(Nx,    Nz)*ρ;       
-Hs                      =   @zeros(Nx,   Nz);          
+Hs                      =   @zeros(Nx,   Nz);   
+Hl                      =   @ones(Nx,   Nz)*L;   
 Cp                      =   @ones(Nx,    Nz)*cp;
 dPhi_dt                 =   @zeros(Nx,   Nz);    
 
@@ -88,7 +91,7 @@ while (err>1e-10) & (it<1e6)
 
     it += 1
     # Perform a diffusion step
-    @parallel diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, Hs, dt, dx, dz,  L, dPhi_dt);  
+    @parallel diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz, dPhi_dt);  
     if Setup=="Constant_Zdirection" || Setup=="VariableK_Zdirection"
          # diffusion in z-direction
         @parallel (1:size(T,2)) bc2D_x!(Tnew);                                                      # set lateral boundary conditions (flux-free)
@@ -212,7 +215,8 @@ function Diffusion_Halfspace2D()
     K                       =   @ones(Nx,    Nz)*k_rock1;
     Rho                     =   @ones(Nx,    Nz)*ρ;       
     Cp                      =   @ones(Nx,    Nz)*cp;
-    Hs                      =   @zeros(Nx,   Nz);    
+    Hs                      =   @zeros(Nx,   Nz);  
+    Hl                      =   @zeros(Nx,   Nz)*L;  
     dPhi_dt                 =   @zeros(Nx,   Nz);    
     
     # Work array initialization
@@ -235,7 +239,7 @@ function Diffusion_Halfspace2D()
     for it=1:nt
     
         # Perform a diffusion step
-        @parallel diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, Hs, dt, dx, dz,  L, dPhi_dt);  
+        @parallel diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz, dPhi_dt);  
         # diffusion in z-direction
         @parallel (1:size(T,2)) bc2D_x!(Tnew);                                                      # set lateral boundary conditions (flux-free)
         Tnew[:,1] .= Tbot; Tnew[:,end] .= 0.0;                                                    # bottom & top temperature (constant)
@@ -307,7 +311,8 @@ function Diffusion_Gaussian2D(Setup="2D")
     Rho                     =   @ones(Nx,    Nz)*ρ;       
     Cp                      =   @ones(Nx,    Nz)*cp;
     dPhi_dt                 =   @zeros(Nx,   Nz);    
-    Hs                      =   @zeros(Nx,   Nz);    
+    Hs                      =   @zeros(Nx,   Nz);  
+    Hl                      =   @zeros(Nx,   Nz);  
     
     # Work array initialization
     Tnew, qx,qz, Kx, Kz     =   @zeros(Nx,   Nz), @zeros(Nx-1, Nz),     @zeros(Nx,   Nz-1), @zeros(Nx-1, Nz), @zeros(Nx,   Nz-1)    # thermal solver
@@ -340,9 +345,9 @@ function Diffusion_Gaussian2D(Setup="2D")
     
         # Perform a diffusion step
         if Setup=="2D"
-            @parallel diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, Hs, dt, dx, dz,  L, dPhi_dt);  
+            @parallel diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz,  dPhi_dt);  
         elseif Setup=="Axisymmetric"
-            @parallel diffusion2D_AxiSymm_step!(Tnew, T, X, Xc, qx, qz, K, Kx, Kz, Rho, Cp, Hs, dt, dx, dz,  L, dPhi_dt);  
+            @parallel diffusion2D_AxiSymm_step!(Tnew, T, X, Xc, qx, qz, K, Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz,  dPhi_dt);  
         end
 
         # diffusion in z-direction
