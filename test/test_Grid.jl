@@ -13,6 +13,13 @@ Grid = CreateGrid(size=(10,20),x=(0.,10), z=(2.,10))
 @test Grid.Δ[1] ≈ 1.1111111111111112
 @test Grid.Δ[2] ≈ 0.42105263157894735
 
+X,Z = GridArray(Grid.coord1D[1], Grid.coord1D[2])
+@test sum(X) ≈ 1000
+@test minimum(Z) ==2.0
+
+X .= 0.0;
+GridArray!(X,Z,Grid.coord1D[1], Grid.coord1D[2])
+@test sum(X[:,1]) == 50.0
 
 
 end

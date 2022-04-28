@@ -1,8 +1,9 @@
 using MagmaThermoKinematics
+
+using ParallelStencil
+ParallelStencil.@reset_parallel_stencil()
 environment!(:cpu, Float64, 2) 
 using MagmaThermoKinematics.Diffusion2D
-using ParallelStencil
-using ParallelStencil.FiniteDifferences2D
 using Plots  
 using LinearAlgebra
 using SpecialFunctions

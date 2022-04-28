@@ -12,8 +12,6 @@ using CairoMakie    # plotting
 using Printf        # print    
 using MAT, JLD2     # saves files in matlab format & JLD2 (hdf5) format
 using Parameters
-using Statistics
-using LinearAlgebra: norm
 
 using TimerOutputs
 
@@ -82,95 +80,27 @@ end
     nTr_dike::Int64                 =   300                     # Number of tracers 
 end
 
-
-"""
-    Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Num, Phases)
-
-Performs a single, nonlinear, diffusion step during which temperature dependent properties (density, heat capacity, conductivity), are updated    
-"""
-function Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Num, Phases)
-    err, iter = 1., 1
-    @parallel assign!(Arrays.T_K, Arrays.T, 273.15)
-    @parallel assign!(Arrays.T_it_old, Arrays.T)
-    Nx, Nz = size(Phases)
-    args1 = (;T=Arrays.T_K)
-    args2 = (;z=-Arrays.Z)
-    Tupdate = similar(Arrays.Tnew)                 # relaxed picard update
-    Tbuffer = similar(Arrays.T)
-    while err>Num.convergence && iter<Num.max_iter
-    
-        @parallel (1:Nx, 1:Nz) compute_meltfraction_ps!(Arrays.Phi_melt, Mat_tup, Phases, args1) 
-        @parallel (1:Nx, 1:Nz) compute_dϕdT_ps!(Arrays.dϕdT, Mat_tup, Phases, args1)     
-        @parallel (1:Nx, 1:Nz) compute_density_ps!(Arrays.Rho, Mat_tup, Phases, args1)
-        @parallel (1:Nx, 1:Nz) compute_heatcapacity_ps!(Arrays.Cp, Mat_tup, Phases, args1 )
-        @parallel (1:Nx, 1:Nz) compute_conductivity_ps!(Arrays.Kc, Mat_tup, Phases, args1 )
-        @parallel (1:Nx, 1:Nz) compute_radioactive_heat_ps!(Arrays.Hr, Mat_tup, Phases, args2)   
-        @parallel (1:Nx, 1:Nz) compute_latent_heat_ps!(Arrays.Hl, Mat_tup, Phases, args1)   
-
-        # Switch off latent heat & melting below a certain depth 
-        if Num.deactivate_La_at_depth==true
-            @parallel (1:Nx,1:Nz) update_dϕdT_Phi!(Arrays.dϕdT, Arrays.Phi_melt, Arrays.Z)
-        end
-
-        # Diffusion step:
-        if Num.axisymmetric==true
-            @parallel diffusion2D_AxiSymm_step!(Arrays.Tnew, Arrays.T, Arrays.R, Arrays.Rc, Arrays.qr, Arrays.qz, Arrays.Kc, Arrays.Kr, Arrays.Kz, 
-                                                Arrays.Rho, Arrays.Cp, Arrays.Hr, Arrays.Hl, Num.dt, Num.dx, Num.dz, Arrays.dϕdT) # axisymmetric diffusion step
-        else
-            @parallel diffusion2D_step!(Arrays.Tnew, Arrays.T, Arrays.qr, Arrays.qz, Arrays.Kc, Arrays.Kr, Arrays.Kz, 
-                                        Arrays.Rho, Arrays.Cp, Arrays.Hr, Arrays.Hl, Num.dt, Num.dx, Num.dz, Arrays.dϕdT) # 2D diffusion step
-        end
-
-        @parallel (1:Nz) bc2D_x!(Arrays.Tnew);                      # flux-free lateral boundary conditions
-        if Num.flux_bottom_BC==true
-            @parallel (1:Nx) bc2D_z_bottom_flux!(Arrays.Tnew, Arrays.Kc, Num.dz, Num.flux_bottom);     # flux-free bottom BC with specified flux (if false=isothermal) 
-        end
- 
-        # Use a relaxed Picard iteration to update T used for (nonlinear) material properties:
-        @parallel update_relaxed_picard!(Tupdate, Arrays.Tnew, Arrays.T_it_old, Num.ω)
-        
-        # Update T_K (used above to compute material properties)
-        @parallel assign!(args1.T, Tupdate,  273.15)   # all GeoParams routines expect T in K
-        @parallel update_Tbuffer!(Tbuffer, Arrays.Tnew, Arrays.T_it_old)
-        err     = norm(Tbuffer)/maximum(Arrays.Tnew)
-        if Num.verbose==true
-            println("  Nonlinear iteration $(iter), error=$(err)")
-        end
-        
-        @parallel assign!(Arrays.T_it_old, Tupdate)                   # Store Tnew of last iteration step
-        iter   += 1
-
-    end
-    if iter==Num.max_iter
-        println("WARNING: nonlinear iterations not converging. Final error=$(err). Reduce Δt, or the relaxation parameter Num.ω (=$(Num.ω)) [0-1]")
-    end
-    if Num.verbose==true
-        println("  ----")
-    end
-
-    return nothing
-end
-
 #------------------------------------------------------------------------------------------
 @views function MainCode_2D(Mat_tup, Num, Dikes);
     
-    # Retrieve some parameters
-    @unpack Nx,Nz, nt = Num 
 
-    # Array initializations
-    Arrays = CreateArrays(Dict( (Nx,  Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, Phi_melt=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0),
-                                (Nx-1,Nz  )=>(qr=0,Kr=0, Rc=0), 
-                                (Nx  ,Nz-1)=>(qz=0,Kz=0 )
+    # Array & grid initializations ---------------
+    Arrays = CreateArrays(Dict( (Num.Nx,  Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, Phi_melt=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0),
+                                (Num.Nx-1,Num.Nz  )=>(qr=0,Kr=0, Rc=0), 
+                                (Num.Nx  ,Num.Nz-1)=>(qz=0,Kz=0 )
                                 ))
 
     # Set up model geometry & initial T structure
     Grid    = CreateGrid(size=(Nx,Nz), extent=(Num.W, Num.H))
+    
     GridArray!(Arrays.R,  Arrays.Z, Grid.coord1D[1], Grid.coord1D[2])               # Initialize 2D coordinate arrays
     Arrays.Rc              .=   (Arrays.R[2:end,:] + Arrays.R[1:end-1,:])/2         # center points in x
-
+    # --------------------------------------------
+    
     Tracers                 =   StructArray{Tracer}(undef, 1)                       # Initialize tracers   
     dike                    =   Dike(W=Dikes.W_in,H=Dikes.H_in,Type=Dikes.Type,T=Dikes.T_in_Celsius, Center=Dikes.Center[:]);               # "Reference" dike with given thickness,radius and T
 
+    # Set initial geotherm -----------------------
     if Num.AnalyticalInitialGeo
         # Turcotte & Schubert  analytical geotherm which takes depth-dependent radioactive heating into account
         # This is used in the UCLA setup. Parameters in Mat_tup should be consistent with this (we don't check for that)
@@ -186,17 +116,23 @@ end
     else
         Arrays.T_init       =   @. Num.Tsurface_Celcius - Arrays.Z*Num.Geotherm;                # Initial (linear) temperature profile
     end
-
+    # --------------------------------------------
+    
+    # Update buffer & phases arrays --------------
     if USE_GPU
         # CPU buffers for advection
-        Tnew_cpu= Matrix{Float64}(undef, Nx, Nz)
-        Phi_melt_cpu = similar(Tnew_cpu)
+        Tnew_cpu        =   Matrix{Float64}(undef, Nx, Nz)
+        Phi_melt_cpu    =   similar(Tnew_cpu)
+        Phases          =   CUDA.ones(Int64,Nx,Nz)
     else
-        Tnew_cpu = similar(Arrays.T)
-        Phi_melt_cpu = similar(Arrays.Phi_melt)
+        Tnew_cpu        =   similar(Arrays.T)
+        Phi_melt_cpu    =   similar(Arrays.Phi_melt)
+        Phases          =   @ones(Nx,Nz)
+
     end
+    # --------------------------------------------
         
-    # Set initial sill in temperature structure for Geneva type models
+    # Optionally set initial sill in models ------
     dike_poly   = []
     if Dikes.Type  == "CylindricalDike_TopAccretion"
         ind = findall( (Arrays.R.<=Dikes.W_in/2) .& (abs.(Arrays.Z.-Dikes.Center[2]) .< Dikes.H_in/2) );
@@ -205,28 +141,23 @@ end
             dike_poly   =   CreateDikePolygon(dike);
         end
     end
-
-    # Set initial ellipse if we wish
     if Num.InitialEllipse
         ind =  findall( ((Arrays.R.^2.0)/(Num.a_init^2.0) .+ ((Arrays.Z.-Dikes.Center[2]).^2.0)/((Num.b_init)^2.0)) .< 1.0); # ellipse
         Arrays.T_init[ind] .= Dikes.T_in_Celsius;
+        dike_poly   =   CreateDikePolygon(Dike(dike,W=Num.a_init*2, H=Num.b_init*2));
     end
+    # --------------------------------------------
 
 
     @parallel assign!(Arrays.Tnew, Arrays.T_init)
     @parallel assign!(Arrays.T, Arrays.T_init)
 
-    if USE_GPU  # can be declares in @ones in next version of PS
-        Phases                  =   CUDA.ones(Int64,Nx,Nz)
-    else
-        Phases                  =   @ones(Nx,Nz)
-    end
     time, dike_inj, InjectVol, Time_vec,Melt_Time,Tav_magma_Time = 0.0, 0.0, 0.0,zeros(nt,1),zeros(nt,1),zeros(nt,1);
 
     if isdir(Num.SimName)==false mkdir(Num.SimName) end;    # create simulation directory if needed
     for it = 1:nt   # Time loop
 
-        # Add new dike every X years:
+        # Add new dike every X years -----------------
         if floor(time/Dikes.InjectionInterval)> dike_inj      
             dike_inj            =   floor(time/Dikes.InjectionInterval)                     # Keeps track on what was injected already
             dike                =   Dike(dike, Center=Dikes.Center[:],Angle=[0]);           # Specify dike with random location/angle but fixed size/T 
@@ -244,15 +175,13 @@ end
                 dike_poly   =   CreateDikePolygon(dike);            # create dike for the 1th time
             end
         end
+        # --------------------------------------------
 
         # Do a diffusion step, while taking T-dependencies into account
         @timeit to "Diffusion solver" Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Num, Phases)
+        # --------------------------------------------
 
-        # @btime Nonlinear_Diffusion_step!($Tnew, $T,  $T_K, $T_it_old, $Mat_tup, $Phi_melt, $Phases, $P, $R, $Rc, $qr, $qz, $Kc, $Kr, $Kz, $Rho, $Cp, $Hr, $La, $dϕdT, $Z, $Num)
-        # 1.2 ms
-
-        # Update variables
-        
+        # Update variables ---------------------------
         # copy to cpu
         Tnew_cpu      .= Array(Arrays.Tnew)
         Phi_melt_cpu  .= Array(Arrays.Phi_melt)
@@ -280,8 +209,10 @@ end
         if mod(it,10)==0
             update_Tvec!(Tracers, time/SecYear*1e-6)                                 # update T & time vectors on tracers
         end
+        # --------------------------------------------
 
-        # Visualize results
+
+        # Visualize results --------------------------
         if mod(it,Num.CreateFig_steps)==0  || it==nt 
             @timeit to "visualisation" begin
                 time_Myrs = time/Myr;
@@ -344,8 +275,9 @@ end
             println("Timestep $it = $(round(time/kyr*100)/100) kyrs, max(T)=$(round(maximum(Arrays.T),digits=3))ᵒC, Taverage_magma=$(T_av_melt)ᵒC, max(ϕ)=$(round(maximum(Arrays.Phi_melt),digits=2))")
             end
         end
+        # --------------------------------------------
 
-        # Save output to disk once in a while
+        # Save output to disk once in a while --------
         if mod(it,Num.SaveOutput_steps)==0  || it==nt 
             filename = "$(Num.SimName)/$(Num.SimName)_$it.mat"
             matwrite(filename, 
@@ -369,6 +301,7 @@ end
             end
 
         end
+        # --------------------------------------------
 
     end
     
