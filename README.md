@@ -1,5 +1,7 @@
 # MagmaThermoKinematics.jl
 
+[![Build Status](https://github.com/boriskaus/MagmaThermoKinematics.jl/workflows/CI/badge.svg)](https://github.com/boriskaus/MagmaThermoKinematics.jl/actions)
+
 Understanding how magmatic systems evolve and how the rock record can be interpreted is of interest to a wide range of Earth Scientists.
 
 This easy to use and versatile package simulates the thermal evolution of magmatic systems, consisting of (kinematically) emplaced dikes. It can take 2D, 2D axisymmetric and 3D geometries into account, and works in parallel on both CPU (and GPU's). A finite difference discretization is employed for the energy equation, combined with semi-Lagrangian advection and tracers to track the thermal evolution of emplaced magma. Dikes are emplaced kinematically and the host rock is shifted to accommodate space for the intruding dikes/sills, using analytical models for penny-shaped cracks in elastic media. Cooling, crystallizing and latent heat effects are taken into account, and the thermal evolution of tracers can be used to simulate zircon age distributions.
