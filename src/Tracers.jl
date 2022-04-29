@@ -23,7 +23,7 @@
     coord       ::  Vector{Float64}          # holds coordinates [2D or 3D]
     T           ::  Float64   =  900         # temperature
     Phase       ::  Int64     =  1           # Phase (aka rock type) of the Tracer      
-    ϕ    ::  Float64   =  0           # Melt fraction on Tracers
+    ϕ           ::  Float64   =  0           # Melt fraction on Tracers
     time_vec    ::  Vector{Float64} = []     # Time vector
     T_vec       ::  Vector{Float64} = []     # Temperature vector
 end
@@ -89,49 +89,7 @@ function UpdateTracers(Tracers, Grid, T, Phi, InterpolationMethod="Quadratic");
             LazyRow(Tracers, iT).T          = T_tracers[1][iT];             # Temperature
             LazyRow(Tracers, iT).ϕ   = Phi_melt_tracers[1][iT];      # Melt fraction
         end
-        
-
-        #=
-        Bound_min = minimum.(Grid)
-        Bound_max = maximum.(Grid)
-
-        # Create linear interpolation objects
-        itp_T     =   interpolate(T, BSpline(Linear()));
-        interp_T  =   scale(itp_T,Grid...);
-        
-        itp_Phi   =   interpolate(Phi, BSpline(Linear()));
-        interp_ϕ  =   scale(itp_Phi,Grid...);
-        
-        for iT = 1:length(Tracers)  
-            Trac = Tracers[iT];
-            x = Trac.coord[1];
-            z = Trac.coord[2];
-
-            # correct points for bounds
-            if x<Bound_min[1]; x=Bound_min[1]; end
-            if x>Bound_max[1]; x=Bound_max[1]; end
-            if z<Bound_min[2]; z=Bound_min[2]; end
-            if z>Bound_max[2]; z=Bound_max[2]; end
-
-            if dim==2;                      
-                Points_irregular = (x,z);
-            else       
-                y   = coord[:,3];   
-                if z<Bound_min[3]; z=Bound_min[3]; end
-                if z>Bound_max[3]; z=Bound_max[3]; end
-                Points_irregular = (x,z,y);  
-            end
-
-            # Interpolate:
-            Trac_T              = interp_T(Points_irregular...);
-            Trac_ϕ              = interp_ϕ(Points_irregular...);
-
-            # Update values on tracer
-            LazyRow(Tracers, iT).T        = Trac_T;
-            LazyRow(Tracers, iT).ϕ = Trac_ϕ;
-        end
-        
-    =#
+      
     end
     
     return Tracers
@@ -199,6 +157,64 @@ function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T,dim}, Phi
 
     return nothing
 
+end
+
+"""
+    UpdateTracers_Field!(Tracers::StructVector{TRACERS}, Grid::GridData{_T,dim}, Field::AbstractArray{_T,dim}, FieldName::Symbol);
+    
+In-place function that interpolates `Field`, defined on the `Grid`, to the field `FieldName` on `Tracers`.
+
+- `Tracers`:    StructVector that contains tracers, where we want to update the properties. Each tracer should at least contain the fields `coord` (coordinates) and `FieldName`.  
+- `Grid``:      Grid structure that describes the coordinates  
+- `Field`:      The 2D or 3D field
+- `FieldName``: Symbol of the name of the field on each of the Tracers
+
+Note that we employ linear interpolation using custom functions
+"""
+function UpdateTracers_Field!(Tracers::StructVector{TRACERS}, Grid::GridData{_T,dim}, Field::AbstractArray{_T,dim}, FieldName::Symbol) where {TRACERS, _T, dim}
+
+    if isassigned(Tracers,1)        # only if the Tracers StructArray is non-empty
+        
+        if !(Grid.ConstantΔ)
+            error("Routine currently only works for constant spacing in every direction")
+        end
+
+        field_number = find_index_in_struct(fieldnames(TRACERS), FieldName)
+
+        for iT = 1:length(Tracers)  
+            Trac = Tracers[iT];
+            pt   = Trac.coord
+
+            # correct point for bounds:
+            for i=1:dim
+                if pt[i]<Grid.min[i]; pt[i] = Grid.min[i]; end
+                if pt[i]>Grid.max[i]; pt[i] = Grid.max[i]; end
+            end                
+            
+            # Linear interpolation from grid -> point (assumes constant spacing in each dimension)
+            if dim==2
+                Trac_val = interpolate_linear_2D(pt[1], pt[2], Grid.min, Grid.Δ[1], Grid.Δ[2], Field )
+            elseif dim==3
+                Trac_val = interpolate_linear_3D(pt[1], pt[2], pt[3], Bound_min, Grid.Δ[1], Grid.Δ[2], Grid.Δ[3], Field   )
+            end
+
+            # Update values on tracers
+            setproperty!(LazyRow(Tracers, iT), field_number, Trac_val)
+        
+        end
+    end
+
+    return nothing
+end
+
+# Helper function, 
+function find_index_in_struct(list::NTuple{N,Symbol}, FieldName::Symbol) where N
+    ind = 0
+    for i=1:N
+        if list[i]===FieldName
+            return i
+        end
+    end
 end
 
 """ 
