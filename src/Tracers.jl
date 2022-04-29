@@ -245,7 +245,7 @@ Implements 3D trilinear interpolation
 function interpolate_linear_3D(pt_x, pt_y, pt_z, Bound_min, Δx, Δy, Δz, Field )
 
     ix = floor(Int64, (pt_x - Bound_min[1])/Δx)
-    ix = floor(Int64, (pt_y - Bound_min[2])/Δy)
+    iy = floor(Int64, (pt_y - Bound_min[2])/Δy)
     iz = floor(Int64, (pt_z - Bound_min[3])/Δz)
     fac_x = (pt_x - ix*Δx - Bound_min[1])/Δx     # distance to lower left point
     fac_y = (pt_y - iy*Δy - Bound_min[2])/Δy     # distance to lower left point

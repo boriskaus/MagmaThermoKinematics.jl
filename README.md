@@ -33,7 +33,8 @@ using Plots
 #------------------------------------------------------------------------------------------
 @views function MainCode_2D();
 
-Grid                    =   CreateGrid(size=(500,500), extent=(30e3, 30e3)) # grid points & domain size
+Nx,Nz                   =   500,500
+Grid                    =   CreateGrid(size=(Nx,Nz), extent=(30e3, 30e3)) # grid points & domain size
 Num                     =   Numeric_params(verbose=false)                   # Nonlinear solver options
 
 # Set material parameters                                       
@@ -59,14 +60,14 @@ nt                      =   floor(Int64,maxTime/dt);    # number of required tim
 nTr_dike                =   300;                        # number of tracers inserted per dike
 
 # Array initializations
-Arrays = CreateArrays(Dict( (Grid.N[1],  Grid.N[2])=>(T=0,T_K=0, T_it_old=0, K=1.5, Rho=2800, Cp=1050, Tnew=0,  Hr=0, Hl=0, Kc=1, P=0, X=0, Z=0, ϕₒ=0, ϕ=0, dϕdT=0),
-                            (Grid.N[1]-1,Grid.N[2])=>(qx=0,Kx=0), (Grid.N[1], Grid.N[2]-1)=>(qz=0,Kz=0 ) ))
+Arrays = CreateArrays(Dict( (Nx,  Nz)=>(T=0,T_K=0, T_it_old=0, K=1.5, Rho=2800, Cp=1050, Tnew=0,  Hr=0, Hl=0, Kc=1, P=0, X=0, Z=0, ϕₒ=0, ϕ=0, dϕdT=0),
+                            (Nx-1,Nz)=>(qx=0,Kx=0), (Nx, Nz-1)=>(qz=0,Kz=0 ) ))
 # CPU buffers 
 Tnew_cpu                =   Matrix{Float64}(undef, Grid.N...)
 Phi_melt_cpu            =   similar(Tnew_cpu)
 if USE_GPU; Phases      =   CUDA.ones(Int64,Grid.N...)
 else        Phases      =   ones(Int64,Grid.N...)   end
-GridArray!(Arrays.X,  Arrays.Z, Grid.coord1D[1], Grid.coord1D[2])   
+@parallel (1:Nx, 1:Nz) GridArray!(Arrays.X,  Arrays.Z, Grid.coord1D[1], Grid.coord1D[2])   
 Tracers                 =   StructArray{Tracer}(undef, 1)                           # Initialize tracers   
 dike                    =   Dike(W=W_in,H=H_in,Type=DikeType,T=T_in);               # "Reference" dike with given thickness,radius and T
 Arrays.T               .=   -Arrays.Z.*GeoT;                                        # Initial (linear) temperature profile

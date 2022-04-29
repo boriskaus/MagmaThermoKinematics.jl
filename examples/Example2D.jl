@@ -1,9 +1,9 @@
 using MagmaThermoKinematics
 const USE_GPU=false;
-if USE_GPU  environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-else        environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
+if USE_GPU  environment!(:gpu, Float64, 2)      # initialize in 2D on GPU
+else        environment!(:cpu, Float64, 2)      # initialize in 3D on CPU
 end
-using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
+using MagmaThermoKinematics.Diffusion2D 
 using Plots                                     
 
 #------------------------------------------------------------------------------------------
@@ -26,7 +26,7 @@ using Plots
     W_in, H_in              =   5e3,    0.2e3;              # Width and thickness of dike
     T_in                    =   900;                        # Intrusion temperature
     InjectionInterval       =   0.1kyr;                     # Inject a new dike every X kyrs
-    maxTime                 =   2.5kyr;                      # Maximum simulation time in kyrs
+    maxTime                 =   25kyr;                      # Maximum simulation time in kyrs
     H_ran, W_ran            =   Grid.L.*[0.3; 0.4];         # Size of domain in which we randomly place dikes and range of angles   
     DikeType                =   "ElasticDike"               # Type to be injected ("ElasticDike","SquareDike")
     κ                       =   1.2/(2800*1050);            # thermal diffusivity   

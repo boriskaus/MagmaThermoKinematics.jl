@@ -239,6 +239,7 @@ end
     return
 end
 
+
 end
 
 """
@@ -247,6 +248,7 @@ Diffusion3D provides 3D diffusion routines
 module Diffusion3D
 
 # load required julia packages      
+using LinearAlgebra: norm
 using ParallelStencil 
 using ParallelStencil.FiniteDifferences3D
 using Parameters
@@ -255,9 +257,16 @@ using CUDA
 export  diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_flux!, assign!, GridArray!,
         Numeric_params, Nonlinear_Diffusion_step_3D!, bc3D_T!
 
+import ..compute_meltfraction_ps_3D!, ..compute_dϕdT_ps_3D!, ..compute_density_ps_3D!, ..compute_heatcapacity_ps_3D!, 
+        ..compute_conductivity_ps_3D!, ..compute_radioactive_heat_ps_3D!, ..compute_latent_heat_ps_3D!
 
 @parallel function assign!(A::AbstractArray, B::AbstractArray)
     @all(A) = @all(B)
+    return
+end
+
+@parallel function assign!(A::AbstractArray, B::AbstractArray, add::Number)
+    @all(A) = @all(B) + add
     return
 end
 
@@ -268,6 +277,23 @@ end
     return 
 end
 
+@parallel_indices (i,j,k) function deactivate_dϕdT_ϕ_belowDepth!(dϕdT, Phi_melt, Z, minZ)
+    @inbounds if Z[i,j,k] < minZ
+        dϕdT[i,j,k] = 0.0
+        Phi_melt[i,j,k] = 0.0
+    end
+    return 
+end
+
+@parallel function update_relaxed_picard!(Tupdate::AbstractArray, Tnew::AbstractArray, T_it_old::AbstractArray, ω::Number)
+    @all(Tupdate) = ω*@all(Tnew) + (1.0-ω)*@all(T_it_old)
+    return 
+end
+
+@parallel function update_Tbuffer!(A::AbstractArray, B::AbstractArray, C::AbstractArray)
+    @all(A) = @all(B) - @all(C)
+    return 
+end
 
 """
 
@@ -284,7 +310,6 @@ Various parameters that control the nonlinear solver
     deactivate_La_at_depth::Bool=   false;
 end
 
-#=
 """
     Nonlinear_Diffusion_step_3D!(Arrays, Mat_tup, Phases, Grid, dt, Num = Numeric_params() )
 
@@ -301,26 +326,27 @@ function Nonlinear_Diffusion_step_3D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
     Tbuffer = similar(Arrays.T)
     while err>Num.convergence && iter<Num.max_iter
     
-        @parallel (1:Nx, 1:Ny, 1:Nz) compute_meltfraction_ps!(Arrays.ϕ, Mat_tup, Phases, args1) 
-        @parallel (1:Nx, 1:Ny, 1:Nz) compute_dϕdT_ps!(Arrays.dϕdT, Mat_tup, Phases, args1)     
-        @parallel (1:Nx, 1:Ny, 1:Nz) compute_density_ps!(Arrays.Rho, Mat_tup, Phases, args1)
-        @parallel (1:Nx, 1:Ny, 1:Nz) compute_heatcapacity_ps!(Arrays.Cp, Mat_tup, Phases, args1 )
-        @parallel (1:Nx, 1:Ny, 1:Nz) compute_conductivity_ps!(Arrays.Kc, Mat_tup, Phases, args1 )
-        @parallel (1:Nx, 1:Ny, 1:Nz) compute_radioactive_heat_ps!(Arrays.Hr, Mat_tup, Phases, args2)   
-        @parallel (1:Nx, 1:Ny, 1:Nz) compute_latent_heat_ps!(Arrays.Hl, Mat_tup, Phases, args1)   
+        @parallel (1:Nx, 1:Ny, 1:Nz) compute_meltfraction_ps_3D!(Arrays.ϕ, Mat_tup, Phases, args1) 
+        @parallel (1:Nx, 1:Ny, 1:Nz) compute_dϕdT_ps_3D!(Arrays.dϕdT, Mat_tup, Phases, args1)     
+        @parallel (1:Nx, 1:Ny, 1:Nz) compute_density_ps_3D!(Arrays.Rho, Mat_tup, Phases, args1)
+        @parallel (1:Nx, 1:Ny, 1:Nz) compute_heatcapacity_ps_3D!(Arrays.Cp, Mat_tup, Phases, args1 )
+        @parallel (1:Nx, 1:Ny, 1:Nz) compute_conductivity_ps_3D!(Arrays.Kc, Mat_tup, Phases, args1 )
+        @parallel (1:Nx, 1:Ny, 1:Nz) compute_radioactive_heat_ps_3D!(Arrays.Hr, Mat_tup, Phases, args2)   
+        @parallel (1:Nx, 1:Ny, 1:Nz) compute_latent_heat_ps_3D!(Arrays.Hl, Mat_tup, Phases, args1)   
 
         # Switch off latent heat & melting below a certain depth 
         if Num.deactivate_La_at_depth==true
-            @parallel (1:Nx,1:Ny, 1:Nz) deactivate_dϕdT_ϕ_belowDepth!(Arrays.dϕdT, Arrays.ϕ, Arrays.Z, Num.deactivationDepth)
+            @parallel (1:Nx,1:Ny,1:Nz) deactivate_dϕdT_ϕ_belowDepth!(Arrays.dϕdT, Arrays.ϕ, Arrays.Z, Num.deactivationDepth)
         end
 
         # Diffusion step:
-        @parallel diffusion3D_step!(Arrays.Tnew, Arrays.T, Arrays.qx, Arrays.qz, Arrays.Kc, Arrays.Kx, Arrays.Kz, 
-                                    Arrays.Rho, Arrays.Cp, Arrays.Hr, Arrays.Hl, dt, Grid.Δ[1], Grid.Δ[2], Arrays.dϕdT) # 2D diffusion step
-        
-        @parallel (1:Nz) bc2D_x!(Arrays.Tnew);                      # flux-free lateral boundary conditions
+        @parallel diffusion3D_step_varK!(Arrays.Tnew, Arrays.T, Arrays.qx, Arrays.qy, Arrays.qz, Arrays.Kc, Arrays.Kx, Arrays.Ky, Arrays.Kz, 
+                                            Arrays.Rho, Arrays.Cp, Arrays.Hr, Arrays.Hl, dt, Grid.Δ[1], Grid.Δ[2], Grid.Δ[3], Arrays.dϕdT)   
+
+        @parallel (1:Ny, 1:Nz) bc3D_x!(Arrays.Tnew);                      # flux-free lateral boundary conditions
+        @parallel (1:Nx, 1:Nz) bc3D_y!(Arrays.Tnew);                      # flux-free lateral boundary conditions
         if Num.flux_bottom_BC==true
-            @parallel (1:Nx,1:Ny) bc3D_z_bottom_flux!(Arrays.Tnew, Arrays.Kc, Grid.Δ[2], Num.flux_bottom);     # flux-free bottom BC with specified flux (if false=isothermal) 
+            @parallel (1:Nx,1:Ny) bc3D_z_bottom_flux!(Arrays.Tnew, Arrays.Kc, Grid.Δ[end], Num.flux_bottom);     # flux-free bottom BC with specified flux (if false=isothermal) 
         else
             @parallel (1:Nx,1:Ny) bc3D_T!(Arrays.Tnew, Arrays.T);        # isothermal BC's
         end
@@ -351,7 +377,7 @@ function Nonlinear_Diffusion_step_3D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
 
     return nothing
 end
-=#
+
 
 # Solve one diffusion timestep in 3D geometry, including latent heat, with spatially variable Rho, Cp and K 
 #  Note: needs the 3D stencil routines; hence part is commented

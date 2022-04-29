@@ -47,8 +47,10 @@ function environment!(model_device, precision, dimension)
     for fni in ("meltfraction","dϕdT","density","heatcapacity","conductivity","radioactive_heat","latent_heat")
       fn = Symbol(string("compute_$(fni)_ps!"))
       _fn = Symbol(string("compute_$(fni)"))
+      fn_3D = Symbol(string("compute_$(fni)_ps_3D!"))
       @eval begin
-          @parallel_indices (i, j) function $(fn)(A,MatParam, Phases, args)
+        # 2D version  
+        @parallel_indices (i, j) function $(fn)(A,MatParam, Phases, args)
               k = keys(args)
               v = getindex.(values(args), i, j)
               argsi = (; zip(k, v)...)
@@ -56,6 +58,17 @@ function environment!(model_device, precision, dimension)
               return
           end
           export $fn
+      end
+      @eval begin
+        # 3D version  
+        @parallel_indices (i, j, k) function $(fn_3D)(A,MatParam, Phases, args)
+        k_3D = keys(args)
+        v_3D= getindex.(values(args), i, j, k)
+        argsi = (; zip(k_3D, v_3D)...)
+        A[i, j, k] = $(Symbol(_fn))(MatParam[Phases[i,j,k]], argsi)
+        return
+        end
+        export $fn_3D
       end
     end
 
