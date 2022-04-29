@@ -238,9 +238,9 @@ end
 @testset "Dike_Inject" begin
   @test test_InjectDike("2D", "SquareDike", [80 ],1)    ≈   47525.46469221513 rtol=1e-5;
   
-  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Linear")    ≈   48448.71557320294  rtol=1e-5;     # also tests what happens if we add 2 dikes
-  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Quadratic") ≈   48770.72282124797  rtol=1e-5;     # also tests what happens if we add 2 dikes
-  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Cubic")     ≈   48782.180721943965 rtol=1e-5;     # also tests what happens if we add 2 dikes
+  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Linear")    ≈   48448.71557320294  rtol=1e-4;     # also tests what happens if we add 2 dikes
+  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Quadratic") ≈   48770.72282124797  rtol=1e-4;     # also tests what happens if we add 2 dikes
+  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Cubic")     ≈   48782.180721943965 rtol=1e-4;     # also tests what happens if we add 2 dikes
 
   @test test_InjectDike("3D", "ElasticDike",[80; 45])   ≈   519654.9176188356 rtol=1e-5;
   @test test_InjectDike("3D", "SquareDike",[15; -30])   ≈   527521.5507505678  rtol=1e-5;
