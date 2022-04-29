@@ -5,18 +5,19 @@ module Diffusion2D
 export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!, bc2D_z!, bc2D_z_bottom!, 
         bc2D_z_bottom_flux!, assign!, diffusion2D_AxiSymm_residual!, 
         RungaKutta1!, RungaKutta2!,RungaKutta4!, update_dϕdT_Phi!, update_Tbuffer!,
-        update_relaxed_picard!, Nonlinear_Diffusion_step_2D!
+        update_relaxed_picard!, Nonlinear_Diffusion_step_2D!, Numeric_params, bc2D_T!
 
 using LinearAlgebra: norm
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
 using CUDA
+using Parameters
 
 import ..compute_meltfraction_ps!, ..compute_dϕdT_ps!, ..compute_density_ps!, ..compute_heatcapacity_ps!, 
        ..compute_conductivity_ps!, ..compute_radioactive_heat_ps!, ..compute_latent_heat_ps!
 
-@parallel_indices (i,j) function update_dϕdT_Phi!(dϕdT, Phi_melt, Z)
-    @inbounds if Z[i,j] < -15e3
+@parallel_indices (i,j) function deactivate_dϕdT_ϕ_belowDepth!(dϕdT, Phi_melt, Z, minZ)
+    @inbounds if Z[i,j] < minZ
         dϕdT[i,j] = 0.0
         Phi_melt[i,j] = 0.0
     end
@@ -62,22 +63,37 @@ end
 end
 
 """
+
+Various parameters that control the nonlinear solver
+"""
+@with_kw struct Numeric_params
+    ω::Float64                  =   0.8;            # relaxation parameter for nonlinear iterations    
+    max_iter::Int64             =   1500;           # max. number of nonlinear iterations        
+    verbose::Bool               =   false;          # print info?
+    convergence::Float64        =   1e-4;           # nonlinear convergence criteria   
+    axisymmetric::Bool          =   false;          # Axisymmetric or 2D?
+    flux_bottom_BC::Bool        =   false;          # Flux bottom BC?
+    flux_bottom::Float64        =   0.0;            # flux @ bottom, in case flux_bottom_BC=true
+    deactivate_La_at_depth::Bool=   false;
+end
+
+"""
     Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Num, Phases)
 
 Performs a single, nonlinear, diffusion step during which temperature dependent properties (density, heat capacity, conductivity), are updated    
 """
-function Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Num, Phases)
+function Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Phases, Grid, dt, Num = Numeric_params() )
     err, iter = 1., 1
     @parallel assign!(Arrays.T_K, Arrays.T, 273.15)
     @parallel assign!(Arrays.T_it_old, Arrays.T)
     Nx, Nz = size(Phases)
-    args1 = (;T=Arrays.T_K)
+    args1 = (;T=Arrays.T_K, P=Arrays.P)
     args2 = (;z=-Arrays.Z)
     Tupdate = similar(Arrays.Tnew)                 # relaxed picard update
     Tbuffer = similar(Arrays.T)
     while err>Num.convergence && iter<Num.max_iter
     
-        @parallel (1:Nx, 1:Nz) compute_meltfraction_ps!(Arrays.Phi_melt, Mat_tup, Phases, args1) 
+        @parallel (1:Nx, 1:Nz) compute_meltfraction_ps!(Arrays.ϕ, Mat_tup, Phases, args1) 
         @parallel (1:Nx, 1:Nz) compute_dϕdT_ps!(Arrays.dϕdT, Mat_tup, Phases, args1)     
         @parallel (1:Nx, 1:Nz) compute_density_ps!(Arrays.Rho, Mat_tup, Phases, args1)
         @parallel (1:Nx, 1:Nz) compute_heatcapacity_ps!(Arrays.Cp, Mat_tup, Phases, args1 )
@@ -87,21 +103,23 @@ function Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Num, Phases)
 
         # Switch off latent heat & melting below a certain depth 
         if Num.deactivate_La_at_depth==true
-            @parallel (1:Nx,1:Nz) update_dϕdT_Phi!(Arrays.dϕdT, Arrays.Phi_melt, Arrays.Z)
+            @parallel (1:Nx,1:Nz) deactivate_dϕdT_ϕ_belowDepth!(Arrays.dϕdT, Arrays.ϕ, Arrays.Z, Num.deactivationDepth)
         end
 
         # Diffusion step:
         if Num.axisymmetric==true
-            @parallel diffusion2D_AxiSymm_step!(Arrays.Tnew, Arrays.T, Arrays.R, Arrays.Rc, Arrays.qr, Arrays.qz, Arrays.Kc, Arrays.Kr, Arrays.Kz, 
-                                                Arrays.Rho, Arrays.Cp, Arrays.Hr, Arrays.Hl, Num.dt, Num.dx, Num.dz, Arrays.dϕdT) # axisymmetric diffusion step
+            @parallel diffusion2D_AxiSymm_step!(Arrays.Tnew, Arrays.T, Arrays.R, Arrays.Rc, Arrays.qx, Arrays.qz, Arrays.Kc, Arrays.Kx, Arrays.Kz, 
+                                                Arrays.Rho, Arrays.Cp, Arrays.Hr, Arrays.Hl, dt, Grid.Δ[1], Grid.Δ[2], Arrays.dϕdT) # axisymmetric diffusion step
         else
-            @parallel diffusion2D_step!(Arrays.Tnew, Arrays.T, Arrays.qr, Arrays.qz, Arrays.Kc, Arrays.Kr, Arrays.Kz, 
-                                        Arrays.Rho, Arrays.Cp, Arrays.Hr, Arrays.Hl, Num.dt, Num.dx, Num.dz, Arrays.dϕdT) # 2D diffusion step
+            @parallel diffusion2D_step!(Arrays.Tnew, Arrays.T, Arrays.qx, Arrays.qz, Arrays.Kc, Arrays.Kx, Arrays.Kz, 
+                                        Arrays.Rho, Arrays.Cp, Arrays.Hr, Arrays.Hl, dt, Grid.Δ[1], Grid.Δ[2], Arrays.dϕdT) # 2D diffusion step
         end
 
         @parallel (1:Nz) bc2D_x!(Arrays.Tnew);                      # flux-free lateral boundary conditions
         if Num.flux_bottom_BC==true
-            @parallel (1:Nx) bc2D_z_bottom_flux!(Arrays.Tnew, Arrays.Kc, Num.dz, Num.flux_bottom);     # flux-free bottom BC with specified flux (if false=isothermal) 
+            @parallel (1:Nx) bc2D_z_bottom_flux!(Arrays.Tnew, Arrays.Kc, Grid.Δ[2], Num.flux_bottom);     # flux-free bottom BC with specified flux (if false=isothermal) 
+        else
+            @parallel (1:Nx) bc2D_T!(Arrays.Tnew, Arrays.T);        # isothermal BC's
         end
  
         # Use a relaxed Picard iteration to update T used for (nonlinear) material properties:
@@ -191,6 +209,13 @@ end
     return
 end
 
+# Set z- boundary conditions to be isothernmal
+@parallel_indices (ix) function bc2D_T!(Tnew::AbstractArray, T::AbstractArray) 
+    Tnew[ix,1 ]    = T[ix, 1  ]
+    Tnew[ix, end]  = T[ix, end]
+    return
+end
+
 # Set z- boundary conditions @ bottom to be zero-flux
 @parallel_indices (ix) function bc2D_z_bottom!(T::AbstractArray) 
     T[ix,1 ]    = T[ix, 2    ]
@@ -216,6 +241,8 @@ module Diffusion3D
 # load required julia packages      
 using ParallelStencil 
 using ParallelStencil.FiniteDifferences3D
+using Parameters
+using CUDA
 
 export diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_flux!, assign!
 

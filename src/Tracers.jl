@@ -23,7 +23,7 @@
     coord       ::  Vector{Float64}          # holds coordinates [2D or 3D]
     T           ::  Float64   =  900         # temperature
     Phase       ::  Int64     =  1           # Phase (aka rock type) of the Tracer      
-    Phi_melt    ::  Float64   =  0           # Melt fraction on Tracers
+    ϕ    ::  Float64   =  0           # Melt fraction on Tracers
     time_vec    ::  Vector{Float64} = []     # Time vector
     T_vec       ::  Vector{Float64} = []     # Temperature vector
 end
@@ -87,7 +87,7 @@ function UpdateTracers(Tracers, Grid, T, Phi, InterpolationMethod="Quadratic");
         # Update info on tracers
         for iT = 1:length(Tracers)
             LazyRow(Tracers, iT).T          = T_tracers[1][iT];             # Temperature
-            LazyRow(Tracers, iT).Phi_melt   = Phi_melt_tracers[1][iT];      # Melt fraction
+            LazyRow(Tracers, iT).ϕ   = Phi_melt_tracers[1][iT];      # Melt fraction
         end
         
 
@@ -128,7 +128,7 @@ function UpdateTracers(Tracers, Grid, T, Phi, InterpolationMethod="Quadratic");
 
             # Update values on tracer
             LazyRow(Tracers, iT).T        = Trac_T;
-            LazyRow(Tracers, iT).Phi_melt = Trac_ϕ;
+            LazyRow(Tracers, iT).ϕ = Trac_ϕ;
         end
         
     =#
@@ -190,8 +190,8 @@ function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T,dim}, Phi
             end
 
             # Update values on tracers
-            LazyRow(Tracers, iT).T        = Trac_T;
-            LazyRow(Tracers, iT).Phi_melt = Trac_ϕ;
+            LazyRow(Tracers, iT).T = Trac_T;
+            LazyRow(Tracers, iT).ϕ = Trac_ϕ;
 
         end
         
