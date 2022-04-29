@@ -90,7 +90,7 @@ end
     # Set up model geometry & initial T structure
     Grid    = CreateGrid(size=(Num.Nx,Num.Nz), extent=(Num.W, Num.H))
     
-    GridArray!(Arrays.R,  Arrays.Z, Grid.coord1D[1], Grid.coord1D[2])               # Initialize 2D coordinate arrays
+    @parallel (1:Num.Nx, 1:Num.Nz) GridArray!(Arrays.R,  Arrays.Z, Grid.coord1D[1], Grid.coord1D[2])   
     Arrays.Rc              .=   (Arrays.R[2:end,:] + Arrays.R[1:end-1,:])/2         # center points in x
     # --------------------------------------------
     

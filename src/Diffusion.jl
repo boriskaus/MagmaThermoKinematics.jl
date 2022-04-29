@@ -68,6 +68,7 @@ end
     return
 end
 
+
 """
 
 Various parameters that control the nonlinear solver
@@ -83,8 +84,9 @@ Various parameters that control the nonlinear solver
     deactivate_La_at_depth::Bool=   false;
 end
 
+
 """
-    Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Num, Phases)
+    Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Phases, Grid, dt, Num = Numeric_params() )
 
 Performs a single, nonlinear, diffusion step during which temperature dependent properties (density, heat capacity, conductivity), are updated    
 """
@@ -92,9 +94,9 @@ function Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
     err, iter = 1., 1
     @parallel assign!(Arrays.T_K, Arrays.T, 273.15)
     @parallel assign!(Arrays.T_it_old, Arrays.T)
-    Nx, Nz = size(Phases)
-    args1 = (;T=Arrays.T_K, P=Arrays.P)
-    args2 = (;z=-Arrays.Z)
+    Nx, Nz = (Grid.N...,)
+    args1  = (;T=Arrays.T_K, P=Arrays.P)
+    args2  = (;z=-Arrays.Z)
     Tupdate = similar(Arrays.Tnew)                 # relaxed picard update
     Tbuffer = similar(Arrays.T)
     while err>Num.convergence && iter<Num.max_iter
@@ -250,7 +252,9 @@ using ParallelStencil.FiniteDifferences3D
 using Parameters
 using CUDA
 
-export diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_flux!, assign!, GridArray!
+export  diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_flux!, assign!, GridArray!,
+        Numeric_params, Nonlinear_Diffusion_step_3D!, bc3D_T!
+
 
 @parallel function assign!(A::AbstractArray, B::AbstractArray)
     @all(A) = @all(B)
@@ -263,6 +267,91 @@ end
         Z[i,j,k] = z[k]
     return 
 end
+
+
+"""
+
+Various parameters that control the nonlinear solver
+"""
+@with_kw struct Numeric_params
+    ω::Float64                  =   0.8;            # relaxation parameter for nonlinear iterations    
+    max_iter::Int64             =   1500;           # max. number of nonlinear iterations        
+    verbose::Bool               =   false;          # print info?
+    convergence::Float64        =   1e-4;           # nonlinear convergence criteria   
+    axisymmetric::Bool          =   false;          # Axisymmetric or 2D?
+    flux_bottom_BC::Bool        =   false;          # Flux bottom BC?
+    flux_bottom::Float64        =   0.0;            # flux @ bottom, in case flux_bottom_BC=true
+    deactivate_La_at_depth::Bool=   false;
+end
+
+#=
+"""
+    Nonlinear_Diffusion_step_3D!(Arrays, Mat_tup, Phases, Grid, dt, Num = Numeric_params() )
+
+Performs a single, nonlinear, diffusion step during which temperature dependent properties (density, heat capacity, conductivity), are updated    
+"""
+function Nonlinear_Diffusion_step_3D!(Arrays, Mat_tup, Phases, Grid, dt, Num = Numeric_params() )
+    err, iter = 1., 1
+    @parallel assign!(Arrays.T_K, Arrays.T, 273.15)
+    @parallel assign!(Arrays.T_it_old, Arrays.T)
+    Nx, Ny, Nz = (Grid.N...,)
+    args1 = (;T=Arrays.T_K, P=Arrays.P)
+    args2 = (;z=-Arrays.Z)
+    Tupdate = similar(Arrays.Tnew)                 # relaxed picard update
+    Tbuffer = similar(Arrays.T)
+    while err>Num.convergence && iter<Num.max_iter
+    
+        @parallel (1:Nx, 1:Ny, 1:Nz) compute_meltfraction_ps!(Arrays.ϕ, Mat_tup, Phases, args1) 
+        @parallel (1:Nx, 1:Ny, 1:Nz) compute_dϕdT_ps!(Arrays.dϕdT, Mat_tup, Phases, args1)     
+        @parallel (1:Nx, 1:Ny, 1:Nz) compute_density_ps!(Arrays.Rho, Mat_tup, Phases, args1)
+        @parallel (1:Nx, 1:Ny, 1:Nz) compute_heatcapacity_ps!(Arrays.Cp, Mat_tup, Phases, args1 )
+        @parallel (1:Nx, 1:Ny, 1:Nz) compute_conductivity_ps!(Arrays.Kc, Mat_tup, Phases, args1 )
+        @parallel (1:Nx, 1:Ny, 1:Nz) compute_radioactive_heat_ps!(Arrays.Hr, Mat_tup, Phases, args2)   
+        @parallel (1:Nx, 1:Ny, 1:Nz) compute_latent_heat_ps!(Arrays.Hl, Mat_tup, Phases, args1)   
+
+        # Switch off latent heat & melting below a certain depth 
+        if Num.deactivate_La_at_depth==true
+            @parallel (1:Nx,1:Ny, 1:Nz) deactivate_dϕdT_ϕ_belowDepth!(Arrays.dϕdT, Arrays.ϕ, Arrays.Z, Num.deactivationDepth)
+        end
+
+        # Diffusion step:
+        @parallel diffusion3D_step!(Arrays.Tnew, Arrays.T, Arrays.qx, Arrays.qz, Arrays.Kc, Arrays.Kx, Arrays.Kz, 
+                                    Arrays.Rho, Arrays.Cp, Arrays.Hr, Arrays.Hl, dt, Grid.Δ[1], Grid.Δ[2], Arrays.dϕdT) # 2D diffusion step
+        
+        @parallel (1:Nz) bc2D_x!(Arrays.Tnew);                      # flux-free lateral boundary conditions
+        if Num.flux_bottom_BC==true
+            @parallel (1:Nx,1:Ny) bc3D_z_bottom_flux!(Arrays.Tnew, Arrays.Kc, Grid.Δ[2], Num.flux_bottom);     # flux-free bottom BC with specified flux (if false=isothermal) 
+        else
+            @parallel (1:Nx,1:Ny) bc3D_T!(Arrays.Tnew, Arrays.T);        # isothermal BC's
+        end
+ 
+        # Use a relaxed Picard iteration to update T used for (nonlinear) material properties:
+        @parallel update_relaxed_picard!(Tupdate, Arrays.Tnew, Arrays.T_it_old, Num.ω)
+        
+        # Update T_K (used above to compute material properties)
+        @parallel assign!(args1.T, Tupdate,  273.15)   # all GeoParams routines expect T in K
+        @parallel update_Tbuffer!(Tbuffer, Arrays.Tnew, Arrays.T_it_old)
+        
+        # Compute error
+        err     = norm(Tbuffer)/maximum(Arrays.Tnew)
+        if Num.verbose==true
+            println("  Nonlinear iteration $(iter), error=$(err)")
+        end
+        
+        @parallel assign!(Arrays.T_it_old, Tupdate)                   # Store Tnew of last iteration step
+        iter   += 1
+
+    end
+    if iter==Num.max_iter
+        println("WARNING: nonlinear iterations not converging. Final error=$(err). Reduce Δt, or the relaxation parameter Num.ω (=$(Num.ω)) [0-1]")
+    end
+    if Num.verbose==true
+        println("  ----")
+    end
+
+    return nothing
+end
+=#
 
 # Solve one diffusion timestep in 3D geometry, including latent heat, with spatially variable Rho, Cp and K 
 #  Note: needs the 3D stencil routines; hence part is commented
@@ -306,6 +395,13 @@ end
 @parallel_indices (ix,iy) function bc3D_z_bottom_flux!(T::AbstractArray, K::AbstractArray, dz::Number, q_z::Number) 
     T[ix,iy,1 ]    = T[ix, iy, 2    ] + q_z*dz / K[ix, iy, 1]
 
+    return
+end
+
+# Set z- boundary conditions to be isothernmal
+@parallel_indices (ix, iy) function bc3D_T!(Tnew::AbstractArray, T::AbstractArray) 
+    Tnew[ix,iy,1 ]    = T[ix, iy, 1  ]
+    Tnew[ix,iy, end]  = T[ix, iy, end]
     return
 end
 

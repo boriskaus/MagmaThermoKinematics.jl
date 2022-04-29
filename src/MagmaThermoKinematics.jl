@@ -93,7 +93,7 @@ export SecYear, kyr, Myr, km³
 
 include("Grid.jl")
 using .Grid
-export GridData, CreateGrid, GridArray, GridArray!
+export GridData, CreateGrid
 
 include("MeltingRelationships.jl")
 export SolidFraction, ComputeLithostaticPressure, LoadPhaseDiagrams, PhaseDiagramData, ComputeDensityAndPressure
