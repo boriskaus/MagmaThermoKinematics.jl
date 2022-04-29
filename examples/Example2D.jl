@@ -20,12 +20,7 @@ using Plots
                Conductivity = ConstantConductivity(k=1.5Watt/K/m),       
                  LatentHeat = ConstantLatentHeat(Q_L=350e3J/kg),
                     Melting = MeltingParam_Caricchi()),
-            SetMaterialParams(Name="partial melt", Phase=2, 
-                 Density    = ConstantDensity(ρ=2800kg/m^3),               
-               HeatCapacity = ConstantHeatCapacity(cp=1050J/kg/K),
-               Conductivity = ConstantConductivity(k=1.5Watt/K/m),       
-                 LatentHeat = ConstantLatentHeat(Q_L=350e3J/kg),
-                    Melting = MeltingParam_Caricchi())              )      
+                                )      
 
     GeoT                    =   20.0/1e3;                   # Geothermal gradient [K/km]
     W_in, H_in              =   5e3,    0.2e3;              # Width and thickness of dike
