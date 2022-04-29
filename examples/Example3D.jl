@@ -92,4 +92,3 @@ using WriteVTK
 end # end of main function
 
 Time_vec, Melt_Time, Tracers, Grid, Arrays = MainCode_3D(); # start the main code
-plot(Time_vec/kyr, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example2D") # Create plot

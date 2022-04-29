@@ -241,7 +241,6 @@ using WriteVTK
 end # end of main function
 
 Time_vec, Melt_Time, Tracers, Grid, Arrays = MainCode_3D(); # start the main code
-plot(Time_vec/kyr, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example2D") # Create plot
 
 ```
 The result of the script are a range of VTK files, which can be visualized with the 3D software [Paraview](https://www.paraview.org). The full code example can be downloaded [here](./examples/Example3D.jl), and the paraview statefile (to reproduce the movie) is available [here](./examples/movies/Example3D_Paraview.pvsm).
