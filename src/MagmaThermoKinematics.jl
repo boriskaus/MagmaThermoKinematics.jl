@@ -74,6 +74,12 @@ function environment!(model_device, precision, dimension)
         export CreateArrays
     end
 
+    # Various helpful routines
+    Base.@eval begin
+        include(joinpath(@__DIR__, "Utils.jl"))
+        export Process_ZirconAges, copy_arrays_GPU2CPU!, copy_arrays_CPU2GPU!
+    end
+
 end
 
 export environment!
@@ -111,9 +117,6 @@ include("Tracers.jl")
 export UpdateTracers, AdvectTracers!, InitializeTracers,PhaseRatioFromTracers, CorrectTracersForTopography!
 export RockAssemblage, update_Tvec!, UpdateTracers_T_ϕ!  
 
-# Post-processing routines
-include("Utils.jl")
-export Process_ZirconAges
 
 # Routines related to Parameters.jl, which come in handy in the main routine
 export @unpack, @with_kw
