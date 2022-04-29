@@ -5,7 +5,7 @@ module Diffusion2D
 export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!, bc2D_z!, bc2D_z_bottom!, 
         bc2D_z_bottom_flux!, assign!, diffusion2D_AxiSymm_residual!, 
         RungaKutta1!, RungaKutta2!,RungaKutta4!, update_dϕdT_Phi!, update_Tbuffer!,
-        update_relaxed_picard!, Nonlinear_Diffusion_step_2D!, Numeric_params, bc2D_T!
+        update_relaxed_picard!, Nonlinear_Diffusion_step_2D!, Numeric_params, bc2D_T!, GridArray!
 
 using LinearAlgebra: norm
 using ParallelStencil
@@ -15,6 +15,12 @@ using Parameters
 
 import ..compute_meltfraction_ps!, ..compute_dϕdT_ps!, ..compute_density_ps!, ..compute_heatcapacity_ps!, 
        ..compute_conductivity_ps!, ..compute_radioactive_heat_ps!, ..compute_latent_heat_ps!
+
+@parallel_indices (i,j) function GridArray!(X::AbstractArray, Z::AbstractArray, x::AbstractArray,z::AbstractArray)
+        X[i,j] = x[i]
+        Z[i,j] = z[j]
+    return 
+end
 
 @parallel_indices (i,j) function deactivate_dϕdT_ϕ_belowDepth!(dϕdT, Phi_melt, Z, minZ)
     @inbounds if Z[i,j] < minZ
@@ -244,11 +250,18 @@ using ParallelStencil.FiniteDifferences3D
 using Parameters
 using CUDA
 
-export diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_flux!, assign!
+export diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_flux!, assign!, GridArray!
 
 @parallel function assign!(A::AbstractArray, B::AbstractArray)
     @all(A) = @all(B)
     return
+end
+
+@parallel_indices (i,j,k) function GridArray!(X::AbstractArray, Y::AbstractArray, Z::AbstractArray, x::AbstractArray, y::AbstractArray,z::AbstractArray)
+        X[i,j,k] = x[i]
+        Y[i,j,k] = y[j]
+        Z[i,j,k] = z[k]
+    return 
 end
 
 # Solve one diffusion timestep in 3D geometry, including latent heat, with spatially variable Rho, Cp and K 

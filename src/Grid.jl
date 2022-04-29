@@ -2,7 +2,7 @@ module Grid
 # This creates a computational grid
 import Base: show 
 
-export GridData, CreateGrid, GridArray, GridArray!
+export GridData, CreateGrid
 
 struct GridData{FT, D}
     ConstantΔ   :: Bool                         # Constant spacing (true in all cases for now)
@@ -92,82 +92,6 @@ function CreateGrid(;
     ConstantΔ   = true;
     return GridData(ConstantΔ,N,Δ,L,X₁,Xₙ,coord1D, coord1D_cen)
 
-end
-
-"""
-    X,Z = GridArray(x::StepRangeLen,z::StepRangeLen)
-
-Creates 2D coordinate arrays from 1D vectors with coordinates in 1th & 2nd dimension.
-Usually employed in combination with `GridData` 
-
-"""
-function GridArray(x::StepRangeLen,z::StepRangeLen)
-    Nx, Nz = length(x), length(z)
-    
-    X,Z = zeros(Nx,Nz), zeros(Nx,Nz);
-    for i in CartesianIndices(X)
-        X[i] = x[i[1]]
-        Z[i] = z[i[2]]
-    end
-    
-    return X,Z
-end
-
-"""
-    X,Y,Z = GridArray(x::StepRangeLen,y::StepRangeLen,z::StepRangeLen)
-
-Creates 3D coordinate arrays from 1D vectors with coordinates in 1th & 2nd dimension.
-Usually employed in combination with `GridData` 
-
-"""
-function GridArray(x::StepRangeLen, y::StepRangeLen, z::StepRangeLen)
-    Nx, Ny, Nz = length(x), length(y), length(z)
-    
-    X, Y, Z = zeros(Nx,Ny,Nz),zeros(Nx,Ny,Nz),zeros(Nx,Ny,Nz);
-    for i in CartesianIndices(X)
-        X[i] = x[i[1]]
-        Y[i] = y[i[2]]
-        Z[i] = z[i[3]]
-    end
-    
-    return X,Y,Z
-end
-
-
-"""
-    GridArray!(X::AbstractArray,Z::AbstractArray,x::StepRangeLen,z::StepRangeLen)
-
-In place setting of 3D coordinate arrays from 1D vectors.
-Usually employed in combination with `GridData`. 
-
-"""
-function GridArray!( X::AbstractArray,Z::AbstractArray,
-                    x::StepRangeLen,z::StepRangeLen)
-    for i in CartesianIndices(X)
-        X[i] = x[i[1]]
-        Z[i] = z[i[2]]
-    end
-    
-    return nothing
-end
-
-"""
-    GridArray!(X::AbstractArray,Y::AbstractArray, Z::AbstractArray,x::StepRangeLen,z::StepRangeLen)
-
-In place setting of 3D coordinate arrays from 1D vectors.
-Usually employed in combination with `GridData`. 
-
-"""
-function GridArray!( X::AbstractArray,Y::AbstractArray,Z::AbstractArray,
-                    x::StepRangeLen,z::StepRangeLen)
-
-    for i in CartesianIndices(X)
-        X[i] = x[i[1]]
-        Y[i] = y[i[2]]
-        Z[i] = z[i[3]]
-    end
-    
-    return nothing
 end
 
 # view grid object
