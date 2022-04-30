@@ -54,20 +54,48 @@ function environment!(model_device, precision, dimension)
               k = keys(args)
               v = getindex.(values(args), i, j)
               argsi = (; zip(k, v)...)
-              A[i, j] = $(Symbol(_fn))(MatParam[Phases[i,j]], argsi)
+              A[i, j] = $(_fn)(MatParam[Phases[i,j]], argsi)
               return
           end
-          export $fn
-      end
-      @eval begin
+          
+        # Special version for multiple phaes
+        @parallel_indices (i,j) function $(fn)(
+            rho::AbstractArray,
+            MatParam::Tuple,
+            Phases::AbstractArray,
+            args,
+        ) 
+            k = keys(args)
+            v = getindex.(values(args), i,j)
+            argsi = (; zip(k, v)...)
+            rho[i,j] = compute_param($(_fn), MatParam, Phases[i,j], argsi)
+            return
+        end
+
         # 3D version  
         @parallel_indices (i, j, k) function $(fn_3D)(A,MatParam, Phases, args)
-        k_3D = keys(args)
-        v_3D= getindex.(values(args), i, j, k)
-        argsi = (; zip(k_3D, v_3D)...)
-        A[i, j, k] = $(Symbol(_fn))(MatParam[Phases[i,j,k]], argsi)
-        return
+            k_3D = keys(args)
+            v_3D= getindex.(values(args), i, j, k)
+            argsi = (; zip(k_3D, v_3D)...)
+            A[i, j, k] = $(_fn)(MatParam[Phases[i,j,k]], argsi)
+            return
         end
+
+        # Special version for multiple phaes
+        @parallel_indices (i,j,k) function $(fn_3D)(
+            A::AbstractArray,
+            MatParam::Tuple,
+            Phases::AbstractArray,
+            args,
+        ) 
+            k_3D = keys(args)
+            v_3D= getindex.(values(args), i, j, k)
+            argsi = (; zip(k_3D, v_3D)...)
+            A[i,j,k] = compute_param($(_fn), MatParam, Phases[i,j,k], argsi)
+            return
+        end
+
+        export $fn
         export $fn_3D
       end
     end
