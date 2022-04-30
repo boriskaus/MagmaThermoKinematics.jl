@@ -73,3 +73,31 @@ function copy_arrays_CPU2GPU!(T_GPU::Data.Array,  ϕ_GPU::Data.Array, T_CPU::Abs
     return nothing 
 end
 
+
+#performs computation given a single Phase
+@inline function compute_param(
+    fn::F, MatParam::NTuple{N,AbstractMaterialParamsStruct}, Phase::Int64, args
+) where {F, N}
+    Phase_tup = ntuple(i -> MatParam[i].Phase, Val(N))
+    idx = find_ind(Phase_tup, Phase)
+    T = isempty(args) ? 0.0 : zero(typeof(args).types[1])
+    out = ntuple(Val(N)) do i
+        Base.@_inline_meta
+        if i == idx
+            return fn(MatParam[i], args)
+        else
+            return T
+        end
+    end
+    return out[idx]
+end
+
+# Finds index in an allocation-free manner
+function find_ind(x::NTuple{N,_I}, k::_I) where {N,_I<:Integer}
+    @inbounds for i in 1:N
+        if x[i] === k
+            return i
+        end
+    end
+    return 0
+end
