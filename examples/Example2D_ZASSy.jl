@@ -398,7 +398,7 @@ if 1==0
                     )
 end
 
-if 1==1
+if 1==0
     # 2D, Geneva-type models with Caricchi parameters (as described in ZASSy paper)
     Num         = NumParam(Nx=269, Nz=269, SimName="Zassy_Geneva_zeroFlux_variable_k_CaricchiMelting", 
                             maxTime_Myrs=1.5,
@@ -421,25 +421,25 @@ if 1==1
                     )
 end
 
-if 1==0
+if 1==1
    # 2D, UCLA-type models
     #
-    # Benchmark case with Oscar Lovera, who uses an exponential depth-dependent radioacrive heating term combined with flux lower BC
+    # Benchmark case with Oscar Lovera, who uses an exponential depth-dependent radioactive heating term combined with flux lower BC
     #
     #  For the parameters he gave, k=3.35 W/mK  qs=170 mW/m2    qm=167mW/m2  hr=10e3m
     #  H0  = (qs-qm)/hr= 3.0000e-07
 
-    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating_smoothQuad_initialEllipse", 
+    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating_smoothQuad_initialEllipse_2", 
                             SaveOutput_steps=2000, CreateFig_steps=1000, axisymmetric=false,
                             flux_bottom_BC=true, flux_bottom=167e-3, fac_dt=0.2, ω=0.6, verbose=false,
                             maxTime_Myrs=0.7, 
-                            AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=170e-3, qm_anal=167e-3, hr_anal=10e3, k_anal=3.35,
+                            AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=170e-3, qm_anal=167e-3, hr_anal=10e3, k_anal=3.3453,
                             InitialEllipse =   true, a_init= 2.5e3,  b_init  =   1.5e3,
                             FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);                            
                                  
     mid_depth_km = -7.0;                   # mid depth of injection area [km]
     
-    V_inj_a      = 1.29135;                                    # a axis in km of injected ellipsoid
+    V_inj_a      = 1.29135;                                 # a axis in km of injected ellipsoid
     V_inj_b      = 0.7745;                                  # b axis in km                        
     V_inj_check  = 4/3*pi*V_inj_a^2*V_inj_b;                # checking
 
@@ -452,14 +452,14 @@ if 1==0
                             Center=[0, mid_depth_km*1e3])
 
     MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
-                                    Density    = ConstantDensity(ρ=3150kg/m^3),                 # used in the parameterisation of Whittington 
-                                    LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
+                                    Density    = ConstantDensity(ρ=3345.3kg/m^3),                    # used in the parameterisation of Whittington 
+                                    LatentHeat = ConstantLatentHeat(Q_L=2.67e5J/kg),
                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=3e-7Watt/m^3),
-                                  Conductivity = ConstantConductivity(k=3.35Watt/K/m),           # in case we use constant k 
-                                  HeatCapacity = ConstantHeatCapacity(cp=1116.7J/kg/K),
-                               # Conductivity = T_Conductivity_Whittington(),                   # T-dependent k
-                                  #HeatCapacity = T_HeatCapacity_Whittington(),                 # T-dependent cp
-                                       Melting = SmoothMelting(MeltingParam_Quadratic())),      # Quadratic parameterization as in Tierney et al.
+                                  Conductivity = ConstantConductivity(k=3.3453Watt/K/m),            # in case we use constant k 
+                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                               # Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
+                                  #HeatCapacity = T_HeatCapacity_Whittington(),                                                       # T-dependent cp
+                                       Melting = SmoothMelting(MeltingParam_Quadratic(T_s=(700+273.15)K, T_l=(1100+273.15)K))),       # Quadratic parameterization as in Tierney et al.
                     )
 end
 
