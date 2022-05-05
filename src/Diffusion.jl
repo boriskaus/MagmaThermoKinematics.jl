@@ -267,6 +267,8 @@ using ParallelStencil.FiniteDifferences3D
 using Parameters
 using CUDA
 
+using MagmaThermoKinematics.Grid
+
 export  diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_flux!, assign!, GridArray!,
         Numeric_params, Nonlinear_Diffusion_step_3D!, bc3D_T!
 
