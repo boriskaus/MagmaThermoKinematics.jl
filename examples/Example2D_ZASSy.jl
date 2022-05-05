@@ -6,7 +6,7 @@ const USE_GPU=false;
 using MagmaThermoKinematics
 if USE_GPU
     environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
+    CUDA.device!(1)                     # select the GPU you use (starts @ zero)
 else
     environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
 end
@@ -88,9 +88,8 @@ end
                                 ))
 
     # Set up model geometry & initial T structure
-    Grid    = CreateGrid(size=(Num.Nx,Num.Nz), extent=(Num.W, Num.H))
-    
-    @parallel (1:Num.Nx, 1:Num.Nz) GridArray!(Arrays.R,  Arrays.Z, Grid.coord1D[1], Grid.coord1D[2])   
+    Grid    = CreateGrid(size=(Num.Nx,Num.Nz), extent=(Num.W, Num.H))   
+    GridArray!(Arrays.R, Arrays.Z, Grid)        
     Arrays.Rc              .=   (Arrays.R[2:end,:] + Arrays.R[1:end-1,:])/2         # center points in x
     # --------------------------------------------
     
@@ -124,7 +123,7 @@ end
     else
         Tnew_cpu        =   similar(Arrays.T)
         Phi_melt_cpu    =   similar(Arrays.ϕ)
-        Phases          =   @ones(Num.Nx,Num.Nz)
+        Phases          =   ones(Int64,Num.Nx,Num.Nz)
     end
     # --------------------------------------------
         
@@ -170,6 +169,10 @@ end
             
             if Num.advect_polygon==true && isempty(dike_poly)
                 dike_poly   =   CreateDikePolygon(dike);            # create dike for the 1th time
+            end
+
+            if length(Mat_tup)>1
+                @timeit to "PhasesFromTracers"  PhasesFromTracers!(Phases, Grid, Tracers, BackgroundPhase=1, InterpolationMethod="Constant");    # update phases from grid 
             end
         end
         # --------------------------------------------
@@ -292,7 +295,7 @@ end
                 println("  Saved Tracers & simulation parameters to file $filename ")    
 
                 filename = "$(Num.SimName)/Tracers.mat"
-                matwrite(filename,  Dict("Tracers"=> Tracers))
+                matwrite(filename,  Dict("Tracers"=> Tracers))      # does not allow 
                 println("  Saved Tracers to file $filename ")    
             end
 
@@ -301,7 +304,7 @@ end
 
     end
     x,z = Grid.coord1D[1],Grid.coord1D[2]
-    return x,z,Arrays.T, Time_vec, Melt_Time, Tracers, dike_poly;
+    return x,z,Arrays.T, Time_vec, Melt_Time, Tracers, dike_poly, Grid;
 end # end of main function
 
 
@@ -429,14 +432,36 @@ if 1==1
     #  For the parameters he gave, k=3.35 W/mK  qs=170 mW/m2    qm=167mW/m2  hr=10e3m
     #  H0  = (qs-qm)/hr= 3.0000e-07
 
-    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating_smoothQuad_initialEllipse_2", 
+    # ZASSy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating_smoothQuad_initialEllipse_3
+    # ZASSy_UCLA_ellipticalIntrusion_variable_k_radioactiveheating_smoothQuad_initialEllipse
+    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating_Assimilation_initialEllipse", 
                             SaveOutput_steps=2000, CreateFig_steps=1000, axisymmetric=false,
                             flux_bottom_BC=true, flux_bottom=167e-3, fac_dt=0.2, ω=0.6, verbose=false,
-                            maxTime_Myrs=0.7, 
+                            maxTime_Myrs=0.01, 
                             AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=170e-3, qm_anal=167e-3, hr_anal=10e3, k_anal=3.3453,
                             InitialEllipse =   true, a_init= 2.5e3,  b_init  =   1.5e3,
                             FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);                            
                                  
+#=
+    # Note: in k-dependent cases, we have a much lower k @ the bottom
+    #   julia> p=T_Conductivity_Whittington();
+    #   julia> compute_conductivity(p,T=1030+273.15)
+    #           1.837397823380793
+    #
+    #   julia> p1=T_Conductivity_Whittington_parameterised();
+    #   julia> compute_conductivity(p1,[1030+273.15])
+    #   1-element Vector{Float64}:
+    #           1.793946
+    # for that reason, we have to decrease the bottom heat flux
+    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_ellipticalIntrusion_variable_k_radioactiveheating_smoothQuad_initialEllipse", 
+                        SaveOutput_steps=2000, CreateFig_steps=1000, axisymmetric=false,
+                        flux_bottom_BC=true, flux_bottom=50/1e3*1.84, fac_dt=0.2, ω=0.6, verbose=false,
+                        maxTime_Myrs=0.7, 
+                        AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=170e-3, qm_anal=167e-3, hr_anal=10e3, k_anal=3.3453,
+                        InitialEllipse =   true, a_init= 2.5e3,  b_init  =   1.5e3,
+                        FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);                            
+=#
+
     mid_depth_km = -7.0;                   # mid depth of injection area [km]
     
     V_inj_a      = 1.29135;                                 # a axis in km of injected ellipsoid
@@ -451,16 +476,26 @@ if 1==1
                             H_in=V_inj_b*2*1e3, 
                             Center=[0, mid_depth_km*1e3])
 
-    MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
+    MatParam     = (SetMaterialParams(Name="Host rock", Phase=1, 
                                     Density    = ConstantDensity(ρ=3345.3kg/m^3),                    # used in the parameterisation of Whittington 
                                     LatentHeat = ConstantLatentHeat(Q_L=2.67e5J/kg),
                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=3e-7Watt/m^3),
                                   Conductivity = ConstantConductivity(k=3.3453Watt/K/m),            # in case we use constant k 
                                   HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
-                               # Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
-                                  #HeatCapacity = T_HeatCapacity_Whittington(),                                                       # T-dependent cp
-                                       Melting = SmoothMelting(MeltingParam_Quadratic(T_s=(700+273.15)K, T_l=(1100+273.15)K))),       # Quadratic parameterization as in Tierney et al.
-                    )
+                                 #Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
+                                 #HeatCapacity = T_HeatCapacity_Whittington(),                                                       # T-dependent cp
+                                       Melting = MeltingParam_Assimilation()),       # Quadratic parameterization as in Tierney et al.
+                    SetMaterialParams(Name="Intruded rocks", Phase=2, 
+                                    Density    = ConstantDensity(ρ=3345.3kg/m^3),                    # used in the parameterisation of Whittington 
+                                    LatentHeat = ConstantLatentHeat(Q_L=2.67e5J/kg),
+                               RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=3e-7Watt/m^3),
+                                  Conductivity = ConstantConductivity(k=3.3453Watt/K/m),            # in case we use constant k 
+                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                 #Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
+                                 #HeatCapacity = T_HeatCapacity_Whittington(),                       # T-dependent cp
+                                       Melting = SmoothMelting(MeltingParam_Quadratic(T_s=(700+273.15)K, T_l=(1100+273.15)K)))       
+            )
+
 end
 
 
@@ -487,12 +522,13 @@ if 1==0
     #                        maxTime_Myrs=1.13, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
     #                        FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);
 
+
     Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="Zassy_UCLA_ellipticalIntrusion_variable_k_radioactiveheating_1", 
                             SaveOutput_steps=2000, CreateFig_steps=1000, axisymmetric=false,
                             flux_bottom_BC=true, flux_bottom=38.7/1e3*3.35, fac_dt=0.2, ω=0.6, max_iter=100, verbose=false,
                             maxTime_Myrs=1.13, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
-                            FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);                            
-                                 
+                            FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);             
+    
     Flux         = 7.5e-6;                              # in km3/km2/a 
     Total_r_km   = 10;                                  # final radius of area
     V_inject_km3 = 10;                                  # injection volume per sill injection
@@ -541,7 +577,7 @@ const to = TimerOutput()
 reset_timer!(to)
 
 # Call the main code with the specified material parameters
-x,z,T, Time_vec,Melt_Time, Tracers, dike_poly = MainCode_2D(MatParam, Num, Dike_params); # start the main code
+x,z,T, Time_vec,Melt_Time, Tracers, dike_poly, Grid = MainCode_2D(MatParam, Num, Dike_params); # start the main code
 
 @show(to)
 
