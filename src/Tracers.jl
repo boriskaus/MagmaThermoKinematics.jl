@@ -58,9 +58,10 @@ end
 
         out:
             Tracers:    Tracers structure with updated T and melt fraction fields
+      
 """
 function UpdateTracers(Tracers, Grid, T, Phi, InterpolationMethod="Quadratic");
-
+    # NOTE: this function allocates. If linear interpolation is sufficient, it's better to use UpdateTracers_T_ϕ! or UpdateTracers_Field!
     dim = length(Grid)    
     if isassigned(Tracers,1)        # only if the Tracers StructArray is non-empty
         
@@ -164,7 +165,7 @@ end
 """
     UpdateTracers_Field!(Tracers::StructVector{TRACERS}, Grid::GridData{_T,dim}, Field::AbstractArray{_T,dim}, FieldName::Symbol);
     
-In-place function that interpolates `Field`, defined on the `Grid`, to the field `FieldName` on `Tracers`.
+In-place, non-allocating, function that interpolates `Field`, defined on the `Grid`, to the field `FieldName` on `Tracers`.
 
 - `Tracers`:    StructVector that contains tracers, where we want to update the properties. Each tracer should at least contain the fields `coord` (coordinates) and `FieldName`.  
 - `Grid``:      Grid structure that describes the coordinates  
@@ -429,10 +430,10 @@ end
             NumTracers:    The number of tracers per grid point
             
 """
-function PhaseRatioFromTracers(FullGrid, Grid, Tracers, InterpolationMethod="Constant", RequestNumTracers=false; BackgroundPhase=nothing);
+function PhaseRatioFromTracers(FullGrid, Grid, Tracers; InterpolationMethod="Constant", RequestNumTracers=false, BackgroundPhase=nothing);
 
     numPhases       =   maximum(Tracers.Phase);
-    if ~isnothing(BackgroundPhase)
+    if !isnothing(BackgroundPhase)
         if numPhases<BackgroundPhase; numPhases=BackgroundPhase; end
     end
     dim             =   length(FullGrid)  
@@ -533,7 +534,7 @@ function PhaseRatioFromTracers(FullGrid, Grid, Tracers, InterpolationMethod="Con
         Ifirst, Ilast   = first(R), last(R)
         I1              = oneunit(Ifirst)
         for I in ind_empty
-            @show I, NumTracers[I]
+           # @show I, NumTracers[I]
 
             # query surrounding points & store the index of the point with the most particles
             smax = 0;   Imax = I;
@@ -574,6 +575,172 @@ function PhaseRatioFromTracers(FullGrid, Grid, Tracers, InterpolationMethod="Con
     else
         return PhaseRatio
     end
+end
+
+
+
+"""
+    PhaseRatioFromTracers!(PhaseRatio::AbstractArray, Grid::GridData, Tracers; InterpolationMethod="Constant", BackgroundPhase=nothing, ReturnNumTracers=false)
+
+This computes the PhaseRatio from the `Tracers` on the gridpoints described by `Grid`. The `PhaseRatio` is a matrix that has one dimension more than the size of the grid
+and, after calling this function, at every point we will have the fraction of that phase that is present in the grid.
+
+
+optional Parameters:
+
+- InterpolationMethod:    Interpolation method used to go from Tracers ->  Grid
+    "Constant"          -   All particles within a distance [dx,dy,dz] around the grid point 
+    "DistanceWeighted"  -   Particles closer to the grid point have a stronger weight.
+                                            This follows what is described in:
+                                                Duretz, T., May, D.A., Gerya, T.V., Tackley, P.J., 2011. Discretization errors and 
+                                                free surface stabilization in the finite difference and marker-in-cell method for applied geodynamics: 
+                                                A numerical study: Geochem. Geophys. Geosyst. 12, https://doi.org/10.1029/2011GC00356
+
+- BackgroundPhase:       The background phase (used for places that don't have cells, nor surrounding cells )
+- ReturnNumTracers:      Return the number of tracers on every grid cell (default=false)
+"""
+function PhaseRatioFromTracers!(PhaseRatio::AbstractArray, Grid::GridData{_T,dim}, Tracers; InterpolationMethod="Constant", ReturnNumTracers=false, BackgroundPhase=nothing) where {_T, dim}
+
+    numPhases       =   maximum(Tracers.Phase);
+    if !isnothing(BackgroundPhase)
+     #   if numPhases<BackgroundPhase; numPhases=BackgroundPhase; end
+    end
+    
+    if size(PhaseRatio)[1:dim] != (Grid.N...,)
+        error("Size of PhaseRatio array inconsistent with input grid")
+    end
+    if size(PhaseRatio)[dim+1] < numPhases
+        error("Size of lastv dimension of PhaseRatio is too small")
+    end
+    x          = Grid.coord1D[1]
+    if dim==2
+        y = Grid.coord1D[2]
+    end
+    if dim==3
+        z = Grid.coord1D[3]
+    end
+    
+    # Initialize Phase Ratio 
+    PhaseRatio .= 0.0;
+    if !isnothing(BackgroundPhase)
+        if dim==1
+            PhaseRatio[:,BackgroundPhase] .= 1.0
+        elseif dim==2
+            PhaseRatio[:,:,BackgroundPhase] .= 1.0
+        elseif dim==3
+            PhaseRatio[:,:,:,BackgroundPhase] .= 1.0
+        end
+    end
+
+    NumTracers = zeros(Int64, Grid.N...);   # Tracks # of tracers around every point
+    idx        = zeros(Int64, dim)          # pre-allocate index 
+    pt_near    = zeros(_T, dim)             # coordinate of nearest point
+    dist       = zeros(_T, dim)             # normalize distance point -> nearest grid point
+
+    if isassigned(Tracers,1)                # only if the Tracers StructArray is non-empty
+        
+        if !(Grid.ConstantΔ)
+            error("Routine currently only works for constant spacing in every direction")
+        end
+
+        for iT = 1:length(Tracers)  
+            Trac = Tracers[iT];
+            pt   = Trac.coord
+            phase= Trac.Phase
+
+            # correct point for bounds:
+            for i=1:dim
+                if pt[i]<Grid.min[i]; pt[i] = Grid.min[i]; end
+                if pt[i]>Grid.max[i]; pt[i] = Grid.max[i]; end
+            end                
+            
+            # find Cartesian index of nearest point on grid
+            idx .=  round.(Int64, (pt .- Grid.min)./Grid.Δ) .+ 1
+            if dim==1
+                I       = CartesianIndex(idx[1]);
+                Iphase  = CartesianIndex(idx[1], phase);
+            elseif dim==2
+                I       = CartesianIndex(idx[1], idx[2]);
+                Iphase  = CartesianIndex(idx[1], idx[2], phase);
+            elseif dim==3
+                I       = CartesianIndex(idx[1], idx[2], idx[3]);
+                Iphase  = CartesianIndex(idx[1], idx[2], idx[3], phase);
+            end
+            pt_near  =  Tuple(I).*Grid.Δ .- Grid.Δ.+ Grid.min;     # coordinates of nearest point
+            
+            if InterpolationMethod=="DistanceWeighted"
+                dist  .=  abs.((pt .- pt_near)./Grid.Δ)      # distance of tracers to regular grid point (normalized over Δ)
+                Weight =  prod(dist)                         # weight of point
+            elseif InterpolationMethod=="Constant"
+                Weight = 1.0;
+            end
+
+            
+            NumTracers[I]       += 1            # Keep track of number of phases
+            PhaseRatio[Iphase]  += Weight       # Weight @ every point
+        
+        end
+    end
+
+    # If we have a BG phase set, remove what we set @ the beginning 
+    if !isnothing(BackgroundPhase)
+        for I in CartesianIndices(NumTracers)
+            if NumTracers[I]>0
+                Iph =  CartesianIndex((Tuple(I)...,BackgroundPhase))
+                PhaseRatio[Iph] = PhaseRatio[Iph] - 1.0;        # subtract the value we added @ the beginning 
+            end
+        end
+    end
+
+    # normalize
+    PhaseRatioSum = sum(PhaseRatio, dims=dim+1);
+    for I in CartesianIndices(PhaseRatio)
+        Isum = (Tuple(I)[1:dim]...,1)
+        PhaseRatio[I] =   PhaseRatio[I]/PhaseRatioSum[Isum...]   
+    end
+
+    if  !isnothing(ReturnNumTracers)
+        return NumTracers
+    else
+        return nothing
+    end
+end
+
+
+"""
+    PhaseFromTracers!(Phases::AbstractArray, Grid::GridData, Tracers; InterpolationMethod="Constant", BackgroundPhase=nothing)
+
+This computes the `Phases` from the `Tracers` on the gridpoints described by `Grid`. The `Phases` is a matrix with integers that indicates the dominant phase at that point 
+
+
+optional Parameters:
+
+- InterpolationMethod:    Interpolation method used to go from Tracers ->  Grid
+    "Constant"          -   All particles within a distance [dx,dy,dz] around the grid point 
+    "DistanceWeighted"  -   Particles closer to the grid point have a stronger weight.
+                                            This follows what is described in:
+                                                Duretz, T., May, D.A., Gerya, T.V., Tackley, P.J., 2011. Discretization errors and 
+                                                free surface stabilization in the finite difference and marker-in-cell method for applied geodynamics: 
+                                                A numerical study: Geochem. Geophys. Geosyst. 12, https://doi.org/10.1029/2011GC00356
+
+- BackgroundPhase:       The background phase (used for places that don't have cells, nor surrounding cells )
+- ReturnNumTracers:      Return the number of tracers on every grid cell (default=false)
+"""
+function PhasesFromTracers!(Phases::AbstractArray, Grid::GridData{_T,dim}, Tracers; InterpolationMethod="Constant", BackgroundPhase=nothing, ReturnNumTracers=nothing) where {_T, dim}
+
+    maxPhase    = maximum(Tracers.Phase)
+    PhaseRatio  = zeros((Grid.N..., maxPhase)...);
+    
+    # Compute tracers
+    NumTracers = PhaseRatioFromTracers!(PhaseRatio, Grid, Tracers, InterpolationMethod=InterpolationMethod, BackgroundPhase=BackgroundPhase,ReturnNumTracers=ReturnNumTracers)
+
+    for I in CartesianIndices(Phases)
+        id       = Tuple(I)
+        maxPhase = argmax(PhaseRatio[id...,:])
+        Phases[I] = maxPhase;
+    end
+
+    return NumTracers 
 end
 
 
