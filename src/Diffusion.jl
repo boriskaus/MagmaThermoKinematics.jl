@@ -13,10 +13,23 @@ using ParallelStencil.FiniteDifferences2D
 using CUDA
 using Parameters
 
+using MagmaThermoKinematics.Grid
+
 import ..compute_meltfraction_ps!, ..compute_dϕdT_ps!, ..compute_density_ps!, ..compute_heatcapacity_ps!, 
        ..compute_conductivity_ps!, ..compute_radioactive_heat_ps!, ..compute_latent_heat_ps!
 
-@parallel_indices (i,j) function GridArray!(X::AbstractArray, Z::AbstractArray, x::AbstractArray,z::AbstractArray)
+"""
+    GridArray!(X::AbstractArray, Z::AbstractArray, Grid::GridData)
+
+In-place function that creates 2D arrays with `x` and `z` coordinates using the `Grid` information
+"""
+function GridArray!(X::AbstractArray, Z::AbstractArray, Grid::GridData)
+    @parallel (1:Grid.N[1], 1:Grid.N[2]) GridArray!(X, Z, Grid.coord1D[1], Grid.coord1D[2])
+
+    return nothing
+end
+       
+@parallel_indices (i,j) function GridArray!(X::AbstractArray, Z::AbstractArray, x::AbstractVector,z::AbstractVector)
         X[i,j] = x[i]
         Z[i,j] = z[j]
     return 
@@ -270,7 +283,18 @@ end
     return
 end
 
-@parallel_indices (i,j,k) function GridArray!(X::AbstractArray, Y::AbstractArray, Z::AbstractArray, x::AbstractArray, y::AbstractArray,z::AbstractArray)
+"""
+    GridArray!(X::AbstractArray, Y::AbstractArray,   Z::AbstractArray, Grid::GridData)
+
+In-place function that creates 3D arrays with `x`,`y` and `z` coordinates using the `Grid` information
+"""
+function GridArray!(X::AbstractArray, Z::AbstractArray, Grid::GridData)
+    @parallel (1:Grid.N[1], 1:Grid.N[2], 1:Grid.N[3]) GridArray!(X, Y, Z, Grid.coord1D[1], Grid.coord1D[2], Grid.coord1D[3])
+
+    return nothing
+end
+
+@parallel_indices (i,j,k) function GridArray!(X::AbstractArray, Y::AbstractArray, Z::AbstractArray, x::AbstractVector, y::AbstractVector,z::AbstractVector)
         X[i,j,k] = x[i]
         Y[i,j,k] = y[j]
         Z[i,j,k] = z[k]
