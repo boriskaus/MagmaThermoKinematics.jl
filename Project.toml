@@ -1,7 +1,7 @@
 name = "MagmaThermoKinematics"
 uuid = "e7fe3d1a-f102-40b5-a66b-64b14986c4c8"
 authors = ["Boris Kaus <kaus@uni-mainz.de>"]
-version = "0.3.0"
+version = "0.4.0"
 
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
@@ -24,7 +24,20 @@ TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 
 [compat]
 GeoParams = "0.3"
-julia = "1.5.0"
+julia = "1.5"
+CUDA = "3.9"
+CairoMakie = "0.7"
+GLMakie ="0.5"
+Interpolations="0.13"
+JLD2 = "0.4"
+MAT = "0.10"
+ParallelStencil = "0.6"
+Parameters = "0.12"
+Plots = "1.0"
+Reexport = "1"
+StaticArrays = "1.4"
+StructArrays  = "0.6"
+TimerOutputs  = "0.5"
 
 [extras]
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
