@@ -6,7 +6,7 @@ const USE_GPU=false;
 using MagmaThermoKinematics
 if USE_GPU
     environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    CUDA.device!(1)                     # select the GPU you use (starts @ zero)
+    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
 else
     environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
 end
@@ -92,6 +92,8 @@ end
     GridArray!(Arrays.R, Arrays.Z, Grid)        
     Arrays.Rc              .=   (Arrays.R[2:end,:] + Arrays.R[1:end-1,:])/2         # center points in x
     # --------------------------------------------
+
+    println("Timestep Δt= $(Num.dt/SecYear) ")
     
     Tracers                 =   StructArray{Tracer}(undef, 1)                       # Initialize tracers   
     dike                    =   Dike(W=Dikes.W_in,H=Dikes.H_in,Type=Dikes.Type,T=Dikes.T_in_Celsius, Center=Dikes.Center[:]);               # "Reference" dike with given thickness,radius and T
@@ -152,6 +154,7 @@ end
     # --------------------------------------------
 
     for it = 1:Num.nt   # Time loop
+        time                =   time + Num.dt;                                     # Keep track of evolved time
 
         # Add new dike every X years -----------------
         if floor(time/Dikes.InjectionInterval)> dike_inj      
@@ -189,12 +192,11 @@ end
         @timeit to "Update tracers"  UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);      # Update info on tracers 
 
         # copy back to gpu
-        Arrays.Tnew          .= Data.Array(Tnew_cpu)
+        Arrays.Tnew   .= Data.Array(Tnew_cpu)
         Arrays.ϕ      .= Data.Array(Phi_melt_cpu)
 
         @parallel assign!(Arrays.T, Arrays.Tnew)
         @parallel assign!(Arrays.Tnew, Arrays.T)
-        time                =   time + Num.dt;                                     # Keep track of evolved time
         Melt_Time[it]       =   sum( Arrays.ϕ)/(Num.Nx*Num.Nz)              # Melt fraction in crust    
         
         ind = findall(Arrays.T.>700);          
@@ -216,7 +218,7 @@ end
             @timeit to "visualisation" begin
                 time_Myrs = time/Myr;
 
-            T_plot = Array(Arrays.T)
+            T_plot = Array(Arrays.Tnew)
             T_init_plot = Array(Arrays.T_init)
             Phi_melt_plot = Array(Arrays.ϕ)
             # ---------------------------------
@@ -291,7 +293,7 @@ end
             if it==Num.nt   
                 # save tracers & material parameters of the simulation in jld2 format so we can reproduce this
                 filename = "$(Num.SimName)/Tracers_SimParams.jld2"
-                jldsave(filename; Tracers, Dikes, Num, Mat_tup, Time_vec, Melt_Time, Tav_magma_Time)
+                jldsave(filename; Tracers, Dikes, Num, Mat_tup, Time_vec, Melt_Time, Tav_magma_Time, Phases)
                 println("  Saved Tracers & simulation parameters to file $filename ")    
 
                 filename = "$(Num.SimName)/Tracers.mat"
@@ -304,7 +306,7 @@ end
 
     end
     x,z = Grid.coord1D[1],Grid.coord1D[2]
-    return x,z,Arrays.T, Time_vec, Melt_Time, Tracers, dike_poly, Grid;
+    return x,z,Arrays.T, Time_vec, Melt_Time, Tracers, dike_poly, Grid, Phases;
 end # end of main function
 
 
@@ -434,14 +436,15 @@ if 1==1
 
     # ZASSy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating_smoothQuad_initialEllipse_3
     # ZASSy_UCLA_ellipticalIntrusion_variable_k_radioactiveheating_smoothQuad_initialEllipse
-    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating_Assimilation_initialEllipse", 
-                            SaveOutput_steps=2000, CreateFig_steps=1000, axisymmetric=false,
-                            flux_bottom_BC=true, flux_bottom=167e-3, fac_dt=0.2, ω=0.6, verbose=false,
-                            maxTime_Myrs=0.01, 
+    # ZASSy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating_Quadratic_noHostrockLatent_initialEllipse
+    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating_AssimilationAndQuadratic_initialEllipse_La0_Lm267", 
+                            SaveOutput_steps=1000, CreateFig_steps=1000, axisymmetric=false,
+                            flux_bottom_BC=true, flux_bottom=167e-3, fac_dt=0.4,  ω=0.6, verbose=false, dt = 20*SecYear,
+                            maxTime_Myrs=0.7, 
                             AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=170e-3, qm_anal=167e-3, hr_anal=10e3, k_anal=3.3453,
                             InitialEllipse =   true, a_init= 2.5e3,  b_init  =   1.5e3,
                             FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);                            
-                                 
+   
 #=
     # Note: in k-dependent cases, we have a much lower k @ the bottom
     #   julia> p=T_Conductivity_Whittington();
@@ -474,17 +477,19 @@ if 1==1
     Dike_params  = DikeParam(Type="EllipticalIntrusion", InjectionInterval_year = InjectionInterval_yr, 
                             W_in=V_inj_a*2*1e3, 
                             H_in=V_inj_b*2*1e3, 
-                            Center=[0, mid_depth_km*1e3])
+                            Center=[0, mid_depth_km*1e3],
+                            nTr_dike=3000)
 
     MatParam     = (SetMaterialParams(Name="Host rock", Phase=1, 
                                     Density    = ConstantDensity(ρ=3345.3kg/m^3),                    # used in the parameterisation of Whittington 
-                                    LatentHeat = ConstantLatentHeat(Q_L=2.67e5J/kg),
+                                    LatentHeat = ConstantLatentHeat(Q_L=0*2.55e5J/kg),
                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=3e-7Watt/m^3),
                                   Conductivity = ConstantConductivity(k=3.3453Watt/K/m),            # in case we use constant k 
                                   HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
                                  #Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
-                                 #HeatCapacity = T_HeatCapacity_Whittington(),                                                       # T-dependent cp
-                                       Melting = MeltingParam_Assimilation()),       # Quadratic parameterization as in Tierney et al.
+                                 #HeatCapacity = T_HeatCapacity_Whittington(),     # T-dependent cp
+                               # Melting = MeltingParam_Assimilation()              
+                                 ),       # Quadratic parameterization as in Tierney et al.
                     SetMaterialParams(Name="Intruded rocks", Phase=2, 
                                     Density    = ConstantDensity(ρ=3345.3kg/m^3),                    # used in the parameterisation of Whittington 
                                     LatentHeat = ConstantLatentHeat(Q_L=2.67e5J/kg),
@@ -495,7 +500,6 @@ if 1==1
                                  #HeatCapacity = T_HeatCapacity_Whittington(),                       # T-dependent cp
                                        Melting = SmoothMelting(MeltingParam_Quadratic(T_s=(700+273.15)K, T_l=(1100+273.15)K)))       
             )
-
 end
 
 
@@ -529,6 +533,7 @@ if 1==0
                             maxTime_Myrs=1.13, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
                             FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);             
     
+
     Flux         = 7.5e-6;                              # in km3/km2/a 
     Total_r_km   = 10;                                  # final radius of area
     V_inject_km3 = 10;                                  # injection volume per sill injection
@@ -558,7 +563,8 @@ if 1==0
     Dike_params  = DikeParam(Type="EllipticalIntrusion", InjectionInterval_year = InjectionInterval_yr, 
                             W_in=V_inj_a*2*1e3, 
                             H_in=V_inj_b*2*1e3, 
-                            Center=[0, mid_depth_km*1e3])
+                            Center=[0, mid_depth_km*1e3],
+                            nTr_dike=1000)
 
     MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
                                     Density    = ConstantDensity(ρ=2700kg/m^3),                # used in the parameterisation of Whittington 
@@ -577,7 +583,7 @@ const to = TimerOutput()
 reset_timer!(to)
 
 # Call the main code with the specified material parameters
-x,z,T, Time_vec,Melt_Time, Tracers, dike_poly, Grid = MainCode_2D(MatParam, Num, Dike_params); # start the main code
+x,z,T, Time_vec,Melt_Time, Tracers, dike_poly, Grid, Phases = MainCode_2D(MatParam, Num, Dike_params); # start the main code
 
 @show(to)
 
