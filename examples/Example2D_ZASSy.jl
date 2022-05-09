@@ -1,5 +1,5 @@
 # This example reproduces the cases shown in the ZASSy manuscript, which we are currently preparing.
-#  It includes comparisons with 2D simulations done by the Geneva (Gregor Weber, Luca Caricchi) & UCLA (Oscar Lovera) Tracers_SimParams
+#  It includes comparisons with 2D simulations done by the Geneva (Gregor Weber, Luca Caricchi) & UCLA (Oscar Lovera) teams.
 #
 # 
 const USE_GPU=false;
@@ -14,7 +14,7 @@ using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
 
 using CairoMakie    # plotting
 using Printf        # pretty print    
-using MAT, JLD2     # saves files in matlab format & JLD2 (hdf5) format
+using MAT, JLD2     # saves files in matlab format & JLD2 (HDF5) format
 
 using TimerOutputs
 
