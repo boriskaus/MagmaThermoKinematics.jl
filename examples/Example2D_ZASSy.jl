@@ -1,5 +1,5 @@
 # This example reproduces the cases shown in the ZASSy manuscript, which we are currently preparing.
-#  It includes comparisons with 2D simulations done by the Geneva (Gregor Weber, Luca Caricchi) & UCLA (Oscar Lovera) teams.
+#  It includes comparisons with 2D simulations done by the Geneva (Gregor Weber, Luca Caricchi) & UCLA (Oscar Lovera) Tracers_SimParams
 #
 # 
 const USE_GPU=false;
@@ -14,7 +14,7 @@ using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
 
 using CairoMakie    # plotting
 using Printf        # pretty print    
-using MAT, JLD2     # saves files in matlab format & JLD2 (HDF5) format
+using MAT, JLD2     # saves files in matlab format & JLD2 (hdf5) format
 
 using TimerOutputs
 
@@ -437,6 +437,7 @@ if 1==1
     # ZASSy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating_smoothQuad_initialEllipse_3
     # ZASSy_UCLA_ellipticalIntrusion_variable_k_radioactiveheating_smoothQuad_initialEllipse
     # ZASSy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating_Quadratic_noHostrockLatent_initialEllipse
+#=    
     Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating_AssimilationAndQuadratic_initialEllipse_La0_Lm267", 
                             SaveOutput_steps=1000, CreateFig_steps=1000, axisymmetric=false,
                             flux_bottom_BC=true, flux_bottom=167e-3, fac_dt=0.4,  ω=0.6, verbose=false, dt = 20*SecYear,
@@ -444,8 +445,9 @@ if 1==1
                             AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=170e-3, qm_anal=167e-3, hr_anal=10e3, k_anal=3.3453,
                             InitialEllipse =   true, a_init= 2.5e3,  b_init  =   1.5e3,
                             FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);                            
-   
-#=
+  =#
+
+
     # Note: in k-dependent cases, we have a much lower k @ the bottom
     #   julia> p=T_Conductivity_Whittington();
     #   julia> compute_conductivity(p,T=1030+273.15)
@@ -456,14 +458,14 @@ if 1==1
     #   1-element Vector{Float64}:
     #           1.793946
     # for that reason, we have to decrease the bottom heat flux
-    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_ellipticalIntrusion_variable_k_radioactiveheating_smoothQuad_initialEllipse", 
+    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_ellipticalIntrusion_variable_k_radioactiveheating_AssimilationAndQuadratic_initialEllipse_La255_Lm267", 
                         SaveOutput_steps=2000, CreateFig_steps=1000, axisymmetric=false,
                         flux_bottom_BC=true, flux_bottom=50/1e3*1.84, fac_dt=0.2, ω=0.6, verbose=false,
-                        maxTime_Myrs=0.7, 
+                        maxTime_Myrs=0.5, 
                         AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=170e-3, qm_anal=167e-3, hr_anal=10e3, k_anal=3.3453,
                         InitialEllipse =   true, a_init= 2.5e3,  b_init  =   1.5e3,
                         FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);                            
-=#
+
 
     mid_depth_km = -7.0;                   # mid depth of injection area [km]
     
@@ -482,22 +484,22 @@ if 1==1
 
     MatParam     = (SetMaterialParams(Name="Host rock", Phase=1, 
                                     Density    = ConstantDensity(ρ=3345.3kg/m^3),                    # used in the parameterisation of Whittington 
-                                    LatentHeat = ConstantLatentHeat(Q_L=0*2.55e5J/kg),
+                                    LatentHeat = ConstantLatentHeat(Q_L=2.55e5J/kg),
                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=3e-7Watt/m^3),
-                                  Conductivity = ConstantConductivity(k=3.3453Watt/K/m),            # in case we use constant k 
-                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
-                                 #Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
-                                 #HeatCapacity = T_HeatCapacity_Whittington(),     # T-dependent cp
-                               # Melting = MeltingParam_Assimilation()              
+                                #  Conductivity = ConstantConductivity(k=3.3453Watt/K/m),            # in case we use constant k 
+                                #  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                 Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
+                                 HeatCapacity = T_HeatCapacity_Whittington(),     # T-dependent cp
+                                Melting = MeltingParam_Assimilation()              
                                  ),       # Quadratic parameterization as in Tierney et al.
                     SetMaterialParams(Name="Intruded rocks", Phase=2, 
                                     Density    = ConstantDensity(ρ=3345.3kg/m^3),                    # used in the parameterisation of Whittington 
                                     LatentHeat = ConstantLatentHeat(Q_L=2.67e5J/kg),
                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=3e-7Watt/m^3),
-                                  Conductivity = ConstantConductivity(k=3.3453Watt/K/m),            # in case we use constant k 
-                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
-                                 #Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
-                                 #HeatCapacity = T_HeatCapacity_Whittington(),                       # T-dependent cp
+                                 # Conductivity = ConstantConductivity(k=3.3453Watt/K/m),            # in case we use constant k 
+                                 # HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                 Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
+                                 HeatCapacity = T_HeatCapacity_Whittington(),                       # T-dependent cp
                                        Melting = SmoothMelting(MeltingParam_Quadratic(T_s=(700+273.15)K, T_l=(1100+273.15)K)))       
             )
 end
