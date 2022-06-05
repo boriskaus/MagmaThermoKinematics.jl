@@ -121,6 +121,7 @@ function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T,dim}, Phi
         # Boundaries of the grid
         Bound_min = minimum.(Grid)
         Bound_max = maximum.(Grid)
+        N         = length.(Grid)
         
         if dim==2
             Δx = Grid[1][2]-Grid[1][1]
@@ -130,7 +131,6 @@ function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T,dim}, Phi
             Δy = Grid[2][2]-Grid[2][1]
             Δz = Grid[3][2]-Grid[3][1]
         end
-
         for iT = 1:length(Tracers)  
             Trac = Tracers[iT];
             pt   = Trac.coord
@@ -143,11 +143,11 @@ function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T,dim}, Phi
             
             # Linear interpolation:
             if dim==2
-                Trac_T = interpolate_linear_2D(pt[1], pt[2], Bound_min, Δx, Δz, T   )
-                Trac_ϕ = interpolate_linear_2D(pt[1], pt[2], Bound_min, Δx, Δz, Phi )
+                Trac_T = interpolate_linear_2D(pt[1], pt[2], Bound_min, N, Δx, Δz, T   )
+                Trac_ϕ = interpolate_linear_2D(pt[1], pt[2], Bound_min, N, Δx, Δz, Phi )
             elseif dim==3
-                Trac_T = interpolate_linear_3D(pt[1], pt[2], pt[3], Bound_min, Δx, Δy, Δz, T   )
-                Trac_ϕ = interpolate_linear_3D(pt[1], pt[2], pt[3], Bound_min, Δx, Δy, Δz, Phi )
+                Trac_T = interpolate_linear_3D(pt[1], pt[2], pt[3], Bound_min, N, Δx, Δy, Δz, T   )
+                Trac_ϕ = interpolate_linear_3D(pt[1], pt[2], pt[3], Bound_min, N, Δx, Δy, Δz, Phi )
             end
 
             # Update values on tracers
@@ -189,16 +189,17 @@ function UpdateTracers_Field!(Tracers::StructVector{TRACERS}, Grid::GridData{_T,
             pt   = Trac.coord
 
             # correct point for bounds:
+            eps = 1e-3
             for i=1:dim
-                if pt[i]<Grid.min[i]; pt[i] = Grid.min[i]; end
-                if pt[i]>Grid.max[i]; pt[i] = Grid.max[i]; end
+                if (pt[i]<Grid.min[i]);  pt[i] = Grid.min[i]; end
+                if (pt[i]>Grid.max[i]) ; pt[i] = Grid.max[i]; end
             end                
             
             # Linear interpolation from grid -> point (assumes constant spacing in each dimension)
             if dim==2
-                Trac_val = interpolate_linear_2D(pt[1], pt[2], Grid.min, Grid.Δ[1], Grid.Δ[2], Field )
+                Trac_val = interpolate_linear_2D(pt[1], pt[2], Grid.min, Grid.N, Grid.Δ[1], Grid.Δ[2], Field )
             elseif dim==3
-                Trac_val = interpolate_linear_3D(pt[1], pt[2], pt[3], Bound_min, Grid.Δ[1], Grid.Δ[2], Grid.Δ[3], Field   )
+                Trac_val = interpolate_linear_3D(pt[1], pt[2], pt[3], Grid.min, Grid.Δ[1], Grid.Δ[2], Grid.Δ[3], Field   )
             end
 
             # Update values on tracers
@@ -224,17 +225,23 @@ end
 
 Implements 2D bilinear interpolation 
 """
-function interpolate_linear_2D(pt_x, pt_z, Bound_min, Δx, Δz, Field )
-
+function interpolate_linear_2D(pt_x, pt_z, Bound_min, N, Δx, Δz, Field )
     ix      = floor(Int64, (pt_x - Bound_min[1])/Δx)
     iz      = floor(Int64, (pt_z - Bound_min[2])/Δz)
+    
+    # deal with boundaries
+    ix      = min(ix,N[1]-2)
+    iz      = min(iz,N[2]-2)
+    ix      = max(ix,1)
+    iz      = max(iz,1)
+   
     fac_x   = (pt_x - ix*Δx - Bound_min[1])/Δx     # distance to lower left point
     fac_z   = (pt_z - iz*Δz - Bound_min[2])/Δz     # distance to lower left point
    
     # interpolate in x    
     val_x_bot =  (1.0-fac_x)*Field[ix+1,iz+1] +  ( fac_x)*Field[ix+2,iz+1]
     val_x_top =  (1.0-fac_x)*Field[ix+1,iz+2] +  ( fac_x)*Field[ix+2,iz+2]
-     
+    
     # Interpolate value in z
     val    = (1.0-fac_z)*val_x_bot + fac_z*val_x_top
 
@@ -245,11 +252,20 @@ end
 
 Implements 3D trilinear interpolation 
 """
-function interpolate_linear_3D(pt_x, pt_y, pt_z, Bound_min, Δx, Δy, Δz, Field )
+function interpolate_linear_3D(pt_x, pt_y, pt_z, Bound_min, N, Δx, Δy, Δz, Field )
 
     ix = floor(Int64, (pt_x - Bound_min[1])/Δx)
     iy = floor(Int64, (pt_y - Bound_min[2])/Δy)
     iz = floor(Int64, (pt_z - Bound_min[3])/Δz)
+
+    # deal with boundaries
+    ix      = min(ix,N[1]-2)
+    iy      = min(iy,N[2]-2)
+    iz      = min(iz,N[3]-2)
+    ix      = max(ix,1)
+    iy      = max(iy,1)
+    iz      = max(iz,1)
+    
     fac_x = (pt_x - ix*Δx - Bound_min[1])/Δx     # distance to lower left point
     fac_y = (pt_y - iy*Δy - Bound_min[2])/Δy     # distance to lower left point
     fac_z = (pt_z - iz*Δz - Bound_min[3])/Δz     # distance to lower left point
