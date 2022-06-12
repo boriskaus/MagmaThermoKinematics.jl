@@ -2,12 +2,11 @@
 
 [![Build Status](https://github.com/boriskaus/MagmaThermoKinematics.jl/workflows/CI/badge.svg)](https://github.com/boriskaus/MagmaThermoKinematics.jl/actions)
 
-Understanding how magmatic systems evolve and how the rock record can be interpreted is of interest to a wide range of Earth Scientists.
+Understanding how magmatic systems work is of interest to a wide range of Earth Scientists.
 
-This easy to use and versatile package simulates the thermal evolution of magmatic systems, consisting of (kinematically) emplaced dikes. It can take 2D, 2D axisymmetric and 3D geometries into account, and works in parallel on both CPU (and GPU's). A finite difference discretization is employed for the energy equation, combined with semi-Lagrangian advection and tracers to track the thermal evolution of emplaced magma. Dikes are emplaced kinematically and the host rock is shifted to accommodate space for the intruding dikes/sills, using analytical models for penny-shaped cracks in elastic media. Cooling, crystallizing and latent heat effects are taken into account, and the thermal evolution of tracers can be used to simulate zircon age distributions.
+This easy to use and versatile package simulates the thermal evolution of magmatic systems following the intrusion of dikes and sills. It can take 2D, 2D axisymmetric and 3D geometries into account, and works on both parallel CPU's and GPU's. A finite difference discretization is employed for the energy equation, combined with semi-Lagrangian advection and tracers to track the thermal evolution of emplaced magma. Dikes are emplaced kinematically and the host rock is shifted to accommodate space for the intruding dikes/sills, in a number of ways including by using analytical models for penny-shaped cracks in elastic media. Cooling, crystallizing and latent heat effects are taken into account, and the thermal evolution of tracers can be used to simulate zircon age distributions.
 
 Below we give a number of example scripts that show how it can be used to simulate a number of scenarios.
-
 
 ## Contents
   - [100-lines 2D example](#100-lines-2d-example)
@@ -246,7 +245,7 @@ Time_vec, Melt_Time, Tracers, Grid, Arrays = MainCode_3D(); # start the main cod
 The result of the script are a range of VTK files, which can be visualized with the 3D software [Paraview](https://www.paraview.org). The full code example can be downloaded [here](./examples/Example3D.jl), and the paraview statefile (to reproduce the movie) is available [here](./examples/movies/Example3D_Paraview.pvsm).
 
 ## Dependencies
-We rely on [ParallelStencil.jl](https://github.com/omlins/ParallelStencil.jl) to for the energy solver, [GeoParams.jl](https://github.com/JuliaGeodynamics/GeoParams.jl) to define material properties (such as nonlinear conductivity, melting, etc.), [StructArrays.jl](https://github.com/JuliaArrays/StructArrays.jl) to generate an aray of tracer structures, [Random.jl](https://docs.julialang.org/en/v1/stdlib/Random/) for random number generation, [Parameters.jl](https://github.com/mauro3/Parameters.jl) to simplify setting parameters (such as specifying dike properties), [Interpolations.jl](https://github.com/JuliaMath/Interpolations.jl) to interpolate properties such as temperature from a fixed grid to tracers, and [StaticArrays.jl](https://github.com/JuliaArrays/StaticArrays.jl) for speed. All these dependencies should be installed automatically if you install `MagmaThermoKinematics.jl`.
+We rely on [ParallelStencil.jl](https://github.com/omlins/ParallelStencil.jl) for the energy solver, [GeoParams.jl](https://github.com/JuliaGeodynamics/GeoParams.jl) to define material properties (such as nonlinear conductivity, melting, etc.), [StructArrays.jl](https://github.com/JuliaArrays/StructArrays.jl) to generate an aray of tracer structures, [Random.jl](https://docs.julialang.org/en/v1/stdlib/Random/) for random number generation, [Parameters.jl](https://github.com/mauro3/Parameters.jl) to simplify setting parameters (such as specifying dike properties), [Interpolations.jl](https://github.com/JuliaMath/Interpolations.jl) to interpolate properties such as temperature from a fixed grid to tracers, and [StaticArrays.jl](https://github.com/JuliaArrays/StaticArrays.jl) for speed. All these dependencies should be installed automatically if you install `MagmaThermoKinematics.jl`.
 
 [Plots.jl](http://docs.juliaplots.org/latest/) is employed for plotting, and [WriteVTK.jl](https://github.com/jipolanco/WriteVTK.jl) is used in the 3D example to generate `*.vtr/*.pvd` files that can be visualized with [Paraview](https://www.paraview.org). You have to add both packages yourself; they are however anyways useful to have.
 
@@ -254,17 +253,17 @@ We rely on [ParallelStencil.jl](https://github.com/omlins/ParallelStencil.jl) to
 After installing julia in the usual manner, you can add (and test) the package with 
 ```
 julia>]
-  pkg> add https://github.com/omlins/ParallelStencil.jl
-  pkg> add https://github.com/boriskaus/MagmaThermoKinematics.jl
+  pkg> add MagmaThermoKinematics
   pkg> test MagmaThermoKinematics
 ```
-We use ParallelStencil.jl, which is not (yet) a registed julia package, which is why you have to install that first.
+Dependecies such as `ParallelStencil.jl` are installed automatically.
 The testing suite run above performs a large number of tests and, among others, compares the results with analytical solutions for advection/diffusion. Let us know if you encounter problems. 
 
-If you want to run the examples and create plots, you may also want to install these two packages:
+If you want to run the examples and create plots, you may also want to install these packages:
 ```
 julia>]
   pkg> add Plots
+  pkg> add Makie
   pkg> add WriteVTK
 ```
 Next, you can download one of the codes above, put it in your current directory, and start it with
@@ -277,9 +276,14 @@ julia>]
   pkg> update MagmaThermoKinematics
 ```
 
+If you are interested in running benchmark scenarios, comparing `MagmaThermoKinematics.jl`, versus codes previously used by the `Geneva` (Gregor Weber, Luca Caricchi) and `UCLA` (Oscar Lovera) research group, run this:
+```
+julia> include("examples/Example2D_ZASSy.jl")
+```
+
 ## Ongoing development
 
-We are working on a more general magmatic systems software as part of the [MAGMA](https://magma.uni-mainz.de) project funded by the European Research Council. That will not only include thermal diffusion solvers and kinematically emplaced dikes (as done here), but also mechanical multiphysics solvers (to compute stress and deformation rate in the system, for example). For that we follow a modular and reusable software approach, where various software componentys are are defined in external package and re-usable packages, will which ultimately make it easier to write new software and apply that to natural cases. An example is the [GeoParams.jl](https://github.com/JuliaGeodynamics/GeoParams.jl) package where material properties (e.g., density, heat capacity, thermal conductivity) are defined, that can be used by other packages (such as MagmaThermoKinematics.jl). The advantage is that such material properties only have to be defined once, and can subsequently be used in a whole range of software packages.  
+We are working on a more general magmatic systems software as part of the [MAGMA](https://magma.uni-mainz.de) project funded by the European Research Council. That will not only include thermal diffusion solvers and kinematically emplaced dikes (as done here), but also mechanical multiphysics solvers (to compute stress and deformation rate in the system, for example). For that we follow a modular and reusable software approach, where various software componentys are are defined in external package and re-usable packages, will which ultimately make it easier to write new software and apply that to natural cases. An example is the [GeoParams.jl](https://github.com/JuliaGeodynamics/GeoParams.jl) package where material properties (e.g., density, heat capacity, thermal conductivity) are defined, that can be used by other packages (such as MagmaThermoKinematics.jl). The advantage of this approach is that such material properties only have to be defined once, and can subsequently be used in a whole range of software packages.  
 If you are interested in this, have a look at [https://github.com/JuliaGeodynamics/](https://github.com/JuliaGeodynamics/).
 
 MagmaThermoKinematics is currently being used as an example case to test this software infrastructure. As a result, the functionality and the internals of the code is expected to change on a regular basis.
