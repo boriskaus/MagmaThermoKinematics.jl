@@ -79,6 +79,16 @@ end
     nTr_dike::Int64                 =   300                     # Number of tracers 
 end
 
+"""
+    Analytical geotherm used for the UCLA setups, which includes radioactive heating
+"""
+function AnalyticalGeotherm!(T, Z, Tsurf, qm, qs, k, hr)
+
+    T      .=  @. Tsurf - (qm/k)*Z + (qs-qm)*hr/k*( 1.0 - exp(Z/hr)) 
+
+    return nothing
+end
+
 #------------------------------------------------------------------------------------------
 @views function MainCode_2D(Mat_tup, Num, Dikes);
     
@@ -92,6 +102,7 @@ end
     Grid    = CreateGrid(size=(Num.Nx,Num.Nz), extent=(Num.W, Num.H))   
     GridArray!(Arrays.R, Arrays.Z, Grid)        
     Arrays.Rc              .=   (Arrays.R[2:end,:] + Arrays.R[1:end-1,:])/2         # center points in x
+    Rc_CPU                  = Array(Arrays.Rc);                                 # on CPU
     # --------------------------------------------
 
     println("Timestep Δt= $(Num.dt/SecYear) ")
@@ -104,6 +115,7 @@ end
         # Turcotte & Schubert  analytical geotherm which takes depth-dependent radioactive heating into account
         # This is used in the UCLA setup. Parameters in Mat_tup should be consistent with this (we don't check for that)
         Arrays.T_init      .=  @. Num.Tsurface_Celcius - (Num.qm_anal/Num.k_anal)*Arrays.Z + (Num.qs_anal-Num.qm_anal)*Num.hr_anal/Num.k_anal*( 1.0 - exp(Arrays.Z/Num.hr_anal)) 
+        #AnalyticalGeotherm!(Arrays.T_init, Arrays.Z, Num.Tsurface_Celcius, Num.qm_anal, Num.qs_anal, Num.k_anal, Num.hr_anal)
 
         Geothermalgradient_K_km = (maximum(Arrays.T_init) - minimum(Arrays.T_init))/(maximum(Arrays.Z) - minimum(Arrays.Z))*1e3
         # check that this is selected
@@ -131,6 +143,7 @@ end
     # --------------------------------------------
         
     # Optionally set initial sill in models ------
+    InjectVol = 0.0;
     dike_poly   = []
     if Dikes.Type  == "CylindricalDike_TopAccretion"
         ind = findall( (Arrays.R.<=Dikes.W_in/2) .& (abs.(Arrays.Z.-Dikes.Center[2]) .< Dikes.H_in/2) );
@@ -142,14 +155,33 @@ end
     if Num.InitialEllipse
         ind =  findall( ((Arrays.R.^2.0)/(Num.a_init^2.0) .+ ((Arrays.Z.-Dikes.Center[2]).^2.0)/((Num.b_init)^2.0)) .< 1.0); # ellipse
         Arrays.T_init[ind] .= Dikes.T_in_Celsius;
-        dike_poly   =   CreateDikePolygon(Dike(dike,W=Num.a_init*2, H=Num.b_init*2));
+        #dike_poly   =   CreateDikePolygon(Dike(dike,W=Num.a_init*2, H=Num.b_init*2));
+
+        #InjectVol += 4/3*pi*(Num.a_init)^2*Num.b_init;
+
+
+        # Inject initial dike to the tracers
+        dike_initial        =   Dike(dike, Center=Dikes.Center[:],Angle=[0],W=Num.a_init*2, H=Num.b_init*2);           # Specify dike with random location/angle but fixed size/T 
+        Tnew_cpu           .=   Array(Arrays.T)
+        @timeit to "Dike intrusion" Tracers, Tnew_cpu,Vol,dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike_initial, Dikes.nTr_dike, dike_poly=dike_poly);     # Add dike, move hostrocks
+        
+        Arrays.T           .=   Data.Array(Tnew_cpu)
+        InjectVol          +=   Vol                                                     # Keep track of injected volume
+        if Num.advect_polygon==true && isempty(dike_poly)
+            dike_poly   =   CreateDikePolygon(dike_initial);            # create dike for the 1th time
+        end
+        @printf "  Added initial dike; total injected magma volume = %.2f km³ \n"  InjectVol/km³ 
+      
+
     end
     # --------------------------------------------
     
     # Initialise arrays --------------------------
     @parallel assign!(Arrays.Tnew, Arrays.T_init)
     @parallel assign!(Arrays.T, Arrays.T_init)
-    time, dike_inj, InjectVol, Time_vec,Melt_Time,Tav_magma_Time = 0.0, 0.0, 0.0,zeros(Num.nt,1),zeros(Num.nt,1),zeros(Num.nt,1);
+    time, dike_inj, Time_vec,Melt_Time,Tav_magma_Time, Tav_3D_magma_Time, VolMelt_time,
+    Tav_all_Time, Tav_3D_all_Time, Tav_Phase2_Time, Tav_3D_Phase2_Time = 0.0, 0.0,zeros(Num.nt,1),zeros(Num.nt,1),zeros(Num.nt,1), 
+                    zeros(Num.nt,1), zeros(Num.nt,1), zeros(Num.nt,1), zeros(Num.nt,1), zeros(Num.nt,1), zeros(Num.nt,1);
 
     if isdir(Num.SimName)==false mkdir(Num.SimName) end;    # create simulation directory if needed
     # --------------------------------------------
@@ -160,7 +192,7 @@ end
         X,Z = Array(Arrays.R), Array(Arrays.Z)
         Tracers_grid     =   StructArray{Tracer}(undef, 1) 
         for i in eachindex(X)
-            Tracers0 = Tracer(coord=[X[i]-1e-5,Z[i]])   #
+            Tracers0 = Tracer(coord=[X[i]-1e-3,Z[i]])   #
             push!(Tracers_grid, Tracers0);   
         end
         MagmaThermoKinematics.StructArrays.foreachfield(v -> deleteat!(v, 1), Tracers_grid)         # Delete first (undefined) row of tracer StructArray.
@@ -203,6 +235,7 @@ end
             if length(Mat_tup)>1
                 @timeit to "PhasesFromTracers"  PhasesFromTracers!(Phases, Grid, Tracers, BackgroundPhase=1, InterpolationMethod="Constant");    # update phases from grid 
             end
+
         end
         # --------------------------------------------
 
@@ -217,8 +250,8 @@ end
         
         @timeit to "Update tracers"  UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);     # Update info on tracers 
 
-        UpdateTracers_T_ϕ!(Tracers_grid, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);                             # Initialize info on grid tracers
         if (Num.TrackTracersOnGrid==true) &&  (mod(it,100)==0)
+            UpdateTracers_T_ϕ!(Tracers_grid, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);                             # Initialize info on grid tracers
             update_Tvec!(Tracers_grid, time/SecYear*1e-6)                                                        # update T & time vectors on tracers
         end
         # copy back to gpu
@@ -236,6 +269,39 @@ end
             Tav_magma_Time[it] = NaN;
         end
 
+        ind = findall((Arrays.T.>700) .& (Phases.==2));          
+        if ~isempty(ind)
+            Tav_Phase2_Time[it] = sum(Arrays.T[ind])/length(ind)                     # average T of part with magma
+        else
+            Tav_Phase2_Time[it] = NaN;
+        end
+        Tav_all_Time[it] = sum(Arrays.T)/length(Arrays.T) 
+
+        # Store volume of melt (with T>0) 
+        ind                 = findall(Tnew_cpu .> 700);
+        ix                  = [ind[i][1] for i=1:length(ind)]
+        rc                  = Grid.coord1D[1][ix]  
+        VolCells            = 2*π*rc*Grid.Δ[1]*Grid.Δ[2];
+        VolMelt_time[it]    = sum(VolCells);
+        Tav_3D_magma_Time[it] = sum(VolCells.*Tnew_cpu[ind])/sum(VolCells)           # 3D average Temperature
+        
+
+        ind                 = findall(Tnew_cpu .> 0);
+        ix                  = [ind[i][1] for i=1:length(ind)]
+        rc                  = Grid.coord1D[1][ix]  
+        VolCells            = 2*π*rc*Grid.Δ[1]*Grid.Δ[2];
+        Tav_3D_all_Time[it] = sum(VolCells.*Tnew_cpu[ind])/sum(VolCells)           # 3D average Temperature
+
+        ind                 = findall((Tnew_cpu .> 700) .& (Array(Phases).==2));
+        if ~isempty(ind)
+            ix                  = [ind[i][1] for i=1:length(ind)]
+            rc                  = Grid.coord1D[1][ix]  
+            VolCells            = 2*π*rc*Grid.Δ[1]*Grid.Δ[2];
+            Tav_3D_Phase2_Time[it] = sum(VolCells.*Tnew_cpu[ind])/sum(VolCells)         # 3D average Temperature of phase 1
+        else
+            Tav_3D_Phase2_Time[it] = NaN                                                # 3D average Temperature of phase 2
+        end
+        
         Time_vec[it]        =   time;                                               # Vector with time
 
         if mod(it,10)==0
@@ -248,9 +314,9 @@ end
             @timeit to "visualisation" begin
                 time_Myrs = time/Myr;
 
-            T_plot = Array(Arrays.Tnew)
-            T_init_plot = Array(Arrays.T_init)
-            Phi_melt_plot = Array(Arrays.ϕ)
+            T_plot          = Array(Arrays.Tnew)
+            T_init_plot     = Array(Arrays.T_init)
+            Phi_melt_plot   = Array(Arrays.ϕ)
             # ---------------------------------
             # Create plot (using Makie)
             fig = Figure(resolution = (2000,1000))
@@ -303,11 +369,12 @@ end
                 T_av_melt = NaN;
             end
             # print results:  
-            println("Timestep $it = $(round(time/kyr*100)/100) kyrs, max(T)=$(round(maximum(Arrays.T),digits=3))ᵒC, Taverage_magma=$(T_av_melt)ᵒC, max(ϕ)=$(round(maximum(Arrays.ϕ),digits=2))")
+            println("Timestep $it = $(round(time/kyr*100)/100) kyrs, max(T)=$(round(maximum(Arrays.T),digits=3))ᵒC, Tav_magma=$(T_av_melt)ᵒC, max(ϕ)=$(round(maximum(Arrays.ϕ),digits=2)), Vol_magma_3D = $(round(VolMelt_time[it]/1e9))km³, Tav_magma_3D=$(round(Tav_3D_magma_Time[it]))ᵒC")
             end
         end
         # --------------------------------------------
 
+          
         # Save output to disk once in a while --------
         if mod(it,Num.SaveOutput_steps)==0  || it==Num.nt 
             filename = "$(Num.SimName)/$(Num.SimName)_$it.mat"
@@ -329,10 +396,11 @@ end
                 
                 # save tracers & material parameters of the simulation in jld2 format so we can reproduce this
                 filename = "$(Num.SimName)/Tracers_SimParams.jld2"
+                Phases_float = Float64.(Phases)
                 if Num.TrackTracersOnGrid
-                    jldsave(filename; Tracers, Dikes, Num, Mat_tup, Time_vec, Melt_Time, Tav_magma_Time, Phases, Tracers_grid)
+                    jldsave(filename; Tracers, Dikes, Num, Mat_tup, Time_vec, Melt_Time, Tav_magma_Time, Tav_3D_magma_Time, Tav_Phase2_Time, Tav_3D_Phase2_Time, Tav_3D_all_Time, Tav_all_Time, VolMelt_time,  Phases_float, Tnew_cpu, Tracers_grid, Grid)
                 else
-                    jldsave(filename; Tracers, Dikes, Num, Mat_tup, Time_vec, Melt_Time, Tav_magma_Time, Phases)
+                    jldsave(filename; Tracers, Dikes, Num, Mat_tup, Time_vec, Melt_Time, Tav_magma_Time, Tav_3D_magma_Time, Tav_Phase2_Time, Tav_3D_Phase2_Time, Tav_3D_all_Time, Tav_all_Time, VolMelt_time,  Phases_float, Tnew_cpu, Grid)
                 end
                 println("  Saved Tracers & simulation parameters to file $filename ")    
 
@@ -351,103 +419,11 @@ end # end of main function
 
 
 # Define material parameters for the simulation. 
-
 if 1==0
-    # 1D test, Geneva-type models without magmatic injections (for comparison with 1D code)
-    Num         = NumParam(Nx=21, Nz=269, SimName="Zassy_Geneva_zeroFlux_1D_variablek_2", 
-                            flux_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=false, 
-                            SaveOutput_steps=1e4, CreateFig_steps=1000, FigTitle = "Geneva setup", plot_tracers=false);
-
-    Dike_params = DikeParam(Type="CylindricalDike_TopAccretion", InjectionInterval = 1e40, W_in=40e3)
-
-    MatParam    = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
-                                    Density    = ConstantDensity(ρ=2700kg/m^3),
-                                    LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                            #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),     # in case we use constant k
-                                  Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
-                                 #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
-                                       Melting = MeltingParam_4thOrder()),                     # Marxer & Ulmer data
-                    # add more parameters here, in case you have >1 phase in the model                                    
-                    )
-end
-
-if 1==0
-    # 2D, Geneva-type models with Greg's parameters 
-    Num         = NumParam(Nx=269, Nz=269, SimName="ZASSy_Geneva_zeroFlux_variable_k_4thordermelt", 
-                            maxTime_Myrs=1.5,
-                            flux_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=true, 
-                            SaveOutput_steps=1e4, CreateFig_steps=1000, plot_tracers=false, advect_polygon=true,
-                            FigTitle="Geneva Models");
-
-    Dike_params = DikeParam(Type="CylindricalDike_TopAccretion", InjectionInterval_year = 10e3, 
-                            W_in=20e3, H_in=74.6269)
-
-    MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
-                                    Density    = ConstantDensity(ρ=2700kg/m^3),
-                                    LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                            #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
-                                  Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
-                                 #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
-                                       Melting = MeltingParam_4thOrder()),                     # Marxer & Ulmer data
-                    # add more parameters here, in case you have >1 phase in the model                                    
-                    )
-end
-
-if 1==0
-
-    # 2D, run 02.2 Geneva-type models with Greg's original parameters 
-    Num         = NumParam(Nx=269, Nz=269, SimName="ZASSy_Geneva_zeroFlux_variable_k_run02.2_withlatent_depth", 
-                            maxTime_Myrs=1.5, fac_dt=0.05, ω=0.9, verbose=false,
-                            flux_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=false, 
-                            SaveOutput_steps=4000, CreateFig_steps=1000, plot_tracers=false, advect_polygon=true,
-                            FigTitle="Geneva Models");
-
-    Dike_params = DikeParam(Type="CylindricalDike_TopAccretion", InjectionInterval_year = 10e3, 
-                            W_in=20e3, H_in=74.6269)
-
-    MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
-                                    Density    = ConstantDensity(ρ=2700kg/m^3),
-                                    LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                            #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
-                                  Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
-                                 #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
-                                       Melting = MeltingParam_4thOrder()),                     # Marxer & Ulmer data
-                    # add more parameters here, in case you have >1 phase in the model                                    
-                    )
-end
-
-if 1==0
-
-    # 2D, run 02.2 Geneva-type models with Greg's smooth melting parameterisation
-    Num         = NumParam(Nx=269, Nz=269, SimName="ZASSy_Geneva_zeroFlux_variable_k_run02.2_withlatent_depth_smooth_dt0_4_v2", 
-                            maxTime_Myrs=1.5, fac_dt=0.05, ω=0.5, verbose=false,
-                            flux_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=false, 
-                            SaveOutput_steps=4000, CreateFig_steps=1000, plot_tracers=false, advect_polygon=true,
-                            FigTitle="Geneva Models");
-
-    Dike_params = DikeParam(Type="CylindricalDike_TopAccretion", InjectionInterval_year = 10e3, 
-                            W_in=20e3, H_in=74.6269)
-
-    MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
-                                    Density    = ConstantDensity(ρ=2700kg/m^3),
-                                    LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                            #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
-                                  Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
-                                 #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
-                                       Melting = SmoothMelting(MeltingParam_4thOrder())),                     # Marxer & Ulmer data
-                    # add more parameters here, in case you have >1 phase in the model                                    
-                    )
-end
-
-if 1==1
 
     # 2D, run7-9 Geneva-type models with Greg's smooth melting parameterisation but different Geother & BC;s
     # These are the final simulations for the ZASSy paper
-    Num         = NumParam(Nx=269*1, Nz=269*1, SimName="ZASSy_Geneva_10_7e_6_reference_DikeTracers300", axisymmetric=true,
+    Num         = NumParam(Nx=269*1, Nz=269*1, SimName="ZASSy_Geneva_10_7e_6_v2", axisymmetric=true,
                             maxTime_Myrs=1.5, fac_dt=0.2, ω=0.5, verbose=false, 
                             flux_bottom_BC=false, flux_bottom=0, deactivate_La_at_depth=false, 
                             Geotherm=30/1e3, TrackTracersOnGrid=true,
@@ -458,8 +434,9 @@ if 1==1
                             #InjectionInterval_year = 10e3,      # flux= 7.5e-6 km3/km2/yr
                             InjectionInterval_year = 7000,      # flux= 10.7e-6 km3/km2/yr
                             #InjectionInterval_year = 8200,       # flux= 9.1e-6 km3/km2/yr
+                            #InjectionInterval_year = 5000,       # flux= 14.9e-6 km3/km2/yr
                             W_in=20e3, H_in=74.6269,
-			    nTr_dike=300*1
+			                nTr_dike=300*1
 			    )
 
     MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
@@ -477,28 +454,6 @@ if 1==1
                     )
 end
 
-if 1==0
-    # 2D, Geneva-type models with Caricchi parameters (as described in ZASSy paper)
-    Num         = NumParam(Nx=269, Nz=269, SimName="Zassy_Geneva_zeroFlux_variable_k_CaricchiMelting", 
-                            maxTime_Myrs=1.5,
-                            flux_bottom_BC=true, flux_bottom=0, deactivate_La_at_depth=true, 
-                            SaveOutput_steps=1e4, CreateFig_steps=1000, plot_tracers=false, advect_polygon=true,
-                            FigTitle="Geneva Models");
-
-    Dike_params = DikeParam(Type="CylindricalDike_TopAccretion", InjectionInterval_year = 10e3, 
-                            W_in=20e3, H_in=74.6269)
-
-    MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
-                                    Density    = ConstantDensity(ρ=2700kg/m^3),
-                                    LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                            #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
-                                  Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
-                                 #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
-                                       Melting = MeltingParam_Caricchi()),                     # Caricchi melting
-                    # add more parameters here, in case you have >1 phase in the model                                    
-                    )
-end
 
 if 1==0
    # 2D, UCLA-type models
@@ -511,7 +466,8 @@ if 1==0
     # ZASSy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating_smoothQuad_initialEllipse_3
     # ZASSy_UCLA_ellipticalIntrusion_variable_k_radioactiveheating_smoothQuad_initialEllipse
     # ZASSy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating_Quadratic_noHostrockLatent_initialEllipse
-#=    
+#= 
+    # Constant k case:
     Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating_AssimilationAndQuadratic_initialEllipse_La0_Lm267", 
                             SaveOutput_steps=1000, CreateFig_steps=1000, axisymmetric=false,
                             flux_bottom_BC=true, flux_bottom=167e-3, fac_dt=0.4,  ω=0.6, verbose=false, dt = 20*SecYear,
@@ -532,22 +488,73 @@ if 1==0
     #   1-element Vector{Float64}:
     #           1.793946
     # for that reason, we have to decrease the bottom heat flux
-    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_ellipticalIntrusion_variable_k_radioactiveheating_AssimilationAndQuadratic_initialEllipse_La255_Lm267", 
+    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_BenchmarkCase_Geotherm40_Fig12A_density2700", 
                         SaveOutput_steps=2000, CreateFig_steps=1000, axisymmetric=false,
-                        flux_bottom_BC=true, flux_bottom=50/1e3*1.84, fac_dt=0.2, ω=0.6, verbose=false,
-                        maxTime_Myrs=0.5, 
-                        AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=170e-3, qm_anal=167e-3, hr_anal=10e3, k_anal=3.3453,
-                        InitialEllipse =   true, a_init= 2.5e3,  b_init  =   1.5e3,
+#                        flux_bottom_BC=true, flux_bottom=40/1e3*1.84, fac_dt=0.2, ω=0.6, verbose=false,
+                        
+                        # Initial benchmark:
+                        #maxTime_Myrs=0.5, 
+                        #flux_bottom_BC=true, flux_bottom=50/1e3*1.84, fac_dt=0.2, ω=0.6, verbose=false,
+                        #AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=170e-3, qm_anal=167e-3, hr_anal=10e3, k_anal=3.3453,
+                        #InitialEllipse =   true, a_init= 2.5e3,  b_init  =   1.5e3,
+
+                        # Fig 12A:
+                        maxTime_Myrs=0.75, 
+                        flux_bottom_BC=true, flux_bottom=40/1e3*1.89, fac_dt=0.2, ω=0.6, verbose=false,
+                        AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=130e-3, qm_anal=130e-3, hr_anal=10e3, k_anal=3.3453,
+                        InitialEllipse =   true, a_init= 2.33e3,  b_init  =   0.44e3,
+
+                        # Fig 12B:
+                        #maxTime_Myrs=1.5, 
+                        #flux_bottom_BC=true, flux_bottom=40/1e3*1.89, fac_dt=0.2, ω=0.6, verbose=false,
+                        #AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=130e-3, qm_anal=130e-3, hr_anal=10e3, k_anal=3.3453,
+                        #InitialEllipse =   true, a_init= 1.62e3,  b_init  =   0.91e3,
+
+                        # Fig 12C:
+                        #maxTime_Myrs=1.21, 
+                        #flux_bottom_BC=true, flux_bottom=40/1e3*1.89, fac_dt=0.2, ω=0.6, verbose=false,
+                        #AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=130e-3, qm_anal=130e-3, hr_anal=10e3, k_anal=3.3453,
+                        #InitialEllipse =   true, a_init= 1.64e3,  b_init  =   0.89e3,
+
                         FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);                            
 
 
+    #=    
+    # Our original benchmark case 
     mid_depth_km = -7.0;                   # mid depth of injection area [km]
-    
     V_inj_a      = 1.29135;                                 # a axis in km of injected ellipsoid
     V_inj_b      = 0.7745;                                  # b axis in km                        
     V_inj_check  = 4/3*pi*V_inj_a^2*V_inj_b;                # checking
-
     InjectionInterval_yr = 5000;
+    =#
+    
+    
+    # Fig. 12A as provided by Oscar 
+    mid_depth_km = -8.4;                                # mid depth of injection area [km]
+    Vol_inj      = 2*5;                                 # email gives an injection rate of 2km3/kyr = 10km3/5kyrs
+    AR           = 2.33/0.44
+    V_inj_a      = (Vol_inj*AR/(4/3*π))^(1/3) 
+    V_inj_b      = V_inj_a/AR;                          # b axis in km                        
+    V_inj_check  = 4/3*pi*V_inj_a^2*V_inj_b;            # checking
+    InjectionInterval_yr = 5000;
+    
+    # Fig. 12B as provided by Oscar 
+    #mid_depth_km = -12.1;                                # mid depth of injection area [km]
+    #Vol_inj      = 2*5;                                 # email gives an injection rate of 2km3/kyr = 10km3/5kyrs
+    #AR           = 1.62/0.91
+    #V_inj_a      = (Vol_inj*AR/(4/3*π))^(1/3) 
+    #V_inj_b      = V_inj_a/AR;                          # b axis in km                        
+    #V_inj_check  = 4/3*pi*V_inj_a^2*V_inj_b;            # checking
+    #InjectionInterval_yr = 5000;
+
+    # Fig. 12C as provided by Oscar 
+    #mid_depth_km = -11.9;                                # mid depth of injection area [km]
+    #Vol_inj      = 2*5;                                 # email gives an injection rate of 2km3/kyr = 10km3/5kyrs
+    #AR           = 1.64/0.89
+    #V_inj_a      = (Vol_inj*AR/(4/3*π))^(1/3) 
+    #V_inj_b      = V_inj_a/AR;                          # b axis in km                        
+    #V_inj_check  = 4/3*pi*V_inj_a^2*V_inj_b;            # checking
+    #InjectionInterval_yr = 5000;
 
     # Use the parameters. Note that we specify the diameter of the ellipse in here
     Dike_params  = DikeParam(Type="EllipticalIntrusion", InjectionInterval_year = InjectionInterval_yr, 
@@ -557,168 +564,129 @@ if 1==0
                             nTr_dike=3000)
 
     MatParam     = (SetMaterialParams(Name="Host rock", Phase=1, 
-                                    Density    = ConstantDensity(ρ=3345.3kg/m^3),                    # used in the parameterisation of Whittington 
+                                    Density    = ConstantDensity(ρ=2700.0kg/m^3),                    # used in the parameterisation of Whittington 
                                     LatentHeat = ConstantLatentHeat(Q_L=2.55e5J/kg),
                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=3e-7Watt/m^3),
-                                #  Conductivity = ConstantConductivity(k=3.3453Watt/K/m),            # in case we use constant k 
-                                #  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
                                  Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
                                  HeatCapacity = T_HeatCapacity_Whittington(),     # T-dependent cp
                                 Melting = MeltingParam_Assimilation()              
                                  ),       # Quadratic parameterization as in Tierney et al.
                     SetMaterialParams(Name="Intruded rocks", Phase=2, 
-                                    Density    = ConstantDensity(ρ=3345.3kg/m^3),                    # used in the parameterisation of Whittington 
+                                    Density    = ConstantDensity(ρ=2700.0kg/m^3),                    # used in the parameterisation of Whittington 
                                     LatentHeat = ConstantLatentHeat(Q_L=2.67e5J/kg),
                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=3e-7Watt/m^3),
-                                 # Conductivity = ConstantConductivity(k=3.3453Watt/K/m),            # in case we use constant k 
-                                 # HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
                                  Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
                                  HeatCapacity = T_HeatCapacity_Whittington(),                       # T-dependent cp
                                        Melting = SmoothMelting(MeltingParam_Quadratic(T_s=(700+273.15)K, T_l=(1100+273.15)K)))       
             )
 end
 
-if 1==0
+if 1==1
     # 2D, UCLA-type models as used in the ZASSy paper (see above for benchmark setups)
-     #
-     # Benchmark case with Oscar Lovera, who uses an exponential depth-dependent radioactive heating term combined with flux lower BC
-     #
-     #  For the parameters he gave, k=3.35 W/mK  qs=170 mW/m2    qm=167mW/m2  hr=10e3m
-     #  H0  = (qs-qm)/hr= 3.0000e-07
-
- 
-     # Note: in k-dependent cases, we have a much lower k @ the bottom
-     #   julia> p=T_Conductivity_Whittington();
-     #   julia> compute_conductivity(p,T=1030+273.15)
-     #           1.837397823380793
-     #
-     #   julia> p1=T_Conductivity_Whittington_parameterised();
-     #   julia> compute_conductivity(p1,[1030+273.15])
-     #   1-element Vector{Float64}:
-     #           1.793946
-     # for that reason, we have to decrease the bottom heat flux
-     Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_9_1e_6_reference", 
-                         SaveOutput_steps=2000, CreateFig_steps=1000, axisymmetric=false,
-                         flux_bottom_BC=true, flux_bottom=30/1e3*1.84, fac_dt=0.2, ω=0.6, verbose=false,
-                         maxTime_Myrs=0.5, 
-                         AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=170e-3, qm_anal=167e-3, hr_anal=10e3, k_anal=3.3453,
-                         InitialEllipse =   true, a_init= 2.5e3,  b_init  =   1.5e3,
-                         FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);                            
- 
- 
-     mid_depth_km = -7.0;                   # mid depth of injection area [km]
+    # Cases as shown in the ZASSy paper, figures 11 & 12 & systematic runs in Appendix B
      
-     V_inj_a      = 1.29135;                                 # a axis in km of injected ellipsoid
-     V_inj_b      = 0.7745;                                  # b axis in km                        
-     V_inj_check  = 4/3*pi*V_inj_a^2*V_inj_b;                # checking
+    # Note: in k-dependent cases, we have a much lower k @ the bottom
+    #   julia> p=T_Conductivity_Whittington();
+    #   julia> compute_conductivity(p,T=1030+273.15)
+    #           1.837397823380793
+    # for that reason, we have to decrease the bottom heat flux
+
+    #=
+    # This is the reference model used in Fig. 11 of the paper:
+    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_9_1e_6_reference", 
+                     SaveOutput_steps=200000, CreateFig_steps=1000, axisymmetric=false,
+                     flux_bottom_BC=true, flux_bottom=30/1e3*1.9, fac_dt=0.2, ω=0.5, verbose=false,
+                     maxTime_Myrs=1.1, 
+                     AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=100e-3, qm_anal=100e-3, hr_anal=10e3, k_anal=3.3453,
+                     InitialEllipse =   true, a_init= 6.7e3,  b_init  =   1.67e3,
+                     FigTitle="UCLA Models", plot_tracers=true, advect_polygon=true, TrackTracersOnGrid=true);                                             
+    =#
+
+    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_10_7e_6_v2", 
+                         SaveOutput_steps=200000, CreateFig_steps=1000, axisymmetric=false,
+                         flux_bottom_BC=true, flux_bottom=30/1e3*1.9, fac_dt=0.2, ω=0.5, verbose=false,
+                         #maxTime_Myrs=1.1,  # Fig. 11, Fig. 12B
+                         #maxTime_Myrs=0.7,  # Fig. 12A
+                         #maxTime_Myrs=1.3,  # Fig. 12C
+                         maxTime_Myrs=1.25,  # Fig. 12C
+                         
+                         
+                         AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=100e-3, qm_anal=100e-3, hr_anal=10e3, k_anal=3.3453,
+                         #InitialEllipse =   true, a_init= 6.7e3,  b_init  =   1.67e3,       # reference case, Fig. 12B
+                         #InitialEllipse =   true, a_init= 5.39e3,  b_init  =   1.348e3,     # Fig. 12A
+                         #InitialEllipse =   true, a_init= 8.35e3,  b_init  =   2.088e3,     # Fig. 12C
+                         InitialEllipse =   true, a_init= 7.38e3,  b_init  =   1.84e3,     # Fig. 12C, 10.7
+                         
+                         FigTitle="UCLA Models", plot_tracers=true, advect_polygon=true, TrackTracersOnGrid=true);                            
  
-     InjectionInterval_yr = 5000;
- 
+    
+    # Reference case:                     
+    #Flux         = 9.1e-6;                              # in km3/km2/a 
+    #Flux         = 7.46e-6;         # Fig. 12A
+   # Flux         = 1.49254e-5;      # 12C
+    Flux         = 10.7e-6;     # 12C
+    
+    Total_r_km   = 10;                                  # final radius of area
+         
+    Total_A_km2  = pi*Total_r_km^2;                     # final area in km^2
+    Flux_km3_a   = Flux*Total_A_km2;                    # flux in km3/year
+    V_total_km3  = Flux_km3_a*Num.maxTime_Myrs*1e6
+
+    mid_depth_km        =   -7.0;                                           # mid depth of injection area [km]
+    AspectRatio         =   Num.a_init/Num.b_init;                          # Aspect ratio of initial sill (kept constant)
+    V_initial           =  (4/3)*π*(Num.a_init/1e3)^2*(Num.b_init/1e3)      # initial injected volume in km3 
+    Vol_inj_year        =  (V_total_km3-V_initial)/(Num.maxTime_Myrs*1e6);  # Injected volume per year
+
+    V_initial_opt_a     =   (0.1*V_total_km3*AspectRatio/((4/3)*π))^(1/3)
+    V_initial_opt_b     =   V_initial_opt_a/AspectRatio
+
+    RatioInitialTotal   =   V_initial/V_total_km3;
+    println("Starting simulation with flux: $(Flux) km³km⁻²yr⁻¹, total time= $(Num.maxTime_Myrs*1e3) kyrs, max. volume=$(round(V_total_km3))km³, Initial/Total volume = $(V_initial/V_total_km3)")
+
+    InjectionInterval_yr=   5000;                                           # Injection interval
+    
+    Vol_inj             =   Vol_inj_year*InjectionInterval_yr;              # Volume injected every injection event  
+    V_inj_a             =   (Vol_inj*AspectRatio/((4/3)*π))^(1/3)           # a-axis of injected ellipse 
+    V_inj_b             =   V_inj_a/AspectRatio;                            # b axis in km         
+    
+
+
      # Use the parameters. Note that we specify the diameter of the ellipse in here
      Dike_params  = DikeParam(Type="EllipticalIntrusion", InjectionInterval_year = InjectionInterval_yr, 
                              W_in=V_inj_a*2*1e3, 
                              H_in=V_inj_b*2*1e3, 
                              Center=[0, mid_depth_km*1e3],
-                             nTr_dike=3000)
- 
+                             nTr_dike=300*4)
+
      MatParam     = (SetMaterialParams(Name="Host rock", Phase=1, 
-                                     Density    = ConstantDensity(ρ=3345.3kg/m^3),                    # used in the parameterisation of Whittington 
+                                     Density    = ConstantDensity(ρ=2700kg/m^3),                    # used in the parameterisation of Whittington 
                                      LatentHeat = ConstantLatentHeat(Q_L=2.55e5J/kg),
-                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=3e-7Watt/m^3),
-                                 #  Conductivity = ConstantConductivity(k=3.3453Watt/K/m),            # in case we use constant k 
-                                 #  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
-                                  Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
-                                  HeatCapacity = T_HeatCapacity_Whittington(),     # T-dependent cp
-                                 Melting = MeltingParam_Assimilation()              
-                                  ),       # Quadratic parameterization as in Tierney et al.
+                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=0e-7Watt/m^3),
+                                 Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
+                                  HeatCapacity = T_HeatCapacity_Whittington(),                      # T-dependent cp
+                                 # Conductivity = ConstantConductivity(k=3.3Watt/K/m),               # in case we use constant k
+                                 # HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                 Melting = MeltingParam_Assimilation()                              # Quadratic parameterization as in Tierney et al.
+                                 #Melting = MeltingParam_Caricchi()
+                                  ),       
                      SetMaterialParams(Name="Intruded rocks", Phase=2, 
-                                     Density    = ConstantDensity(ρ=3345.3kg/m^3),                    # used in the parameterisation of Whittington 
-                                     LatentHeat = ConstantLatentHeat(Q_L=2.67e5J/kg),
-                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=3e-7Watt/m^3),
-                                  # Conductivity = ConstantConductivity(k=3.3453Watt/K/m),            # in case we use constant k 
-                                  # HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                     Density    = ConstantDensity(ρ=2700kg/m^3),                     # used in the parameterisation of Whittington 
+                                     LatentHeat = ConstantLatentHeat(Q_L=2.67e5J/kg),               
+                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=0e-7Watt/m^3),
                                   Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
                                   HeatCapacity = T_HeatCapacity_Whittington(),                       # T-dependent cp
-                                        Melting = SmoothMelting(MeltingParam_Quadratic(T_s=(700+273.15)K, T_l=(1100+273.15)K)))       
+                                  #Conductivity = ConstantConductivity(k=3.3Watt/K/m),               # in case we use constant k
+                                  #HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                        Melting = SmoothMelting(MeltingParam_Quadratic(T_s=(700+273.15)K, T_l=(1100+273.15)K))
+                                        #Melting = MeltingParam_Caricchi()
+                                        )       
              )
+                   
+                      
+
  end
 
  
-if 1==0
-    # 2D, UCLA-type models
-
-    # In the UCLA model, the following geotherm is used, with Tsurface as top BC & qm (mantle heatflux) as bottom BC.
-    # Exponential depth-dependent radioactive heating (in W/m3) is assumed to follow:
-    #  H_r = H0 * exp(-z/h)r)
-    # with hr=10km & qs,qm are manipulated to obtain an approximately linear initial geotherm over the first 20 km:
-    #
-    # The analytical solution for this case, assuming constant k, comes from Turcotte & Schubert:  
-    #  T = Tsurface + (qm/k)*z + (qs-qm)hr/k *(1.-exp(-z/hr)) 
-    #
-    # which can also be written as:
-    #  T = Tsurface + (qm/k)*z + H0*hr^2/k *(1.-exp(-z/hr)) 
-    #  so: H0  = (qs-qm)/hr
-    #
-    # If we manipulate this, we obtain a good fit with qm=76e-3, qs=86e-3, H0=1e-6, k=1.9 (~value that Whittington gives for 1000C)
-
-    #Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="Zassy_UCLA_ellipticalIntrusion_variable_k_radioactiveheating", 
-    #                        SaveOutput_steps=400, CreateFig_steps=100, axisymmetric=true,
-    #                        flux_bottom_BC=true, flux_bottom=40/1e3*1.9,
-    #                        maxTime_Myrs=1.13, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
-    #                        FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);
-
-
-    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="Zassy_UCLA_ellipticalIntrusion_variable_k_radioactiveheating_1", 
-                            SaveOutput_steps=2000, CreateFig_steps=1000, axisymmetric=false,
-                            flux_bottom_BC=true, flux_bottom=38.7/1e3*3.35, fac_dt=0.2, ω=0.6, max_iter=100, verbose=false,
-                            maxTime_Myrs=1.13, Tsurface_Celcius=25, Geotherm=(801.12-25)/20e3,
-                            FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);             
-    
-
-    Flux         = 7.5e-6;                              # in km3/km2/a 
-    Total_r_km   = 10;                                  # final radius of area
-    V_inject_km3 = 10;                                  # injection volume per sill injection
-    
-    Total_A_km2  = pi*Total_r_km^2;                     # final area in km^2
-    Flux_km3_a   = Flux*Total_A_km2;                    # flux in km3/year
-
-    V_total_km3  = Flux_km3_a*Num.maxTime_Myrs*1e6;
-    h_total_km   = V_total_km3/(Total_A_km2)            # final height [km]
-    
-    mid_depth_km = -6.5-h_total_km/2;                   # mid depth of injection area [km]
-    r_h          = Total_r_km/h_total_km;               # aspect ratio of spheroid [] (well strictly speaking not, but following the Excel spreadsheet)
-
-    V_final_a    = (3/2*V_total_km3*r_h/pi)^(1/3)         # a axis in km
-    V_final_b    = V_final_a/r_h*0.5;                     # b axis in km                        
-    V_fin_check  = 4/3*pi*V_final_a^2*V_final_b;          # final area in km3 (just checking, should be == V_total_km3 )
-
-    V_inj_a      = (3/2*V_inject_km3*r_h/pi)^(1/3)        # a axis in km of injected ellipsoid
-    V_inj_b      = V_inj_a/r_h*0.5;                       # b axis in km                        
-    V_inj_check  = 4/3*pi*V_inj_a^2*V_inj_b;              # checking
-
-    nInjections     =   V_total_km3/V_inject_km3                # the number of required injections
-    InjectionInterval_yr = Num.maxTime_Myrs*1e6/nInjections;    # Time inbetween injections
-
-
-    # Use the parameters. Note that we specify the diameter of the ellipse in here
-    Dike_params  = DikeParam(Type="EllipticalIntrusion", InjectionInterval_year = InjectionInterval_yr, 
-                            W_in=V_inj_a*2*1e3, 
-                            H_in=V_inj_b*2*1e3, 
-                            Center=[0, mid_depth_km*1e3],
-                            nTr_dike=1000)
-
-    MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
-                                    Density    = ConstantDensity(ρ=2700kg/m^3),                # used in the parameterisation of Whittington 
-                                    LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                               RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=1e-6Watt/m^3),
-                                  Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                  #Conductivity = ConstantConductivity(k=3.35Watt/K/m),        # in case we use constant k
-                                  HeatCapacity = T_HeatCapacity_Whittington(),                 # T-dependent cp
-                                 # HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
-                                       Melting = SmoothMelting(MeltingParam_Quadratic())),                    # Quadratic parameterization as in Tierney et al.
-                    )
-end
-
 # Keep track of time
 const to = TimerOutput()
 reset_timer!(to)
