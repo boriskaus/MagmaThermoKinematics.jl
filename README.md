@@ -1,6 +1,7 @@
 # MagmaThermoKinematics.jl
 
 [![Build Status](https://github.com/boriskaus/MagmaThermoKinematics.jl/workflows/CI/badge.svg)](https://github.com/boriskaus/MagmaThermoKinematics.jl/actions)
+[![DOI](https://zenodo.org/badge/337510164.svg)](https://zenodo.org/badge/latestdoi/337510164)
 
 Understanding how magmatic systems work is of interest to a wide range of Earth Scientists.
 
