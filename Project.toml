@@ -25,8 +25,8 @@ WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
 
 [compat]
 CUDA = "4 - 5"
-CairoMakie = "0.8 - 0.10"
-GLMakie = "0.6 - 0.8"
+# CairoMakie = "0.8 - 0.10"
+# GLMakie = "0.6 - 0.8"
 Interpolations = "0.13,0.14"
 ParallelStencil = "0.8 - 0.9"
 GeoParams = "0.5"
