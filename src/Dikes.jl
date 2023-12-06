@@ -672,8 +672,10 @@ function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
             new_tracer  =   Tracer(num=number, coord=pt_new, T=T, Phase=PhaseDike);          # Create new tracer
             
             if !isassigned(Tr,1)
-                StructArrays.foreachfield(v -> deleteat!(v, 1), Tr)         # Delete first (undefined) row of tracer StructArray. Assumes that Tr is defined as Tr = StructArray{Tracer}(undef, 1)
 
+                if length(Tr)==0
+                    StructArrays.foreachfield(v -> deleteat!(v, 1), Tr)         # Delete first (undefined) row of tracer StructArray. Assumes that Tr is defined as Tr = StructArray{Tracer}(undef, 1)
+                end
                 Tr      =   StructArray([new_tracer]);                      # Create tracer array
             else
                 push!(Tr, new_tracer);                                      # Add new point to existing array

@@ -121,6 +121,14 @@ function environment!(model_device, precision, dimension)
         export Process_ZirconAges, copy_arrays_GPU2CPU!, copy_arrays_CPU2GPU!
     end
 
+    # GMG integration
+    Base.@eval begin
+        include(joinpath(@__DIR__, "MTK_GMG_2D.jl"))
+        using .MTK_GMG_2D
+        export NumParam, DikeParam, TimeDepProps, MTK_inject_dikes, MTK_GeoParams_2D
+        export MTK_display_output, MTK_print_output
+    end
+
 end
 
 export environment!
