@@ -29,7 +29,7 @@ println("Testing the MTK - GMG integration")
 println("===============================================")
 
 # Overwrite some functions
-#function MTK_visualize_output(Grid, Num, Arrays, Mat_tup, Dikes)
+#=
 function MTK_visualize_output(Grid, Num::NumericalParameters, Arrays, Mat_tup, Dikes)    
     if mod(Num.it,10)==0
         x_1d =  Grid.coord1D[1]/1e3;
@@ -51,7 +51,7 @@ function MTK_visualize_output(Grid, Num::NumericalParameters, Arrays, Mat_tup, D
     end
     return nothing
 end
-
+=#
 
 function MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
     @show "Boris", Num.it, maximum(Arrays.Tnew)
