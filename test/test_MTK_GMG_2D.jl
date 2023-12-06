@@ -1,4 +1,4 @@
-#using Test
+using Test
 using Plots
 
 const USE_GPU=false;
@@ -51,13 +51,13 @@ function MTK_visualize_output(Grid, Num::NumericalParameters, Arrays, Mat_tup, D
     end
     return nothing
 end
-=#
+
 
 function MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
-    @show "Boris", Num.it, maximum(Arrays.Tnew)
-    
+    println("$(Num.it), max. temperature = $(maximum(Arrays.Tnew))")
     return nothing
 end
+=#
 
 
 # These are the final simulations for the ZASSy paper, but done @ a lower resolution

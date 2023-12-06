@@ -125,7 +125,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         dike                =   Dike(dike, Center=Dikes.Center[:],Angle=[0]);           # Specify dike with random location/angle but fixed size/T 
         Tnew_cpu           .=   Array(Arrays.T)
         Tracers, Tnew_cpu,Vol,Dikes.dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, Dikes.nTr_dike, dike_poly=Dikes.dike_poly);     # Add dike, move hostrocks
-        @show length(Tracers)
+       
         if Num.flux_bottom_BC==false
             # Keep bottom T constant (advection modifies this)
             Z               = Array(Arrays.Z)
