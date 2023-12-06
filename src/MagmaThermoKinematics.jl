@@ -17,6 +17,10 @@ using JLD2                                      # Load/save data to disk
 @reexport using GeoParams                                 # Material parameters calculations
 @reexport using ParallelStencil
 
+abstract type NumericalParameters end
+abstract type DikeParameters end
+abstract type TimeDependentProperties end
+
 include("Units.jl")                             # various useful units
 
 function environment!(model_device, precision, dimension)
@@ -126,7 +130,7 @@ function environment!(model_device, precision, dimension)
         include(joinpath(@__DIR__, "MTK_GMG_2D.jl"))
         using .MTK_GMG_2D
         export NumParam, DikeParam, TimeDepProps, MTK_inject_dikes, MTK_GeoParams_2D
-        export MTK_display_output, MTK_print_output
+        export NumericalParameters, DikeParameters, TimeDependentProperties
     end
 
 end
@@ -139,6 +143,8 @@ kyr         = 1000*SecYear
 Myr         = 1e6*SecYear  
 km³         = 1000^3
 export SecYear, kyr, Myr, km³
+
+export NumericalParameters, DikeParameters, TimeDependentProperties
 
 include("Grid.jl")
 using .Grid
