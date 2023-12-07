@@ -10,40 +10,36 @@ temperature field
     Structure that holds the geometrical parameters of the dike, which are slightly different
     depending on whether we consider a 2D or a 3D case
 
-    General form:
-        Dike(Width=.., Thickness=.., Center=[], Angle=[], Type="..", T=.., ΔP=.., E=.., ν=.., Q=..)
+General form:
+    Dike(Width=.., Thickness=.., Center=[], Angle=[], Type="..", T=.., ΔP=.., E=.., ν=.., Q=..)
 
-        with:
-
-            [Width]:      width of dike  (optional, will be computed automatically if ΔP and Q are specified)
-
-            [Thickness]:  (maximum) thickness of dike (optional, will be computed automatically if ΔP and Q are specified)
+with
+- [Width]:      width of dike  (optional, will be computed automatically if ΔP and Q are specified
+- [Thickness]:  (maximum) thickness of dike (optional, will be computed automatically if ΔP and Q are specified)
+- Center:     center of the dike
+                    2D - [x; z]
+                    3D - [x; y; z]
     
-            Center:     center of the dike
-                            2D - [x; z]
-                            3D - [x; y; z]
-            
-            Angle:      Dip (and strike) angle of dike
-                            2D - [Dip]
-                            3D - [Strike; Dip]
-            
-            Type:           Type of dike
-                            "SquareDike"    -   square dike area   
-                            "SquareDike_TopAccretion"           -   square dike area, which grows by underaccreting   
-                            "CylindricalDike_TopAccretion"      -   cylindrical dike area, which grows by underaccreting   
-                            "CylindricalDike_TopAccretion_FullModelAdvection"      -   cylindrical dike area, which grows by underaccreting; also material to the side of the dike is moved downwards   
-                            "ElasticDike"   -   penny-shaped elastic dike in elastic halfspace
-                            "EllipticalIntrusion" - elliptical dike intrusion area with radius Width/2 and height Height/2 
-            
-            T:          Temperature of the dike [Celcius]   
-            
-            ν:          Poison ratio of host rocks
-            
-            E:          Youngs modulus of host rocks [Pa]
-            
-            [ΔP]:       Overpressure of dike w.r.t. host rock [Pa], (optional in case we want to compute width/length directly)
-
-            [Q]:        Volume of magma within dike [m^3], 
+    Angle:      Dip (and strike) angle of dike
+                    2D - [Dip]
+                    3D - [Strike; Dip]
+    
+    Type:           Type of dike
+                    "SquareDike"    -   square dike area   
+                    "SquareDike_TopAccretion"           -   square dike area, which grows by underaccreting   
+                    "CylindricalDike_TopAccretion"      -   cylindrical dike area, which grows by underaccreting   
+                    "CylindricalDike_TopAccretion_FullModelAdvection"      -   cylindrical dike area, which grows by underaccreting; also material to the side of the dike is moved downwards   
+                    "ElasticDike"   -   penny-shaped elastic dike in elastic halfspace
+                    "EllipticalIntrusion" - elliptical dike intrusion area with radius Width/2 and height Height/2 
+    
+    T:          Temperature of the dike [Celcius]   
+    
+    ν:          Poison ratio of host rocks
+    
+    E:          Youngs modulus of host rocks [Pa]
+    
+    [ΔP]:       Overpressure of dike w.r.t. host rock [Pa], (optional in case we want to compute width/length directly
+    [Q]:        Volume of magma within dike [m^3], 
             
            
     All parameters can be specified through keywords as shown above. 

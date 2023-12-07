@@ -31,7 +31,7 @@ println("===============================================")
 # Overwrite some functions
 #=
 function MTK_visualize_output(Grid, Num::NumericalParameters, Arrays, Mat_tup, Dikes)    
-    if mod(Num.it,10)==0
+    if mod(Num.it,Num.CreateFig_steps)==0
         x_1d =  Grid.coord1D[1]/1e3;
         z_1d =  Grid.coord1D[2]/1e3;
         temp_data = Array(Arrays.Tnew)'
@@ -58,7 +58,6 @@ function MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::Name
     return nothing
 end
 =#
-
 
 # These are the final simulations for the ZASSy paper, but done @ a lower resolution
 Num         = NumParam( #Nx=269*1, Nz=269*1, 
