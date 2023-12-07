@@ -218,14 +218,31 @@ function MTK_update_Arrays!(Arrays::NamedTuple, Grid::GridData, Num::NumericalPa
 end
 
 """
-    MTK_save_output(Grid, Arrays, Tracers, Dikes, time_props)
+    MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters)
 
 Save the output to disk
 """
-function MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers, Dikes::DikeParameters, time_props::TimeDependentProperties)
+function MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters)
 
     return nothing
 end
+
+"""
+    Tracers = MTK_updateTracers(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters)
+
+Updates info on tracers
+"""
+function MTK_updateTracers(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters)
+
+    if mod(Num.it,10)==0
+        # Update T vector on tracers
+        update_Tvec!(Tracers, Num.time/SecYear*1e-6)                                    # update T & time vectors on tracers
+    end
+
+    return Tracers
+end
+
+
 #-----------------------------------------------------------------------------------------
 """
     Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(Mat_tup, Num, Dikes);
@@ -341,10 +358,8 @@ Several functions are called every timestep. which can be overwritten every time
         @parallel assign!(Arrays.Tnew, Arrays.T)
         # --------------------------------------------
         
-        if mod(Num.it,10)==0
-            # Update T vector on tracers
-            update_Tvec!(Tracers, Num.time/SecYear*1e-6)                                    # update T & time vectors on tracers
-        end
+        # Update info on tracers ---------------------
+        Tracers = MTK_updateTracers(Grid, Arrays, Tracers, Dikes, time_props, Num);
         # --------------------------------------------
 
         # Update time-dependent properties -----------
@@ -356,7 +371,7 @@ Several functions are called every timestep. which can be overwritten every time
         # --------------------------------------------
           
         # Save output to disk once in a while --------
-        MTK_save_output(Grid, Arrays, Tracers, Dikes, time_props)
+        MTK_save_output(Grid, Arrays, Tracers, Dikes, time_props, Num);
         # --------------------------------------------
 
         # Optionally Update arrays (such as T) -------
