@@ -109,7 +109,8 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     deactivate_La_at_depth::Bool=   false           # deactivate latent heating @ the bottom of the model box?
     deactivationDepth::Float64  =   -15e3           # deactivation depth
     USE_GPU                     =   false;
-    
+    keep_init_RockPhases::Bool  =   true;           # keep initial rock phases (if false, all phases are initialized as Dikes.BackgroundPhase)
+
     AnalyticalInitialGeo::Bool  =   false;      
     qs_anal::Float64            =   170e-3;
     qm_anal::Float64            =   167e-3;
@@ -251,16 +252,12 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         if length(Mat_tup)>1
            PhasesFromTracers!(Arrays.Phases, Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant");    # update phases from grid 
 
-           # Ensure that we keep the initial phase of the dike
-           ind = findall(Arrays.Phases .== Dikes.DikePhase);
-           @show ind
-           for i in eachindex(Arrays.Phases)
-                if Arrays.Phases[i]==Dikes.DikePhase
-                     Arrays.Phases[i] = Dikes.DikePhase;
-                else
-                    Arrays.Phases[i] = Arrays.Phases_init[i];
-                end
-            end
+           # Ensure that we keep the initial phase of the area (host rocks are not deformable)
+           if Num.keep_init_RockPhases
+                ind = findall(Arrays.Phases .== Dikes.DikePhase);
+                Arrays.Phases .= Arrays.Phases_init;
+                Arrays.Phases[ind] .= Dikes.DikePhase;
+           end
         end
 
     end
@@ -440,8 +437,6 @@ Main routine that performs a 2D or 2D axisymmetric thermal diffusion simulation 
         
         UpdateTracers_T_ϕ!(Tracers_grid, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);      # Initialize info on grid trcers
 
-
-        @show length(Tracers_grid)
     end
     # --------------------------------------------
 
@@ -453,7 +448,6 @@ Main routine that performs a 2D or 2D axisymmetric thermal diffusion simulation 
 
         # Add new dike every X years -----------------
         Tracers = MTK_inject_dikes(Grid, Num, Arrays, Mat_tup, Dikes, Tracers, Tnew_cpu)
-        @show minimum(Arrays.Phases), maximum(Arrays.Phases)
         # --------------------------------------------
 
         # Do a diffusion step, while taking T-dependencies into account

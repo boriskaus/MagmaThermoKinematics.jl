@@ -38,7 +38,7 @@ function MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::
         temp_data = Array(Arrays.Tnew)'
         ϕ_data = Array(Arrays.ϕ)'
         phase_data = Array(Arrays.Phases)'
-        phase_data = Array(Arrays.Phases_init)'
+        #phase_data = Array(Arrays.Phases_init)'
         
         t = Num.time/SecYear;
 
