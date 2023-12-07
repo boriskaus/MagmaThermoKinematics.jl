@@ -1,5 +1,5 @@
 using Test
-using Plots
+#using Plots
 
 const USE_GPU=false;
 using MagmaThermoKinematics

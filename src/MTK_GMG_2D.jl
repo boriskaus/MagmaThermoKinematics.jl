@@ -163,7 +163,7 @@ function MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::
 end
 
 """
-    MTK_print_output(Grid, Num, Arrays, Mat_tup, Dikes)
+    MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
 
 Function that prints output to the REPL 
 """
@@ -173,7 +173,7 @@ function MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::Name
 end
 
 """
-    MTK_update_TimeDepProps!(time_props, Grid, Num, Arrays, Mat_tup, Dikes)
+    MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
 
 Update time-dependent properties during a simulation
 """
@@ -190,6 +190,21 @@ function MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::Gri
     push!(time_props.Tav_magma, Tav_magma_Time);       # average magma T
     push!(time_props.Tmax,      maximum(Arrays.T));   # maximum magma T
     
+    return nothing
+end
+
+"""
+    MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters)
+
+Initialize temperature and phases 
+"""
+function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters)
+    # Initalize T
+    Arrays.T_init      .=   @. Num.Tsurface_Celcius - Arrays.Z*Num.Geotherm;                # Initial (linear) temperature profile
+    
+    # Initialize Phases
+
+
     return nothing
 end
 
@@ -239,9 +254,6 @@ Several functions are called every timestep. which can be overwritten every time
     Tracers                 =   StructArray{Tracer}(undef, 1)                       # Initialize tracers   
     dike                    =   Dike(W=Dikes.W_in,H=Dikes.H_in,Type=Dikes.Type,T=Dikes.T_in_Celsius, Center=Dikes.Center[:]);               # "Reference" dike with given thickness,radius and T
 
-    # Set initial geotherm -----------------------
-    Arrays.T_init      .=   @. Num.Tsurface_Celcius - Arrays.Z*Num.Geotherm;                # Initial (linear) temperature profile
-    # --------------------------------------------
     
     # Update buffer & phases arrays --------------
     if Num.USE_GPU
@@ -255,6 +267,10 @@ Several functions are called every timestep. which can be overwritten every time
         Phases          =   ones(Int64,Num.Nx,Num.Nz)
     end
     Arrays = (Arrays..., Phases=Phases);
+    
+    # Initialize Geotherm and Phases -------------
+    MTK_initialize!(Arrays, Grid, Num);
+    # --------------------------------------------
     
     # --------------------------------------------
         
