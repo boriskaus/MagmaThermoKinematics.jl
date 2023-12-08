@@ -228,8 +228,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
 
     if floor(Num.time/Dikes.InjectionInterval)> Dikes.dike_inj      
         Dikes.dike_inj      =   floor(Num.time/Dikes.InjectionInterval)                 # Keeps track on what was injected already
-        #dike                =   Dike(dike, Center=Dikes.Center[:], Angle=Dikes.Angle);   # Specify dike with random location/angle but fixed size/T 
-
+        T_bottom  =   Tnew_cpu[:,1]
         dike      =   Dike(W=Dikes.W_in,H=Dikes.H_in,Type=Dikes.Type,T=Dikes.T_in_Celsius, Center=Dikes.Center[:],  Angle=Dikes.Angle, Phase=Dikes.DikePhase);               # "Reference" dike with given thickness,radius and T
         Tnew_cpu .=   Array(Arrays.T)
 
@@ -237,8 +236,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
        
         if Num.flux_bottom_BC==false
             # Keep bottom T constant (advection modifies this)
-            Z               = Array(Arrays.Z)
-            Tnew_cpu[:,1]   .=   @. Num.Tsurface_Celcius - Z[:,1]*Num.Geotherm
+            Tnew_cpu[:,1]   .=  T_bottom
         end
 
         Arrays.T           .=   Data.Array(Tnew_cpu)
@@ -321,8 +319,6 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
     Arrays.T_init      .=   @. Num.Tsurface_Celcius - Arrays.Z*Num.Geotherm;                # Initial (linear) temperature profile
     
     # Initialize Phases
-
-
     return nothing
 end
 
@@ -342,7 +338,7 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
 
     # open pvd file if requested
     if Num.Output_VTK & !isnothing(CartData_input)
-        name = Num.SimName*".pvd"
+        name =  joinpath(Num.SimName,Num.SimName*".pvd")
         Num.pvd = Movie_Paraview(name=name, Initialize=true);
     end
 
@@ -389,8 +385,8 @@ function MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArra
             CartData_input = add_2Ddata_CartData(CartData_input, "MeltFraction",    Array(Arrays.ϕ));
 
             # Save output to CartData
-            name = Num.SimName*"_$(Num.it)"
-            Num.pvd  = Write_Paraview(CartData_input, name, pvd=Num.pvd,time=Num.time/SecYear);
+            name = joinpath(Num.SimName,Num.SimName*"_$(Num.it)")
+            Num.pvd  = Write_Paraview(CartData_input, name, pvd=Num.pvd,time=Num.time/SecYear/1e3);
         end
     end
     return nothing
@@ -440,6 +436,7 @@ function Setup_Model_CartData(d, Num, Mat_tup)
     dz = (z[2]-z[1])/(Num.Nx-1)
 
     # estimate maximum thermal diffusivity from Mat_tup
+    κ_max = Num.κ_time
     for mm in Mat_tup
         if hasfield(typeof(mm.Conductivity[1]),:k)
             k = NumValue(mm.Conductivity[1].k)
@@ -456,8 +453,12 @@ function Setup_Model_CartData(d, Num, Mat_tup)
         else
             ρ = 2700;
         end
-        Num.κ_time  = k/(cp*ρ)
+        κ  = k/(cp*ρ)
+        if κ>κ_max
+            κ_max = κ
+        end
     end
+    Num.κ_time = κ_max;
 
     dt = Num.fac_dt*min(dx^2, dz^2)./Num.κ_time/4;   # timestep
     Num.dx = dx;
