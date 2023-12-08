@@ -11,6 +11,7 @@ using ParallelStencil.FiniteDifferences2D
 using Parameters
 using GeoParams
 using StructArrays
+using GeophysicalModelGenerator
 
 using MagmaThermoKinematics.Diffusion2D
 using MagmaThermoKinematics
@@ -111,6 +112,7 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     USE_GPU                     =   false;
     keep_init_RockPhases::Bool  =   true;           # keep initial rock phases (if false, all phases are initialized as Dikes.BackgroundPhase)
     pvd                         =   [];             # pvd file info for paraview
+    Output_VTK                  =   true;           # output VTK files in case CartData is an input?
 
     AnalyticalInitialGeo::Bool  =   false;      
     qs_anal::Float64            =   170e-3;
@@ -320,26 +322,46 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
     
     # Initialize Phases
 
+
     return nothing
 end
 
 """
-    MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input)
+    MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::CartData)
 
 Initialize temperature and phases 
 """
-function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input)
+function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::CartData)
     # Initalize T from CartData set
     # NOTE: this almost certainly requires changes if we use GPUs
-    Arrays.T_init .= CartData_input.fields.Temp[:,1,:];
+    Arrays.T_init .= CartData_input.fields.Temp[:,:,1];
 
     # Initialize Phases from CartData
-    Arrays.Phases .= CartData_input.fields.Phases[:,1,:];
-    Arrays.Phases_init .= CartData_input.fields.Phases[:,1,:];
+    Arrays.Phases .= CartData_input.fields.Phases[:,:,1];
+    Arrays.Phases_init .= CartData_input.fields.Phases[:,:,1];
+
+    # open pvd file if requested
+    if Num.Output_VTK & !isnothing(CartData_input)
+        name = Num.SimName*".pvd"
+        Num.pvd = Movie_Paraview(name=name, Initialize=true);
+    end
 
     return nothing
 end
 
+
+"""
+    MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::CartData)
+
+Finalize model run
+"""
+function MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::CartData)
+    if Num.Output_VTK & !isnothing(CartData_input)
+        Movie_Paraview(pvd=Num.pvd, Finalize=true)
+    end
+
+    return nothing
+end
 
 """
     MTK_update_Arrays!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
@@ -352,13 +374,33 @@ function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::Di
 end
 
 """
-    MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input)
+    MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input::Union{CartData, Nothing})
 
 Save the output to disk
 """
-function MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input)
+function MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input::Union{CartData, Nothing})
 
+    if mod(Num.it,Num.SaveOutput_steps)==0
+        # Save output
+        if Num.Output_VTK & !isnothing(CartData_input)
+            # add datasets 
+            CartData_input = add_2Ddata_CartData(CartData_input, "Temp",            Array(Arrays.Tnew));
+            CartData_input = add_2Ddata_CartData(CartData_input, "Phases",          Array(Arrays.Phases));
+            CartData_input = add_2Ddata_CartData(CartData_input, "MeltFraction",    Array(Arrays.ϕ));
+
+            # Save output to CartData
+            name = Num.SimName*"_$(Num.it)"
+            Num.pvd  = Write_Paraview(CartData_input, name, pvd=Num.pvd,time=Num.time/SecYear);
+        end
+    end
     return nothing
+end
+
+function add_2Ddata_CartData(d::CartData, name::String, data::Array{_T,2})  where _T<:Real
+    a = zero(d.x.val)
+    a[:,:,1] .= data;
+    d = AddField(d, name, a)
+    return d
 end
 
 """
@@ -378,22 +420,45 @@ end
 
 
 """
-    Num = Setup_Model_CartData(d, Num)
+    Num = Setup_Model_CartData(d, Num, Mat_tup)
 
 Create a MTK model setup from a CartData structure generated with GeophysicalModelGenerator
 
 """
-function Setup_Model_CartData(d, Num)
-    x = extrema(d.x.val.*1e3)
+function Setup_Model_CartData(d, Num, Mat_tup)
+    @assert size(d.x)[3] == 1
+
+    x = extrema(d.fields.FlatCrossSection.*1e3)
     z = extrema(d.z.val.*1e3)
     
     Num.W = (x[2]-x[1])
     Num.H = (z[2]-z[1]) 
-    Num.Nx = size(d.x.val)[1]
-    Num.Nz = size(d.x.val)[3]
+    Num.Nx = size(d.x)[1]
+    Num.Nz = size(d.x)[2]
   
     dx = (x[2]-x[1])/(Num.Nx-1)
     dz = (z[2]-z[1])/(Num.Nx-1)
+
+    # estimate maximum thermal diffusivity from Mat_tup
+    for mm in Mat_tup
+        if hasfield(typeof(mm.Conductivity[1]),:k)
+            k = NumValue(mm.Conductivity[1].k)
+        else
+            k = 3;
+        end
+        if hasfield(typeof(mm.HeatCapacity[1]),:cp)
+            cp = NumValue(mm.HeatCapacity[1].cp)
+        else
+            cp = 1050;
+        end
+        if hasfield(typeof(mm.Density[1]),:ρ)
+            ρ = NumValue(mm.Density[1].ρ)
+        else
+            ρ = 2700;
+        end
+        Num.κ_time  = k/(cp*ρ)
+    end
+
     dt = Num.fac_dt*min(dx^2, dz^2)./Num.κ_time/4;   # timestep
     Num.dx = dx;
     Num.dz = dz;
@@ -437,8 +502,12 @@ There are a few functions that you can overwrite in your user code to customize 
     
     # Change parameters based on CartData input
     if !isnothing(CartData_input)
-        Num = Setup_Model_CartData(CartData_input, Num)
-        @show Num
+       
+        if !hasfield(typeof(CartData_input.fields),:FlatCrossSection)
+           error("You should add a Field :FlatCrossSection to your data structure with Data_Cross = AddField(Data_Cross,\"FlatCrossSection\", FlattenCrossSection(Data_Cross))")
+        end
+
+        Num = Setup_Model_CartData(CartData_input, Num, Mat_tup)
     end
 
     # Array & grid initializations ---------------
@@ -451,7 +520,7 @@ There are a few functions that you can overwrite in your user code to customize 
     if isnothing(CartData_input)
         Grid                    = CreateGrid(size=(Num.Nx,Num.Nz), extent=(Num.W, Num.H))   
     else
-        Grid                    = CreateGrid(size=(Num.Nx,Num.Nz), x=extrema(CartData_input.x.val.*1e3), z=extrema(CartData_input.z.val.*1e3))   
+        Grid                    = CreateGrid(size=(Num.Nx,Num.Nz), x=extrema(CartData_input.fields.FlatCrossSection.*1e3), z=extrema(CartData_input.z.val.*1e3))   
     end
     GridArray!(Arrays.R, Arrays.Z, Grid)        
     Arrays.Rc              .=   (Arrays.R[2:end,:] + Arrays.R[1:end-1,:])/2     # center points in x
@@ -466,24 +535,39 @@ There are a few functions that you can overwrite in your user code to customize 
         Phi_melt_cpu    =   similar(Tnew_cpu)
         Phases          =   CUDA.ones(Int64,Num.Nx,Num.Nz)
         Phases_init     =   CUDA.ones(Int64,Num.Nx,Num.Nz)
-        
     else
         Tnew_cpu        =   similar(Arrays.T)
         Phi_melt_cpu    =   similar(Arrays.ϕ)
         Phases          =   ones(Int64,Num.Nx,Num.Nz)
         Phases_init     =   ones(Int64,Num.Nx,Num.Nz)
-        
     end
     Arrays = (Arrays..., Phases=Phases, Phases_init=Phases_init);
-    
+
     # Initialize Geotherm and Phases -------------
     if isnothing(CartData_input)
         MTK_initialize!(Arrays, Grid, Num, Tracers, Dikes);
     else
         MTK_initialize!(Arrays, Grid, Num, Tracers, Dikes, CartData_input);
     end
+    
+    # check errors 
+    unique_Phases = unique(Array(Arrays.Phases));
+    phase_specified = []
+    for mm in Mat_tup
+        push!(phase_specified, mm.Phase)
+    end
+    for u in unique_Phases
+        if !(u in phase_specified)
+            error("Properties for Phase $u are not specified in Mat_tup. Please add that")
+        end
+    end
+
+    if any(isnan.(Arrays.T))
+        error("NaNs in T")
+    end
     # --------------------------------------------
     
+
     # Optionally set initial sill in models ------
     if Dikes.Type  == "CylindricalDike_TopAccretion"
         ind = findall( (Arrays.R.<=Dikes.W_in/2) .& (abs.(Arrays.Z.-Dikes.Center[2]) .< Dikes.H_in/2) );
@@ -571,6 +655,12 @@ There are a few functions that you can overwrite in your user code to customize 
         # --------------------------------------------
 
     end
+
+    # Finalize simulation ------------------------
+    MTK_finalize!(Arrays, Grid, Num, Tracers, Dikes, CartData_input);
+    # --------------------------------------------
+
+
     return Grid, Arrays, Tracers, Dikes, time_props
 end # end of main function
 
