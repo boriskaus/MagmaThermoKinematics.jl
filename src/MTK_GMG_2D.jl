@@ -254,10 +254,12 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
            PhasesFromTracers!(Arrays.Phases, Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant");    # update phases from grid 
 
            # Ensure that we keep the initial phase of the area (host rocks are not deformable)
-           if Num.keep_init_RockPhases
-                ind = findall(Arrays.Phases .== Dikes.DikePhase);
-                Arrays.Phases .= Arrays.Phases_init;
-                Arrays.Phases[ind] .= Dikes.DikePhase;
+           if Num.keep_init_RockPhases==true
+                for i in eachindex(Arrays.Phases)
+                    if Arrays.Phases[i] != Dikes.DikePhase
+                        Arrays.Phases[i] = Arrays.Phases_init[i]
+                    end
+                end
            end
         end
 

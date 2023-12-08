@@ -86,7 +86,7 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
     Arrays.T_init      .=   @. Num.Tsurface_Celcius - Arrays.Z*Num.Geotherm;                # Initial (linear) temperature profile
     
     # Initialize Phases
-    ind =  findall(Arrays.Z .> -2000);
+    ind =  findall(Arrays.Z .> -5000);
     Arrays.Phases[ind] .= 0;    
     
     Arrays.Phases_init .= Arrays.Phases;    
@@ -105,16 +105,17 @@ Num         = NumParam( Nx=135*1, Nz=135*1,
                         Geotherm=30/1e3, TrackTracersOnGrid=true,
                         SaveOutput_steps=100000, CreateFig_steps=20, plot_tracers=false, advect_polygon=true,
                         FigTitle="Geneva Models, Geotherm 30/km",
+                        keep_init_RockPhases=true,
                         USE_GPU=USE_GPU);
 
 Dike_params = DikeParam(Type="ElasticDike", 
                         InjectionInterval_year = 1000,       # flux= 14.9e-6 km3/km2/yr
                         W_in=5e3, H_in=250,
                         nTr_dike=300*1,
-                        DikePhase=2, BackgroundPhase=1
+                        DikePhase=2, BackgroundPhase=1,
                 )
 
-MatParam     = (SetMaterialParams(Name="Rock 1", Phase=0, 
+MatParam     = (SetMaterialParams(Name="Uppermost Crust", Phase=0, 
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
                                 LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
                                 #LatentHeat = ConstantLatentHeat(Q_L=0.0J/kg),
@@ -123,7 +124,7 @@ MatParam     = (SetMaterialParams(Name="Rock 1", Phase=0,
                                 #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
                                 HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
                                 Melting = SmoothMelting(MeltingParam_4thOrder())),      # Marxer & Ulmer melting     
-                SetMaterialParams(Name="Rock 2", Phase=1, 
+                SetMaterialParams(Name="Middle Crust", Phase=1, 
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
                                 LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
                                 #LatentHeat = ConstantLatentHeat(Q_L=0.0J/kg),
@@ -132,7 +133,7 @@ MatParam     = (SetMaterialParams(Name="Rock 1", Phase=0,
                             #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
                             HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
                                 Melting = SmoothMelting(MeltingParam_4thOrder())),      # Marxer & Ulmer melting     
-                SetMaterialParams(Name="Dike", Phase=2, 
+                SetMaterialParams(Name="Dikes", Phase=2, 
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
                                 LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
                                 #LatentHeat = ConstantLatentHeat(Q_L=0.0J/kg),
