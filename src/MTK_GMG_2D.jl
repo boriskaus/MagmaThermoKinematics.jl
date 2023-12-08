@@ -351,7 +351,7 @@ end
 
 Finalize model run
 """
-function MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::CartData)
+function MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::Union{Nothing,CartData})
     if Num.Output_VTK & !isnothing(CartData_input)
         Movie_Paraview(pvd=Num.pvd, Finalize=true)
     end
