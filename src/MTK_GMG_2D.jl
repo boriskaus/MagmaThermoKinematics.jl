@@ -327,7 +327,7 @@ end
 
 Initialize temperature and phases 
 """
-function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::CartData)
+function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::Union{Nothing,CartData})
     # Initalize T from CartData set
     # NOTE: this almost certainly requires changes if we use GPUs
     Arrays.T_init .= CartData_input.fields.Temp[:,:,1];
@@ -500,7 +500,7 @@ There are a few functions that you can overwrite in your user code to customize 
 - `MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::CartData)`
 
 """
-@views function MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::DikeParameters; CartData_input=nothing, time_props::TimeDependentProperties = TimeDepProps());
+@views function MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::DikeParameters; CartData_input::Union{Nothing,CartData}=nothing, time_props::TimeDependentProperties = TimeDepProps());
     
     # Change parameters based on CartData input
     if !isnothing(CartData_input)
