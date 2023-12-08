@@ -14,7 +14,7 @@ using StructArrays
 
 using MagmaThermoKinematics.Diffusion2D
 using MagmaThermoKinematics
-
+using JLD2
 
 const SecYear = 3600*24*365.25;
 
@@ -110,6 +110,7 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     deactivationDepth::Float64  =   -15e3           # deactivation depth
     USE_GPU                     =   false;
     keep_init_RockPhases::Bool  =   true;           # keep initial rock phases (if false, all phases are initialized as Dikes.BackgroundPhase)
+    pvd                         =   [];             # pvd file info for paraview
 
     AnalyticalInitialGeo::Bool  =   false;      
     qs_anal::Float64            =   170e-3;
@@ -317,9 +318,26 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
     
     # Initialize Phases
 
+    return nothing
+end
+
+"""
+    MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input)
+
+Initialize temperature and phases 
+"""
+function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input)
+    # Initalize T from CartData set
+    # NOTE: this almost certainly requires changes if we use GPUs
+    Arrays.T_init .= CartData_input.fields.Temp[:,1,:];
+
+    # Initialize Phases from CartData
+    Arrays.Phases .= CartData_input.fields.Phases[:,1,:];
+    Arrays.Phases_init .= CartData_input.fields.Phases[:,1,:];
 
     return nothing
 end
+
 
 """
     MTK_update_Arrays!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
@@ -332,11 +350,11 @@ function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::Di
 end
 
 """
-    MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters)
+    MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input)
 
 Save the output to disk
 """
-function MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters)
+function MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input)
 
     return nothing
 end
@@ -357,18 +375,70 @@ function MTK_updateTracers(Grid::GridData, Arrays::NamedTuple, Tracers::StructAr
 end
 
 
+"""
+    Num = Setup_Model_CartData(d, Num)
+
+Create a MTK model setup from a CartData structure generated with GeophysicalModelGenerator
+
+"""
+function Setup_Model_CartData(d, Num)
+    x = extrema(d.x.val.*1e3)
+    z = extrema(d.z.val.*1e3)
+    
+    Num.W = (x[2]-x[1])
+    Num.H = (z[2]-z[1]) 
+    Num.Nx = size(d.x.val)[1]
+    Num.Nz = size(d.x.val)[3]
+  
+    dx = (x[2]-x[1])/(Num.Nx-1)
+    dz = (z[2]-z[1])/(Num.Nx-1)
+    dt = Num.fac_dt*min(dx^2, dz^2)./Num.κ_time/4;   # timestep
+    Num.dx = dx;
+    Num.dz = dz;
+    Num.dt = dt;
+
+    Num.nt = floor(Num.maxTime/dt)
+    
+    return Num
+end
+
+
 #-----------------------------------------------------------------------------------------
 """
-    Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(Mat_tup, Num, Dikes; CartData_input=nothing);
+    Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::DikeParameters; CartData_input=nothing, time_props::TimeDependentProperties = TimeDepProps());
 
 Main routine that performs a 2D or 2D axisymmetric thermal diffusion simulation with injection of dikes.
 
-- `MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)`
+Parameters
+====
+- `Mat_tup::Tuple`: Tuple of material properties.
+- `Num::NumericalParameters`: Numerical parameters.
+- `Dikes::DikeParameters`: Dike parameters.
+- `CartData_input::CartData`: Optional input of a CartData structure generated with GeophysicalModelGenerator.
+- `time_props::TimeDependentProperties`: Optional input of a `TimeDependentProperties` structure.
 
+Customizable functions
+====
+There are a few functions that you can overwrite in your user code to customize the simulation:
+
+- `MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)`
+- `MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)`
+- `MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)`
+- `MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input)`
+- `MTK_updateTracers(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters)`
+- `MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input)`
+- `MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters, Tracers::StructVector, Tnew_cpu)`
+- `MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters)`
 
 """
-@views function MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::DikeParameters; CartData_input=nothing);
+@views function MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::DikeParameters; CartData_input=nothing, time_props::TimeDependentProperties = TimeDepProps());
     
+    # Change parameters based on CartData input
+    if !isnothing(CartData_input)
+        Num = Setup_Model_CartData(CartData_input, Num)
+        @show Num
+    end
+
     # Array & grid initializations ---------------
     Arrays = CreateArrays(Dict( (Num.Nx,  Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0),
                                 (Num.Nx-1,Num.Nz  )=>(qx=0,Kx=0, Rc=0), 
@@ -376,7 +446,11 @@ Main routine that performs a 2D or 2D axisymmetric thermal diffusion simulation 
                                 ))
 
     # Set up model geometry & initial T structure
-    Grid                    = CreateGrid(size=(Num.Nx,Num.Nz), extent=(Num.W, Num.H))   
+    if isnothing(CartData_input)
+        Grid                    = CreateGrid(size=(Num.Nx,Num.Nz), extent=(Num.W, Num.H))   
+    else
+        Grid                    = CreateGrid(size=(Num.Nx,Num.Nz), x=extrema(CartData_input.x.val.*1e3), z=extrema(CartData_input.z.val.*1e3))   
+    end
     GridArray!(Arrays.R, Arrays.Z, Grid)        
     Arrays.Rc              .=   (Arrays.R[2:end,:] + Arrays.R[1:end-1,:])/2     # center points in x
     # --------------------------------------------
@@ -401,16 +475,20 @@ Main routine that performs a 2D or 2D axisymmetric thermal diffusion simulation 
     Arrays = (Arrays..., Phases=Phases, Phases_init=Phases_init);
     
     # Initialize Geotherm and Phases -------------
-    MTK_initialize!(Arrays, Grid, Num, Tracers, Dikes);
+    if isnothing(CartData_input)
+        MTK_initialize!(Arrays, Grid, Num, Tracers, Dikes);
+    else
+        MTK_initialize!(Arrays, Grid, Num, Tracers, Dikes, CartData_input);
+    end
     # --------------------------------------------
     
     # Optionally set initial sill in models ------
-    dike_poly   = []
     if Dikes.Type  == "CylindricalDike_TopAccretion"
         ind = findall( (Arrays.R.<=Dikes.W_in/2) .& (abs.(Arrays.Z.-Dikes.Center[2]) .< Dikes.H_in/2) );
         Arrays.T_init[ind] .= Dikes.T_in_Celsius;
         if Num.advect_polygon==true
-            dike_poly   =   CreateDikePolygon(dike);
+            dike              =   Dike(W=Dikes.W_in,H=Dikes.H_in,Type=Dikes.Type,T=Dikes.T_in_Celsius, Center=Dikes.Center[:],  Angle=Dikes.Angle, Phase=Dikes.DikePhase);               # "Reference" dike with given thickness,radius and T
+            Dikes.dike_poly   =   CreateDikePolygon(dike);
         end
     end
     # --------------------------------------------
@@ -439,9 +517,6 @@ Main routine that performs a 2D or 2D axisymmetric thermal diffusion simulation 
 
     end
     # --------------------------------------------
-
-
-    time_props = TimeDepProps();    # initialize time-dependent properties
 
     for Num.it = 1:Num.nt   # Time loop
         Num.time  += Num.dt;                                     # Keep track of evolved time
@@ -482,7 +557,7 @@ Main routine that performs a 2D or 2D axisymmetric thermal diffusion simulation 
         # --------------------------------------------
           
         # Save output to disk once in a while --------
-        MTK_save_output(Grid, Arrays, Tracers, Dikes, time_props, Num);
+        MTK_save_output(Grid, Arrays, Tracers, Dikes, time_props, Num, CartData_input);
         # --------------------------------------------
 
         # Optionally update arrays and structs (such as T or Dike) -------
