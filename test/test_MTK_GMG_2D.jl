@@ -108,9 +108,9 @@ Randomly change orientation and location of a dike
 """
 function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
     if mod(Num.it,10)==0
-        cen       =     (Grid.max .+ Grid.min)./2 .+ rand(rng, -0.5:1e-3:0.5, 2).*[Dikes.W_ran; Dikes.H_ran];    # Randomly vary center of dike 
-        if cen[end]<-15e3;  Angle_rand = rand(rng, 80.0:0.1:100.0)                                              # Orientation: near-vertical @ depth             
-        else                Angle_rand = rand(rng,-10.0:0.1:10.0); end                        
+        cen       =     (Grid.max .+ Grid.min)./2 .+ 0*rand(rng, -0.5:1e-3:0.5, 2).*[Dikes.W_ran; Dikes.H_ran];    # Randomly vary center of dike 
+        if cen[end]<-15e3;  Angle_rand = 0*rand(rng, 80.0:0.1:100.0)                                              # Orientation: near-vertical @ depth             
+        else                Angle_rand = 0*rand(rng,-10.0:0.1:10.0); end                        
         
         Dikes.Center = cen; 
         Dikes.Angle = [Angle_rand];
