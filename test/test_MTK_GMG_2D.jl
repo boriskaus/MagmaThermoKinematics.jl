@@ -15,7 +15,7 @@ using MagmaThermoKinematics
 
 using Random, GeoParams, GeophysicalModelGenerator
 
-const rng = Random.seed!(1234);     # such that we can reproduce results
+const rng = Random.seed!(1234);     # same seed such that we can reproduce results
 
 # Import a few routines, so we can overwrite them below
 import MagmaThermoKinematics.MTK_GMG_2D.MTK_visualize_output
@@ -108,7 +108,7 @@ Randomly change orientation and location of a dike
 """
 function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
     if mod(Num.it,10)==0
-        cen       =     (Grid.max .+ Grid.min)./2 .+ rand(-0.5:1e-3:0.5, 2).*[Dikes.W_ran; Dikes.H_ran];    # Randomly vary center of dike 
+        cen       =     (Grid.max .+ Grid.min)./2 .+ rand(rng, -0.5:1e-3:0.5, 2).*[Dikes.W_ran; Dikes.H_ran];    # Randomly vary center of dike 
         if cen[end]<-15e3;  Angle_rand = rand(rng, 80.0:0.1:100.0)                                              # Orientation: near-vertical @ depth             
         else                Angle_rand = rand(rng,-10.0:0.1:10.0); end                        
         
