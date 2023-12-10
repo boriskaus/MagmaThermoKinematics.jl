@@ -3,7 +3,7 @@
 # - How to define a custom structure with temporal values and how to use it in the code
 # - How to generate a model setup using GMG
 
-const USE_GPU=true;
+const USE_GPU=false;
 using MagmaThermoKinematics
 using CUDA
 if USE_GPU

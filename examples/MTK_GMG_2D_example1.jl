@@ -1,7 +1,7 @@
 # This is a first example of how to use MagmaThermoKinematics with a real setup which can be customized with user-defined functions,
 # for example for plotting or printing output.
 
-const USE_GPU=true;
+const USE_GPU=false;
 using MagmaThermoKinematics
 if USE_GPU
     environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
