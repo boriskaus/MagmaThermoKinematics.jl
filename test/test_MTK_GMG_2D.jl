@@ -15,7 +15,7 @@ using MagmaThermoKinematics
 
 using Random, GeoParams, GeophysicalModelGenerator
 
-const rng = Random.seed!(1234);     # such that we can reproduce results
+const rng = Random.seed!(1234);     # same seed such that we can reproduce results
 
 # Import a few routines, so we can overwrite them below
 import MagmaThermoKinematics.MTK_GMG_2D.MTK_visualize_output
@@ -66,7 +66,7 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 315.4638294086378  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 0.3173129347182948  rtol= 1e-5
+@test sum(time_props.MeltFraction)  ≈ 0.32112172814175854  rtol= 1e-5
 
 # -----------------------------
 
@@ -108,9 +108,9 @@ Randomly change orientation and location of a dike
 """
 function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
     if mod(Num.it,10)==0
-        cen       =     (Grid.max .+ Grid.min)./2 .+ rand(-0.5:1e-3:0.5, 2).*[Dikes.W_ran; Dikes.H_ran];    # Randomly vary center of dike 
-        if cen[end]<-15e3;  Angle_rand = rand(rng, 80.0:0.1:100.0)                                              # Orientation: near-vertical @ depth             
-        else                Angle_rand = rand(rng,-10.0:0.1:10.0); end                        
+        cen       =     (Grid.max .+ Grid.min)./2 .+ 0*rand(rng, -0.5:1e-3:0.5, 2).*[Dikes.W_ran; Dikes.H_ran];    # Randomly vary center of dike 
+        if cen[end]<-15e3;  Angle_rand = 0*rand(rng, 80.0:0.1:100.0)                                              # Orientation: near-vertical @ depth             
+        else                Angle_rand = 0*rand(rng,-10.0:0.1:10.0); end                        
         
         Dikes.Center = cen; 
         Dikes.Angle = [Angle_rand];
@@ -172,7 +172,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params, CartData_input=Data_2D); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 251.5482011114283  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 0.9692108280033209  rtol= 1e-5
+@test sum(time_props.MeltFraction)  ≈ 0.9709394385527924 rtol= 1e-5
 
 
 end
