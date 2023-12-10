@@ -3,16 +3,16 @@
 # - How to define a custom structure with temporal values and how to use it in the code
 # - How to generate a model setup using GMG
 
-const USE_GPU=false;
+const USE_GPU=true;
 using MagmaThermoKinematics
+using CUDA
 if USE_GPU
     environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    CUDA.device!(1)                     # select the GPU you use (starts @ zero)
+    #CUDA.device!(1)                     # select the GPU you use (starts @ zero)
 else
     environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
 end
 using MagmaThermoKinematics.Diffusion2D
-using MagmaThermoKinematics
 
 using Plots
 using Random
@@ -80,33 +80,43 @@ Data_2D.fields.Temp[ind] .= 800.0
 println(" --- Performing MTK models --- ")
 
 # Overwrite some of the default functions
-function MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
-    if mod(Num.it,Num.CreateFig_steps)==0
-        x_1d =  Grid.coord1D[1]/1e3;
-        z_1d =  Grid.coord1D[2]/1e3;
-        temp_data = Array(Arrays.Tnew)'
-        ϕ_data = Array(Arrays.ϕ)'
-        phase_data = Float64.(Array(Arrays.Phases))'
-        
-        # remove topo on plots
-        ind = findall(phase_data .== 0)
-        phase_data[ind] .= NaN
-        temp_data[ind] .= NaN
-        
-        t = Num.time/SecYear/1e3;
-
-        p=plot(layout=grid(1,2) )
-
-        Plots.heatmap!(p[1],x_1d, z_1d, temp_data, c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Temperature, t=$(round(t)) kyrs", aspect_ratio=:equal,  ylimits=(minimum(z_1d),2))
-        Plots.heatmap!(p[2],x_1d, z_1d, ϕ_data,    c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Melt fraction", clims=(0,1), aspect_ratio=:equal, ylimits=(minimum(z_1d),2))
-        #Plots.heatmap!(p[2],x_1d, z_1d, phase_data,    c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Melt fraction", aspect_ratio=:equal, ylimits=(minimum(z_1d),2))
-
-       # p = plot(ps, layout=(1,2))
-        display(p)
+if USE_GPU
+    function MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+        println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
+        return nothing
     end
-    return nothing
+else
+    function MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+        if mod(Num.it,Num.CreateFig_steps)==0
+            x_1d =  Grid.coord1D[1]/1e3;
+            z_1d =  Grid.coord1D[2]/1e3;
+            temp_data = Array(Arrays.Tnew)'
+            ϕ_data = Array(Arrays.ϕ)'
+            phase_data = Float64.(Array(Arrays.Phases))'
+            
+            # remove topo on plots
+            ind = findall(phase_data .== 0)
+            phase_data[ind] .= NaN
+            temp_data[ind] .= NaN
+            
+            t = Num.time/SecYear/1e3;
+
+            p=plot(layout=grid(1,2) )
+
+            Plots.heatmap!(p[1],x_1d, z_1d, temp_data, c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Temperature, t=$(round(t)) kyrs", aspect_ratio=:equal,  ylimits=(minimum(z_1d),2))
+            Plots.heatmap!(p[2],x_1d, z_1d, ϕ_data,    c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Melt fraction", clims=(0,1), aspect_ratio=:equal, ylimits=(minimum(z_1d),2))
+            #Plots.heatmap!(p[2],x_1d, z_1d, phase_data,    c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Melt fraction", aspect_ratio=:equal, ylimits=(minimum(z_1d),2))
+
+        # p = plot(ps, layout=(1,2))
+            display(p)
+        end
+        return nothing
+    end
 end
 
+function MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+    return nothing
+end
 
 function MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
     println("$(Num.it), Time=$(round(Num.time/Num.SecYear/1e3, digits=3)) kyrs; max(T) = $(round(maximum(Arrays.Tnew)))")
@@ -177,7 +187,7 @@ Dike_params = DikeParam(Type="ElasticDike",
 MatParam     = (SetMaterialParams(Name="Air", Phase=0, 
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
                                 LatentHeat = ConstantLatentHeat(Q_L=0.0J/kg),
-                                Conductivity = ConstantConductivity(k=15Watt/K/m),          # in case we use constant k
+                                Conductivity = ConstantConductivity(k=3Watt/K/m),          # in case we use constant k
                                 HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
                                 Melting = SmoothMelting(MeltingParam_4thOrder())),          # Marxer & Ulmer melting     
 

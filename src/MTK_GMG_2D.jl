@@ -12,6 +12,7 @@ using Parameters
 using GeoParams
 using StructArrays
 using GeophysicalModelGenerator
+using CUDA
 
 using MagmaThermoKinematics.Diffusion2D
 using MagmaThermoKinematics
@@ -330,11 +331,20 @@ Initialize temperature and phases
 function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::Union{Nothing,CartData})
     # Initalize T from CartData set
     # NOTE: this almost certainly requires changes if we use GPUs
-    Arrays.T_init .= CartData_input.fields.Temp[:,:,1];
 
-    # Initialize Phases from CartData
-    Arrays.Phases .= CartData_input.fields.Phases[:,:,1];
-    Arrays.Phases_init .= CartData_input.fields.Phases[:,:,1];
+    if Num.USE_GPU
+        @parallel assign!(Arrays.T_init,  CuArray(CartData_input.fields.Temp[:,:,1]))
+        
+        #Arrays.T_init       .= CuArray(CartData_input.fields.Temp[:,:,1]);
+
+        Arrays.Phases       .= CuArray(CartData_input.fields.Phases[:,:,1]);
+        Arrays.Phases_init  .= CuArray(CartData_input.fields.Phases[:,:,1]);
+    else
+        Arrays.T_init       .= CartData_input.fields.Temp[:,:,1];
+
+        Arrays.Phases       .= CartData_input.fields.Phases[:,:,1];
+        Arrays.Phases_init  .= CartData_input.fields.Phases[:,:,1];
+    end
 
     # open pvd file if requested
     if Num.Output_VTK & !isnothing(CartData_input)
@@ -544,13 +554,15 @@ There are a few functions that you can overwrite in your user code to customize 
         Phases_init     =   ones(Int64,Num.Nx,Num.Nz)
     end
     Arrays = (Arrays..., Phases=Phases, Phases_init=Phases_init);
-
+    
     # Initialize Geotherm and Phases -------------
     if isnothing(CartData_input)
         MTK_initialize!(Arrays, Grid, Num, Tracers, Dikes);
     else
         MTK_initialize!(Arrays, Grid, Num, Tracers, Dikes, CartData_input);
     end
+    #@parallel assign!(Arrays.Phases_init, Arrays.Phases)
+
     
     # check errors 
     unique_Phases = unique(Array(Arrays.Phases));
@@ -614,7 +626,7 @@ There are a few functions that you can overwrite in your user code to customize 
         # --------------------------------------------
 
         # Do a diffusion step, while taking T-dependencies into account
-        Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Arrays.Phases, Grid, Num.dt, Num)
+        Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Phases, Grid, Num.dt, Num)
         # --------------------------------------------
 
         # Update variables ---------------------------

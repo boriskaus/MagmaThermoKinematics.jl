@@ -1,7 +1,7 @@
 # This is a first example of how to use MagmaThermoKinematics with a real setup which can be customized with user-defined functions,
 # for example for plotting or printing output.
 
-const USE_GPU=false;
+const USE_GPU=true;
 using MagmaThermoKinematics
 if USE_GPU
     environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
@@ -31,35 +31,39 @@ Random.seed!(1234);     # such that we can reproduce results
 println("Example 1 of the MTK - GMG integration")
 
 # Overwrite some functions
-function MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
-    if mod(Num.it,Num.CreateFig_steps)==0
-        x_1d =  Grid.coord1D[1]/1e3;
-        z_1d =  Grid.coord1D[2]/1e3;
-        temp_data = Array(Arrays.Tnew)'
-        ϕ_data = Array(Arrays.ϕ)'
-        phase_data = Array(Arrays.Phases)'
-        #phase_data = Array(Arrays.Phases_init)'
-        
-        t = Num.time/SecYear;
 
-        p=plot(layout=grid(1,2) )
 
-        Plots.heatmap!(p[1],x_1d, z_1d, temp_data, c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Temperature, t=$(round(t)) yrs", aspect_ratio=:equal, ylimits=(-20,0))
-#        Plots.heatmap!(p[2],x_1d, z_1d, ϕ_data,    c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Melt fraction", clims=(0,1), aspect_ratio=:equal, ylimits=(-20,0))
-        Plots.heatmap!(p[2],x_1d, z_1d, phase_data,    c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Melt fraction, t=$(round(t)) yrs", aspect_ratio=:equal, ylimits=(-20,0))
 
-       # p = plot(ps, layout=(1,2))
-        display(p)
+if USE_GPU
+    function MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+        println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
+        return nothing
     end
-    return nothing
+else
+    function MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+        if mod(Num.it,Num.CreateFig_steps)==0
+            x_1d =  Grid.coord1D[1]/1e3;
+            z_1d =  Grid.coord1D[2]/1e3;
+            temp_data = Array(Arrays.Tnew)'
+            ϕ_data = Array(Arrays.ϕ)'
+            phase_data = Array(Arrays.Phases)'
+            #phase_data = Array(Arrays.Phases_init)'
+            
+            t = Num.time/SecYear;
+    
+            p=plot(layout=grid(1,2) )
+    
+            Plots.heatmap!(p[1],x_1d, z_1d, temp_data, c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Temperature, t=$(round(t)) yrs", aspect_ratio=:equal, ylimits=(-20,0))
+    #        Plots.heatmap!(p[2],x_1d, z_1d, ϕ_data,    c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Melt fraction", clims=(0,1), aspect_ratio=:equal, ylimits=(-20,0))
+            Plots.heatmap!(p[2],x_1d, z_1d, phase_data,    c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Melt fraction, t=$(round(t)) yrs", aspect_ratio=:equal, ylimits=(-20,0))
+    
+           # p = plot(ps, layout=(1,2))
+            display(p)
+        end
+        return nothing
+    end
+
 end
-
-
-function MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
-    println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
-    return nothing
-end
-
 
 """
 Randomly change orientation and location of a dike
@@ -149,6 +153,42 @@ MatParam     = (SetMaterialParams(Name="Uppermost Crust", Phase=0,
                 # add more parameters here, in case you have >1 phase in the model                                    
                 )
 
+
+
+MatParam     = (SetMaterialParams(Name="Host rock 1", Phase=0, 
+                                Density    = ConstantDensity(ρ=2700kg/m^3),                    # used in the parameterisation of Whittington 
+                                LatentHeat = ConstantLatentHeat(Q_L=2.55e5J/kg),
+                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=0e-7Watt/m^3),
+                                Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
+                                HeatCapacity = T_HeatCapacity_Whittington(),                      # T-dependent cp
+                                # Conductivity = ConstantConductivity(k=3.3Watt/K/m),               # in case we use constant k
+                                # HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                Melting = MeltingParam_Assimilation()                              # Quadratic parameterization as in Tierney et al.
+                                #Melting = MeltingParam_Caricchi()
+                                ),
+                SetMaterialParams(Name="Host rock", Phase=1, 
+                                Density    = ConstantDensity(ρ=2700kg/m^3),                    # used in the parameterisation of Whittington 
+                                LatentHeat = ConstantLatentHeat(Q_L=2.55e5J/kg),
+                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=0e-7Watt/m^3),
+                                Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
+                                HeatCapacity = T_HeatCapacity_Whittington(),                      # T-dependent cp
+                                # Conductivity = ConstantConductivity(k=3.3Watt/K/m),               # in case we use constant k
+                                # HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                Melting = MeltingParam_Assimilation()                              # Quadratic parameterization as in Tierney et al.
+                                #Melting = MeltingParam_Caricchi()
+                            ),       
+                SetMaterialParams(Name="Intruded rocks", Phase=2, 
+                            Density    = ConstantDensity(ρ=2700kg/m^3),                     # used in the parameterisation of Whittington 
+                            LatentHeat = ConstantLatentHeat(Q_L=2.67e5J/kg),               
+                            RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=0e-7Watt/m^3),
+                            Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
+                            HeatCapacity = T_HeatCapacity_Whittington(),                       # T-dependent cp
+                            #Conductivity = ConstantConductivity(k=3.3Watt/K/m),               # in case we use constant k
+                            #HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                            Melting = SmoothMelting(MeltingParam_Quadratic(T_s=(700+273.15)K, T_l=(1100+273.15)K))
+                            #Melting = MeltingParam_Caricchi()
+                            )       
+)
 
 # Call the main code with the specified material parameters
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params); # start the main code
