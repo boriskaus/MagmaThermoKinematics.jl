@@ -81,10 +81,13 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     SimName::String             =   "Zassy_UCLA_ellipticalIntrusion"    # name of simulation
     FigTitle                    =   "UCLA setup"
     Nx::Int64                   =   201
+    Ny::Int64                   =   0
     Nz::Int64                   =   201
     W::Float64                  =   20e3
+    L::Float64                  =   0
     H::Float64                  =   20e3
     dx::Float64                 =   W/(Nx-1)
+    dy::Float64                 =   L/(Ny-1)
     dz::Float64                 =   H/(Nz-1)        # grid spacing in z
     Tsurface_Celcius::Float64   =   0               # Surface T in celcius
     Geotherm::Float64           =   40/1e3          # in K/m
@@ -100,7 +103,9 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     axisymmetric::Bool          =   true            # axisymmetric (if true) of 2D geometry?
     κ_time::Float64             =   3.3/(1000*2700) # κ to determine the stable timestep 
     fac_dt::Float64             =   0.4;            # prefactor with which dt is multiplied   
-    dt::Float64                 =   fac_dt*min(dx^2, dz^2)./κ_time/4;   # timestep
+    Δ::Vector{Float64}          =   [dx, dy, dz];                   # grid spacing
+    Δmin::Float64               =   minimum(Δ[Δ.>0]);               # minimum grid spacing
+    dt::Float64                 =   fac_dt*min(Δmin^2)./κ_time/4;   # timestep
     time::Float64               =   0.0;            # current time          
     nt::Int64                   =   floor(maxTime/dt);
     it::Int64                   =   0;              # current iteration
