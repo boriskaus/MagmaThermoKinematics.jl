@@ -8,7 +8,6 @@ using ParallelStencil.FiniteDifferences2D
 using Parameters
 using StructArrays
 using GeophysicalModelGenerator
-using CUDA
 
 using MagmaThermoKinematics.Diffusion2D
 using MagmaThermoKinematics.MTK_GMG
