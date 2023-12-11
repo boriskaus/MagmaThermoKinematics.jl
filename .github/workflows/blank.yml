@@ -19,7 +19,7 @@ jobs:
         os:
           - ubuntu-latest
           - macOS-latest
-          - macos-13-large
+          - osx-arm64
           - windows-latest
         arch:
           - x64
