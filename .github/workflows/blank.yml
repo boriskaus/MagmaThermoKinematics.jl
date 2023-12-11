@@ -19,7 +19,6 @@ jobs:
         os:
           - ubuntu-latest
           - macOS-latest
-          - osx-arm64
           - windows-latest
         arch:
           - x64
