@@ -12,10 +12,13 @@ using GeoParams
 using GeophysicalModelGenerator
 using StructArrays
 using MagmaThermoKinematics.Grid
-import MagmaThermoKinematics: NumericalParameters, DikeParameters, TimeDependentProperties, @parallel
+using MagmaThermoKinematics.Data
+import MagmaThermoKinematics: NumericalParameters, DikeParameters, TimeDependentProperties
 import MagmaThermoKinematics: update_Tvec!, Dike, InjectDike, km³, kyr, Myr, CreateDikePolygon
 import MagmaThermoKinematics: PhasesFromTracers!
 SecYear = 3600*24*365.25;
+
+using CUDA
 
 """
     Analytical geotherm used for the UCLA setups, which includes radioactive heating
@@ -47,7 +50,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
             Tnew_cpu[:,1]   .=  T_bottom
         end
 
-        Arrays.T           .=   Array(Tnew_cpu)
+        Arrays.T           .=   Data.Array(Tnew_cpu)
         Dikes.InjectVol    +=   Vol                                                     # Keep track of injected volume
         Qrate               =   Dikes.InjectVol/Num.time
         Dikes.Qrate_km3_yr  =   Qrate*SecYear/km³
@@ -140,10 +143,10 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
     # NOTE: this almost certainly requires changes if we use GPUs
 
     if Num.USE_GPU
-        @parallel assign!(Arrays.T_init,  CuArray(CartData_input.fields.Temp[:,:,1]))
-
-        Arrays.Phases       .= CuArray(CartData_input.fields.Phases[:,:,1]);
-        Arrays.Phases_init  .= CuArray(CartData_input.fields.Phases[:,:,1]);
+        Arrays.T_init .= Data.Array(CartData_input.fields.Temp[:,:,1])
+        
+        Arrays.Phases       .= Data.Array(CartData_input.fields.Phases[:,:,1]);
+        Arrays.Phases_init  .= Data.Array(CartData_input.fields.Phases[:,:,1]);
     else
         Arrays.T_init       .= CartData_input.fields.Temp[:,:,1];
 

@@ -5,18 +5,14 @@ const USE_GPU=false;
 using MagmaThermoKinematics
 if USE_GPU
     environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    CUDA.device!(1)                     # select the GPU you use (starts @ zero)
 else
     environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
 end
 using MagmaThermoKinematics.Diffusion2D
-using MagmaThermoKinematics
+using MagmaThermoKinematics.MTK_GMG     # Allow overwriting user routines
 
 using Plots
 using Random, GeoParams
-
-# Allow overwriting user routines
-using MagmaThermoKinematics.MTK_GMG
 
 Random.seed!(1234);     # such that we can reproduce results
 
@@ -37,6 +33,7 @@ if USE_GPU
         return nothing
     end
 else
+    #=
     function MTK_GMG.MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
         if mod(Num.it,Num.CreateFig_steps)==0
             x_1d =  Grid.coord1D[1]/1e3;
@@ -59,6 +56,7 @@ else
         end
         return nothing
     end
+    =#
 
 end
 
@@ -185,7 +183,7 @@ MatParam     = (SetMaterialParams(Name="Host rock 1", Phase=0,
                             Melting = SmoothMelting(MeltingParam_Quadratic(T_s=(700+273.15)K, T_l=(1100+273.15)K))
                             #Melting = MeltingParam_Caricchi()
                             )       
-)
+                )
 
 # Call the main code with the specified material parameters
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params); # start the main code

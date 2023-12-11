@@ -5,20 +5,18 @@
 
 const USE_GPU=false;
 using MagmaThermoKinematics
-using CUDA
 if USE_GPU
     environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    #CUDA.device!(1)                     # select the GPU you use (starts @ zero)
 else
     environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
 end
 using MagmaThermoKinematics.Diffusion2D
+using MagmaThermoKinematics.MTK_GMG     # Allow overwriting user routines
 
 using Plots
 using Random
 
-# Allow overwriting user routines
-using MagmaThermoKinematics.MTK_GMG
+
 
 # Test setup
 println("Example 2 of the MTK - GMG integration")
