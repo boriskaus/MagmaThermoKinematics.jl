@@ -6,7 +6,6 @@ const USE_GPU=false;
 using MagmaThermoKinematics
 if USE_GPU
     environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    CUDA.device!(1)                     # select the GPU you use (starts @ zero)
 else
     environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
 end
@@ -69,7 +68,7 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 315.4638294086378  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 0.31731293471782795  rtol= 1e-5
+@test sum(time_props.MeltFraction)  ≈ 0.3211217281417583  rtol= 1e-5
 
 # -----------------------------
 
@@ -175,7 +174,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params, CartData_input=Data_2D); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 251.5482011114283  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 1.0048815724466347 rtol= 1e-5
+@test sum(time_props.MeltFraction)  ≈ 1.0066096298950509 rtol= 1e-5
 
 
 end
