@@ -83,7 +83,7 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     fac_dt::Float64             =   0.4;            # prefactor with which dt is multiplied   
     Δ::Vector{Float64}          =   [dx, dy, dz];                   # grid spacing
     Δmin::Float64               =   minimum(Δ[Δ.>0]);               # minimum grid spacing
-    dt::Float64                 =   fac_dt*min(Δmin^2)./κ_time/4;   # timestep
+    dt::Float64                 =   fac_dt*(Δmin^2)./κ_time/4;   # timestep
     time::Float64               =   0.0;            # current time          
     nt::Int64                   =   floor(maxTime/dt);
     it::Int64                   =   0;              # current iteration

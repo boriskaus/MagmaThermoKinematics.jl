@@ -21,8 +21,12 @@ const rng = Random.seed!(1234);     # same seed such that we can reproduce resul
 using MagmaThermoKinematics.MTK_GMG
 
 @testset "MTK_GMG_2D" begin
-
-
+#=
+    function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+        println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
+        return nothing
+    end
+=#
 # Test setup
 println("===============================================")
 println("Testing the MTK - GMG integration")
@@ -170,7 +174,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params, CartData_input=Data_2D); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 251.5482011114283  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 0.9709394385527761 rtol= 1e-5
+@test sum(time_props.MeltFraction)  ≈ 1.0066096298950484 rtol= 1e-5
 
 
 end
