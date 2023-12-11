@@ -18,8 +18,7 @@ jobs:
           - '1.9'
         os:
           - ubuntu-latest
-          - macos-latest
-          - macos-13
+          - macOS-latest
           - windows-latest
         arch:
           - x64
