@@ -68,7 +68,6 @@ There are a few functions that you can overwrite in your user code to customize 
     if isnothing(CartData_input)
         Grid                    = CreateGrid(size=(Num.Nx,Num.Nz), extent=(Num.W, Num.H))   
     else
-        @show (Num.Nx,Num.Nz),  extrema(CartData_input.fields.FlatCrossSection.*1e3), extrema(CartData_input.z.val.*1e3)
         Grid                    = CreateGrid(size=(Num.Nx,Num.Nz), x=extrema(CartData_input.fields.FlatCrossSection.*1e3), z=extrema(CartData_input.z.val.*1e3))   
     end
     GridArray!(Arrays.R, Arrays.Z, Grid)        
