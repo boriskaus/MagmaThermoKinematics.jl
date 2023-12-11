@@ -15,15 +15,8 @@ using MagmaThermoKinematics
 using Plots
 using Random, GeoParams
 
-# Import a few routines, so we can overwrite them below
-import MagmaThermoKinematics.MTK_GMG_2D.MTK_visualize_output
-import MagmaThermoKinematics.MTK_GMG_2D.MTK_print_output
-import MagmaThermoKinematics.MTK_GMG_2D.MTK_update_TimeDepProps!
-import MagmaThermoKinematics.MTK_GMG_2D.MTK_update_ArraysStructs!
-import MagmaThermoKinematics.MTK_GMG_2D.MTK_initialize!
-import MagmaThermoKinematics.MTK_GMG_2D.MTK_updateTracers
-import MagmaThermoKinematics.MTK_GMG_2D.MTK_save_output
-
+# Allow overwriting user routines
+using MagmaThermoKinematics.MTK_GMG
 
 Random.seed!(1234);     # such that we can reproduce results
 
@@ -33,14 +26,18 @@ println("Example 1 of the MTK - GMG integration")
 # Overwrite some functions
 
 
+function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+    println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
+    return nothing
+end
 
 if USE_GPU
-    function MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+    function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
         println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
         return nothing
     end
 else
-    function MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+    function MTK_GMG.MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
         if mod(Num.it,Num.CreateFig_steps)==0
             x_1d =  Grid.coord1D[1]/1e3;
             z_1d =  Grid.coord1D[2]/1e3;
@@ -68,7 +65,7 @@ end
 """
 Randomly change orientation and location of a dike
 """
-function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
+function MTK_GMG.MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
     if mod(Num.it,10)==0
         cen       =     (Grid.max .+ Grid.min)./2 .+ rand(-0.5:1e-3:0.5, 2).*[Dikes.W_ran; Dikes.H_ran];    # Randomly vary center of dike 
         if cen[end]<-12e3;  Angle_rand = rand( 80.0:0.1:100.0)                                              # Orientation: near-vertical @ depth             
@@ -85,7 +82,7 @@ end
 
 Initialize temperature and phases of the grid
 """
-function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters)
+function MTK_GMG.MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters)
     # Initalize T
     Arrays.T_init      .=   @. Num.Tsurface_Celcius - Arrays.Z*Num.Geotherm;                # Initial (linear) temperature profile
     

@@ -23,6 +23,25 @@ abstract type TimeDependentProperties end
 
 include("Units.jl")                             # various useful units
 
+# Few useful parameters                                       
+SecYear     = 3600*24*365.25
+kyr         = 1000*SecYear
+Myr         = 1e6*SecYear  
+km³         = 1000^3
+export SecYear, kyr, Myr, km³
+
+export NumericalParameters, DikeParameters, TimeDependentProperties
+
+include("Grid.jl")
+using .Grid
+export GridData, CreateGrid
+
+# Routines that deal with tracers
+include("Tracers.jl")
+export UpdateTracers, AdvectTracers!, InitializeTracers,PhaseRatioFromTracers, CorrectTracersForTopography!
+export RockAssemblage, update_Tvec!
+export PhaseRatioFromTracers!, PhasesFromTracers!, UpdateTracers_T_ϕ!, UpdateTracers_Field! # new routines
+
 function environment!(model_device, precision, dimension)
     gpu = model_device == :gpu ? true : false
 
@@ -127,28 +146,25 @@ function environment!(model_device, precision, dimension)
 
     # GMG integration
     Base.@eval begin
+        include(joinpath(@__DIR__, "MTK_GMG_structs.jl"))
+        export NumParam, DikeParam, TimeDepProps
+
+        include(joinpath(@__DIR__, "MTK_GMG.jl"))
+        
         include(joinpath(@__DIR__, "MTK_GMG_2D.jl"))
         using .MTK_GMG_2D
-        export NumParam, DikeParam, TimeDepProps, MTK_inject_dikes, MTK_GeoParams_2D
-        export NumericalParameters, DikeParameters, TimeDependentProperties
+        export MTK_GeoParams_2D
+
+       # include(joinpath(@__DIR__, "MTK_GMG_3D.jl"))
+       # using .MTK_GMG_3D
+       # export MTK_GeoParams_3D
+
     end
 
 end
 
 export environment!
 
-# Few useful parameters                                       
-SecYear     = 3600*24*365.25
-kyr         = 1000*SecYear
-Myr         = 1e6*SecYear  
-km³         = 1000^3
-export SecYear, kyr, Myr, km³
-
-export NumericalParameters, DikeParameters, TimeDependentProperties
-
-include("Grid.jl")
-using .Grid
-export GridData, CreateGrid
 
 include("MeltingRelationships.jl")
 export SolidFraction, ComputeLithostaticPressure, LoadPhaseDiagrams, PhaseDiagramData, ComputeDensityAndPressure
@@ -166,13 +182,6 @@ export Tracer, AddDike, HostRockVelocityFromDike, CreateDikePolygon, advect_dike
 # routines related to advection & interpolation
 include("Advection.jl")
 export AdvectTemperature, Interpolate!, CorrectBounds, evaluate_interp_2D, evaluate_interp_3D    
-
-# Routines that deal with tracers
-include("Tracers.jl")
-export UpdateTracers, AdvectTracers!, InitializeTracers,PhaseRatioFromTracers, CorrectTracersForTopography!
-export RockAssemblage, update_Tvec!
-export PhaseRatioFromTracers!, PhasesFromTracers!, UpdateTracers_T_ϕ!, UpdateTracers_Field! # new routines
-
 
 # Routines related to Parameters.jl, which come in handy in the main routine
 export @unpack, @with_kw

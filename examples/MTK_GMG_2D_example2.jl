@@ -17,14 +17,8 @@ using MagmaThermoKinematics.Diffusion2D
 using Plots
 using Random
 
-# Import a few routines, so we can overwrite them below
-import MagmaThermoKinematics.MTK_GMG_2D.MTK_visualize_output
-import MagmaThermoKinematics.MTK_GMG_2D.MTK_print_output
-import MagmaThermoKinematics.MTK_GMG_2D.MTK_update_TimeDepProps!
-import MagmaThermoKinematics.MTK_GMG_2D.MTK_update_ArraysStructs!
-import MagmaThermoKinematics.MTK_GMG_2D.MTK_initialize!
-import MagmaThermoKinematics.MTK_GMG_2D.MTK_updateTracers
-import MagmaThermoKinematics.MTK_GMG_2D.MTK_save_output
+# Allow overwriting user routines
+using MagmaThermoKinematics.MTK_GMG
 
 # Test setup
 println("Example 2 of the MTK - GMG integration")
@@ -81,12 +75,12 @@ println(" --- Performing MTK models --- ")
 
 # Overwrite some of the default functions
 if USE_GPU
-    function MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+    function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
         println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
         return nothing
     end
 else
-    function MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+    function MTK_GMG.MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
         if mod(Num.it,Num.CreateFig_steps)==0
             x_1d =  Grid.coord1D[1]/1e3;
             z_1d =  Grid.coord1D[2]/1e3;
@@ -114,11 +108,11 @@ else
     end
 end
 
-function MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+function MTK_GMG.MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
     return nothing
 end
 
-function MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
     println("$(Num.it), Time=$(round(Num.time/Num.SecYear/1e3, digits=3)) kyrs; max(T) = $(round(maximum(Arrays.Tnew)))")
     return nothing
 end
@@ -126,7 +120,7 @@ end
 """
 Randomly change orientation and location of a dike
 """
-function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
+function MTK_GMG.MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
     if mod(Num.it,10)==0
         cen       =     (Grid.max .+ Grid.min)./2 .+ rand(-0.5:1e-3:0.5, 2).*[Dikes.W_ran; Dikes.H_ran];    # Randomly vary center of dike 
         if cen[end]<-15e3;  Angle_rand = rand( 80.0:0.1:100.0)                                              # Orientation: near-vertical @ depth             
@@ -143,7 +137,7 @@ end
 
 Update time-dependent properties during a simulation
 """
-function MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+function MTK_GMG.MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
     push!(time_props.Time_vec,      Num.time);   # time 
     push!(time_props.MeltFraction,  sum( Arrays.ϕ)/(Num.Nx*Num.Nz));    # melt fraction       
 

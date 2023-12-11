@@ -11,17 +11,24 @@ else
     environment!(:cpu, Float64, 3)      # initialize parallel stencil in 2D
 end
 using MagmaThermoKinematics.Diffusion3D
-using MagmaThermoKinematics
+using MagmaThermoKinematics.MTK_GMG_3D
 
 using Random, GeoParams, GeophysicalModelGenerator
 
 const rng = Random.seed!(1234);     # same seed such that we can reproduce results
 
 # Import a few routines, so we can overwrite them below
-using MagmaThermoKinematics.MTK_GMG
+import MagmaThermoKinematics.MTK_visualize_output
+import MagmaThermoKinematics.MTK_print_output
+import MagmaThermoKinematics.MTK_update_TimeDepProps!
 
-@testset "MTK_GMG_2D" begin
+@testset "MTK_GMG_3D" begin
 
+
+function MagmaThermoKinematics.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+    @show it, maximum(Arrays.Tnew)
+    return nothing
+end
 
 # Test setup
 println("===============================================")
@@ -30,8 +37,8 @@ println("===============================================")
 
 # These are the final simulations for the ZASSy paper, but done @ a lower resolution
 Num         = NumParam( #Nx=269*1, Nz=269*1, 
-                        Nx=135*1, Nz=135*1, 
-                        SimName="ZASSy_Geneva_9_1e_6", axisymmetric=false,
+                        Nx=65*1, Ny=65*1, Nz=65*1, 
+                        SimName="Test1", 
                         #maxTime_Myrs=1.5, 
                         maxTime_Myrs=0.025, 
                         fac_dt=0.2, ω=0.5, verbose=false, 
@@ -63,11 +70,12 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
 # Call the main code with the specified material parameters
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params); # start the main code
 
-@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 315.4638294086378  rtol= 1e-2
+@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 296.47388575357684  rtol= 1e-2
 @test sum(time_props.MeltFraction)  ≈ 0.32112172814171824  rtol= 1e-5
 
 # -----------------------------
 
+#=
 Topo_cart = load_GMG("../examples/Topo_cart")       # Note: Laacher seee is around [10,20]
 
 # Create 3D grid of the region
@@ -104,7 +112,7 @@ Data_2D.fields.Temp[ind] .= 800.0
 """
 Randomly change orientation and location of a dike
 """
-function MTK_GMG.MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
+function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
     if mod(Num.it,10)==0
         cen       =     (Grid.max .+ Grid.min)./2 .+ 0*rand(rng, -0.5:1e-3:0.5, 2).*[Dikes.W_ran; Dikes.H_ran];    # Randomly vary center of dike 
         if cen[end]<-15e3;  Angle_rand = 0*rand(rng, 80.0:0.1:100.0)                                              # Orientation: near-vertical @ depth             
@@ -172,5 +180,5 @@ Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 251.5482011114283  rtol= 1e-2
 @test sum(time_props.MeltFraction)  ≈ 0.9709394385527761 rtol= 1e-5
 
-
+=#
 end

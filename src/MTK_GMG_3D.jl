@@ -1,28 +1,30 @@
-# This contains the 2D routine to create MTK simulations (using GeoParams)
+# This contains the 3D routine to create MTK simulations (using GeoParams)
 
 #
-module MTK_GMG_2D
+module MTK_GMG_3D
 
 using ParallelStencil
-using ParallelStencil.FiniteDifferences2D
+using ParallelStencil.FiniteDifferences3D
 using Parameters
 using StructArrays
 using GeophysicalModelGenerator
 using CUDA
 
-using MagmaThermoKinematics.Diffusion2D
+using MagmaThermoKinematics.Diffusion3D
 using MagmaThermoKinematics.MTK_GMG
 using MagmaThermoKinematics
 
+
 const SecYear = 3600*24*365.25;
 
-export MTK_GeoParams_2D
+export MTK_GeoParams_3D
+
 
 #-----------------------------------------------------------------------------------------
 """
-    Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::DikeParameters; CartData_input=nothing, time_props::TimeDependentProperties = TimeDepProps());
+    Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_3D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::DikeParameters; CartData_input=nothing, time_props::TimeDependentProperties = TimeDepProps());
 
-Main routine that performs a 2D or 2D axisymmetric thermal diffusion simulation with injection of dikes.
+Main routine that performs a 3D thermal diffusion simulation with injection of dikes.
 
 Parameters
 ====
@@ -47,48 +49,46 @@ There are a few functions that you can overwrite in your user code to customize 
 - `MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::CartData)`
 
 """
-@views function MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::DikeParameters; CartData_input::Union{Nothing,CartData}=nothing, time_props::TimeDependentProperties = TimeDepProps());
+@views function MTK_GeoParams_3D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::DikeParameters; CartData_input::Union{Nothing,CartData}=nothing, time_props::TimeDependentProperties = TimeDepProps());
     
     # Change parameters based on CartData input
     if !isnothing(CartData_input)
-       
-        if !hasfield(typeof(CartData_input.fields),:FlatCrossSection)
-           error("You should add a Field :FlatCrossSection to your data structure with Data_Cross = AddField(Data_Cross,\"FlatCrossSection\", FlattenCrossSection(Data_Cross))")
-        end
-
         Num = MTK_GMG.Setup_Model_CartData(CartData_input, Num, Mat_tup)
     end
 
     # Array & grid initializations ---------------
-    Arrays = CreateArrays(Dict( (Num.Nx,  Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0),
-                                (Num.Nx-1,Num.Nz  )=>(qx=0,Kx=0, Rc=0), 
-                                (Num.Nx  ,Num.Nz-1)=>(qz=0,Kz=0 )
-                                ))
+    if Num.dim==2
+        error("This is the 3D routine - use MTK_GeoParams_2D instead")
+    else
+        Arrays = CreateArrays(Dict( (Num.Nx,  Num.Ny  , Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0),
+                                    (Num.Nx-1,Num.Ny  , Num.Nz  )=>(qx=0,Kx=0, Rc=0), 
+                                    (Num.Nx  ,Num.Ny-1, Num.Nz  )=>(qy=0,Ky=0), 
+                                    (Num.Nx  ,Num.Ny  , Num.Nz-1)=>(qz=0,Kz=0 )
+                                    ))
+    end
 
     # Set up model geometry & initial T structure
     if isnothing(CartData_input)
-        Grid                    = CreateGrid(size=(Num.Nx,Num.Nz), extent=(Num.W, Num.H))   
+        Grid = CreateGrid(size=(Num.Nx,Num.Ny,Num.Nz), extent=(Num.W, Num.L, Num.H))   
     else
-        Grid                    = CreateGrid(size=(Num.Nx,Num.Nz), x=extrema(CartData_input.fields.FlatCrossSection.*1e3), z=extrema(CartData_input.z.val.*1e3))   
+        Grid = CreateGrid(size=(Num.Nx,Num.Ny,Num.Nz), x=extrema(CartData_input.x.val.*1e3), y=extrema(CartData_input.y.val.*1e3), z=extrema(CartData_input.z.val.*1e3))   
     end
-    GridArray!(Arrays.R, Arrays.Z, Grid)        
-    Arrays.Rc              .=   (Arrays.R[2:end,:] + Arrays.R[1:end-1,:])/2     # center points in x
     # --------------------------------------------
 
-    Tracers                 =   StructArray{Tracer}(undef, 1)                       # Initialize tracers   
+    Tracers  =   StructArray{Tracer}(undef, 1)                       # Initialize tracers   
 
     # Update buffer & phases arrays --------------
     if Num.USE_GPU
         # CPU buffers for advection
-        Tnew_cpu        =   Matrix{Float64}(undef, Num.Nx, Num.Nz)
+        Tnew_cpu        =   Matrix{Float64}(undef, Num.Nx, Num.Ny, Num.Nz)
         Phi_melt_cpu    =   similar(Tnew_cpu)
-        Phases          =   CUDA.ones(Int64,Num.Nx,Num.Nz)
-        Phases_init     =   CUDA.ones(Int64,Num.Nx,Num.Nz)
+        Phases          =   CUDA.ones(Int64,Num.Nx,Num.Ny,Num.Nz)
+        Phases_init     =   CUDA.ones(Int64,Num.Nx,Num.Ny,Num.Nz)
     else
         Tnew_cpu        =   similar(Arrays.T)
         Phi_melt_cpu    =   similar(Arrays.ϕ)
-        Phases          =   ones(Int64,Num.Nx,Num.Nz)
-        Phases_init     =   ones(Int64,Num.Nx,Num.Nz)
+        Phases          =   ones(Int64,Num.Nx,Num.Ny,Num.Nz)
+        Phases_init     =   ones(Int64,Num.Nx,Num.Ny,Num.Nz)
     end
     Arrays = (Arrays..., Phases=Phases, Phases_init=Phases_init);
     
@@ -98,8 +98,7 @@ There are a few functions that you can overwrite in your user code to customize 
     else
         MTK_GMG.MTK_initialize!(Arrays, Grid, Num, Tracers, Dikes, CartData_input);
     end
-    # --------------------------------------------
-
+    
     # check errors 
     unique_Phases = unique(Array(Arrays.Phases));
     phase_specified = []
@@ -115,6 +114,7 @@ There are a few functions that you can overwrite in your user code to customize 
     if any(isnan.(Arrays.T))
         error("NaNs in T; something is wrong")
     end
+    # --------------------------------------------
     
     # Optionally set initial sill in models ------
     if Dikes.Type  == "CylindricalDike_TopAccretion"
@@ -131,7 +131,7 @@ There are a few functions that you can overwrite in your user code to customize 
     @parallel assign!(Arrays.Tnew, Arrays.T_init)
     @parallel assign!(Arrays.T, Arrays.T_init)
 
-    if isdir(Num.SimName)==false mkdir(Num.SimName) end;        # create simulation directory if needed
+    if isdir(Num.SimName)==false mkdir(Num.SimName) end;    # create simulation directory if needed
     # --------------------------------------------
 
     for Num.it = 1:Num.nt   # Time loop
@@ -142,7 +142,7 @@ There are a few functions that you can overwrite in your user code to customize 
         # --------------------------------------------
 
         # Do a diffusion step, while taking T-dependencies into account
-        Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Phases, Grid, Num.dt, Num)
+        Nonlinear_Diffusion_step_3D!(Arrays, Mat_tup, Phases, Grid, Num.dt, Num)
         # --------------------------------------------
 
         # Update variables ---------------------------
