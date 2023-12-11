@@ -32,16 +32,6 @@ export SecYear, kyr, Myr, km³
 
 export NumericalParameters, DikeParameters, TimeDependentProperties
 
-include("Grid.jl")
-using .Grid
-export GridData, CreateGrid
-
-# Routines that deal with tracers
-include("Tracers.jl")
-export UpdateTracers, AdvectTracers!, InitializeTracers,PhaseRatioFromTracers, CorrectTracersForTopography!
-export RockAssemblage, update_Tvec!
-export PhaseRatioFromTracers!, PhasesFromTracers!, UpdateTracers_T_ϕ!, UpdateTracers_Field! # new routines
-
 function environment!(model_device, precision, dimension)
     gpu = model_device == :gpu ? true : false
 
@@ -164,6 +154,16 @@ function environment!(model_device, precision, dimension)
 end
 
 export environment!
+
+include("Grid.jl")
+using .Grid
+export GridData, CreateGrid
+
+# Routines that deal with tracers
+include("Tracers.jl")
+export UpdateTracers, AdvectTracers!, InitializeTracers,PhaseRatioFromTracers, CorrectTracersForTopography!
+export RockAssemblage, update_Tvec!
+export PhaseRatioFromTracers!, PhasesFromTracers!, UpdateTracers_T_ϕ!, UpdateTracers_Field! # new routines
 
 
 include("MeltingRelationships.jl")
