@@ -238,8 +238,17 @@ Create a MTK model setup from a CartData structure generated with GeophysicalMod
 
 """
 function Setup_Model_CartData(d::CartData, Num::NumericalParameters, Mat_tup::Tuple)
-    @assert size(d.x)[3] == 1
+    if size(d.x)[3] == 1
+        Num = Setup_Model_CartData_2D(d, Num, Mat_tup)
+    else
+        Num = Setup_Model_CartData_3D(d, Num, Mat_tup)
+    end
+    return Num
+end
 
+
+function Setup_Model_CartData_2D(d::CartData, Num::NumericalParameters, Mat_tup::Tuple)
+    @assert size(d.x)[3] == 1
     x = extrema(d.fields.FlatCrossSection.*1e3)
     z = extrema(d.z.val.*1e3)
     
@@ -249,7 +258,7 @@ function Setup_Model_CartData(d::CartData, Num::NumericalParameters, Mat_tup::Tu
     Num.Nz = size(d.x)[2]
   
     dx = (x[2]-x[1])/(Num.Nx-1)
-    dz = (z[2]-z[1])/(Num.Nx-1)
+    dz = (z[2]-z[1])/(Num.Nz-1)
 
     # estimate maximum thermal diffusivity from Mat_tup
     κ_max = Num.κ_time
@@ -275,15 +284,72 @@ function Setup_Model_CartData(d::CartData, Num::NumericalParameters, Mat_tup::Tu
         end
     end
     Num.κ_time = κ_max;
+    Num.Δ = [dx, dz]
+    Num.Δmin  =   minimum(Num.Δ[Num.Δ.>0]);               # minimum grid spacing
 
-    dt = Num.fac_dt*min(dx^2, dz^2)./Num.κ_time/4;   # timestep
+    Num.dt = Num.fac_dt*(Num.Δmin^2)./Num.κ_time/4;   # timestep
+
     Num.dx = dx;
     Num.dz = dz;
-    Num.dt = dt;
 
-    Num.nt = floor(Num.maxTime/dt)
+    Num.nt = floor(Num.maxTime/Num.dt)
     
     return Num
 end
+
+function Setup_Model_CartData_3D(d::CartData, Num::NumericalParameters, Mat_tup::Tuple)
+    x = extrema(d.x.val.*1e3)
+    y = extrema(d.y.val.*1e3)
+    z = extrema(d.z.val.*1e3)
+    
+    Num.W = (x[2]-x[1])
+    Num.L = (y[2]-y[1])
+    Num.H = (z[2]-z[1]) 
+    Num.Nx = size(d.x)[1]
+    Num.Ny = size(d.x)[2]
+    Num.Nz = size(d.x)[3]
+  
+    dx = (x[2]-x[1])/(Num.Nx-1)
+    dy = (y[2]-y[1])/(Num.Ny-1)
+    dz = (z[2]-z[1])/(Num.Nz-1)
+
+    # estimate maximum thermal diffusivity from Mat_tup
+    κ_max = Num.κ_time
+    for mm in Mat_tup
+        if hasfield(typeof(mm.Conductivity[1]),:k)
+            k = NumValue(mm.Conductivity[1].k)
+        else
+            k = 3;
+        end
+        if hasfield(typeof(mm.HeatCapacity[1]),:cp)
+            cp = NumValue(mm.HeatCapacity[1].cp)
+        else
+            cp = 1050;
+        end
+        if hasfield(typeof(mm.Density[1]),:ρ)
+            ρ = NumValue(mm.Density[1].ρ)
+        else
+            ρ = 2700;
+        end
+        κ  = k/(cp*ρ)
+        if κ>κ_max
+            κ_max = κ
+        end
+    end
+    Num.κ_time = κ_max;
+    Num.Δ = [dx, dy, dz]
+    Num.Δmin  =   minimum(Num.Δ[Num.Δ.>0]);               # minimum grid spacing
+
+    Num.dt = Num.fac_dt*(Num.Δmin^2)./Num.κ_time/4;   # timestep
+    Num.dx = dx;
+    Num.dy = dy;
+    Num.dz = dz;
+
+    Num.nt = floor(Num.maxTime/Num.dt)
+    
+    return Num
+end
+
+
 
 end

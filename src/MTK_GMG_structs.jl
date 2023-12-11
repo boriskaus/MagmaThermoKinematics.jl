@@ -61,6 +61,7 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     Nx::Int64                   =   201
     Ny::Int64                   =   0
     Nz::Int64                   =   201
+    dim::Int64                  =   length([Nx, Ny, Nz].>0)
     W::Float64                  =   20e3
     L::Float64                  =   0
     H::Float64                  =   20e3

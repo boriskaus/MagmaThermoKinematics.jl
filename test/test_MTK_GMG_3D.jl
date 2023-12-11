@@ -17,16 +17,14 @@ using Random, GeoParams, GeophysicalModelGenerator
 
 const rng = Random.seed!(1234);     # same seed such that we can reproduce results
 
-# Import a few routines, so we can overwrite them below
-import MagmaThermoKinematics.MTK_visualize_output
-import MagmaThermoKinematics.MTK_print_output
-import MagmaThermoKinematics.MTK_update_TimeDepProps!
+# Allow overwriting user routines
+using MagmaThermoKinematics.MTK_GMG
 
 @testset "MTK_GMG_3D" begin
 
 
-function MagmaThermoKinematics.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
-    @show it, maximum(Arrays.Tnew)
+function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+    @show Num.it, maximum(Arrays.Tnew)
     return nothing
 end
 
@@ -48,7 +46,7 @@ Num         = NumParam( #Nx=269*1, Nz=269*1,
                         FigTitle="Geneva Models, Geotherm 30/km",
                         USE_GPU=USE_GPU);
 
-Dike_params = DikeParam(Type="CylindricalDike_TopAccretion", 
+Dike_params = DikeParam(Type="ElasticDike", 
                         InjectionInterval_year = 5000,       # flux= 14.9e-6 km3/km2/yr
                         W_in=20e3, H_in=74.6269,
                         nTr_dike=300*1
@@ -68,7 +66,7 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
                 )
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_3D(MatParam, Num, Dike_params); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 296.47388575357684  rtol= 1e-2
 @test sum(time_props.MeltFraction)  ≈ 0.32112172814171824  rtol= 1e-5

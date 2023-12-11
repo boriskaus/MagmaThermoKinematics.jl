@@ -77,7 +77,7 @@ function environment!(model_device, precision, dimension)
               k = keys(args)
               v = getindex.(values(args), i, j)
               argsi = (; zip(k, v)...)
-              A[i, j] = $(_fn)(MatParam[Phases[i,j]], argsi)
+              A[i, j] = $(_fn)(MatParam, Phases[i,j], argsi)
               return
           end
           
@@ -155,9 +155,9 @@ function environment!(model_device, precision, dimension)
         using .MTK_GMG_2D
         export MTK_GeoParams_2D
 
-       # include(joinpath(@__DIR__, "MTK_GMG_3D.jl"))
-       # using .MTK_GMG_3D
-       # export MTK_GeoParams_3D
+        include(joinpath(@__DIR__, "MTK_GMG_3D.jl"))
+        using .MTK_GMG_3D
+        export MTK_GeoParams_3D
 
     end
 
