@@ -81,7 +81,7 @@ There are a few functions that you can overwrite in your user code to customize 
     # Update buffer & phases arrays --------------
     if Num.USE_GPU
         # CPU buffers for advection
-        Tnew_cpu        =   Matrix{Float64}(undef, Num.Nx, Num.Ny, Num.Nz)
+        Tnew_cpu        =   zeros(Float64, Num.Nx, Num.Ny, Num.Nz)
         Phi_melt_cpu    =   similar(Tnew_cpu)
         Phases          =   CUDA.ones(Int64,Num.Nx,Num.Ny,Num.Nz)
         Phases_init     =   CUDA.ones(Int64,Num.Nx,Num.Ny,Num.Nz)
