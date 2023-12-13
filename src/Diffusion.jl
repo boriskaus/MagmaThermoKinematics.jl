@@ -293,7 +293,7 @@ In-place function that creates 3D arrays with `x`,`y` and `z` coordinates using 
 function GridArray!(X::AbstractArray, Y::AbstractArray, Z::AbstractArray, Grid::GridData)
     @parallel (1:Grid.N[1], 1:Grid.N[2], 1:Grid.N[3]) GridArray!(X, Y, Z, Grid.coord1D[1], Grid.coord1D[2], Grid.coord1D[3])
 
-    return nothings
+    return 
 end
 
 @parallel_indices (i,j,k) function GridArray!(X::AbstractArray, Y::AbstractArray, Z::AbstractArray, x::AbstractVector, y::AbstractVector,z::AbstractVector)

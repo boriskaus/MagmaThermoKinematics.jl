@@ -11,7 +11,6 @@ else
     environment!(:cpu, Float64, 3)      # initialize parallel stencil in 2D
 end
 using MagmaThermoKinematics.Diffusion3D
-using MagmaThermoKinematics.MTK_GMG_3D
 
 using Random, GeoParams, GeophysicalModelGenerator
 
@@ -20,36 +19,42 @@ const rng = Random.seed!(1234);     # same seed such that we can reproduce resul
 # Allow overwriting user routines
 using MagmaThermoKinematics.MTK_GMG
 
-@testset "MTK_GMG_3D" begin
-
+#@testset "MTK_GMG_3D" begin
 
 function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
-    @show Num.it, maximum(Arrays.Tnew)
+    println("$(Num.it), $(Num.time/SecYear/1e3) kyrs; max(T)=$(maximum(Arrays.Tnew))") 
     return nothing
 end
 
 # Test setup
 println("===============================================")
-println("Testing the MTK - GMG integration")
+println("Testing MTK - GMG integration in 3D")
 println("===============================================")
 
 # These are the final simulations for the ZASSy paper, but done @ a lower resolution
 Num         = NumParam( #Nx=269*1, Nz=269*1, 
                         Nx=65*1, Ny=65*1, Nz=65*1, 
                         SimName="Test1", 
+                        W=20e3, H=20e3, L=20e3,
                         #maxTime_Myrs=1.5, 
-                        maxTime_Myrs=0.025, 
+                        maxTime_Myrs=0.005, 
                         fac_dt=0.2, ω=0.5, verbose=false, 
                         flux_bottom_BC=false, flux_bottom=0, deactivate_La_at_depth=false, 
                         Geotherm=30/1e3, TrackTracersOnGrid=true,
-                        SaveOutput_steps=100000, CreateFig_steps=100000, plot_tracers=false, advect_polygon=true,
+                        SaveOutput_steps=10, CreateFig_steps=100000, plot_tracers=false, advect_polygon=true,
                         FigTitle="Geneva Models, Geotherm 30/km",
-                        USE_GPU=USE_GPU);
+                        USE_GPU=USE_GPU,
+                        AddRandomSills = false, RandomSills_timestep=5
+                        );
 
 Dike_params = DikeParam(Type="ElasticDike", 
-                        InjectionInterval_year = 5000,       # flux= 14.9e-6 km3/km2/yr
-                        W_in=20e3, H_in=74.6269,
-                        nTr_dike=300*1
+                        InjectionInterval_year = 1000,      
+                        W_in=5e3, H_in=200.0*4,       # note: H must be numerically resolved
+                        Dip_ran = 20.0, Strike_ran = 0.0,
+                        W_ran = 10e3; H_ran = 10e3, L_ran=10e3,
+                        nTr_dike=300*1,
+                        SillsAbove = -10e3,
+                        Center=[0.0,0.0, -7000], Angle=[0.0, 0.0],
                 )
 
 MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
@@ -68,8 +73,8 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
 # Call the main code with the specified material parameters
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_3D(MatParam, Num, Dike_params); # start the main code
 
-@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 296.47388575357684  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 0.32112172814171824  rtol= 1e-5
+@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 303.1195760751668  rtol= 1e-2
+@test sum(time_props.MeltFraction)  ≈ 3.2384408012256802  rtol= 1e-5
 
 # -----------------------------
 
@@ -179,4 +184,4 @@ Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_
 @test sum(time_props.MeltFraction)  ≈ 0.9709394385527761 rtol= 1e-5
 
 =#
-end
+#end

@@ -60,8 +60,8 @@ There are a few functions that you can overwrite in your user code to customize 
     if Num.dim==2
         error("This is the 3D routine - use MTK_GeoParams_2D instead")
     else
-        Arrays = CreateArrays(Dict( (Num.Nx,  Num.Ny  , Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0),
-                                    (Num.Nx-1,Num.Ny  , Num.Nz  )=>(qx=0,Kx=0, Rc=0), 
+        Arrays = CreateArrays(Dict( (Num.Nx,  Num.Ny  , Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, X=0, Y=0, Z=0, P=0),
+                                    (Num.Nx-1,Num.Ny  , Num.Nz  )=>(qx=0,Kx=0), 
                                     (Num.Nx  ,Num.Ny-1, Num.Nz  )=>(qy=0,Ky=0), 
                                     (Num.Nx  ,Num.Ny  , Num.Nz-1)=>(qz=0,Kz=0 )
                                     ))
@@ -73,6 +73,7 @@ There are a few functions that you can overwrite in your user code to customize 
     else
         Grid = CreateGrid(CartData_input)    
     end
+    GridArray!(Arrays.X, Arrays.Y, Arrays.Z, Grid)    
     # --------------------------------------------
 
     Tracers  =   StructArray{Tracer}(undef, 1)                       # Initialize tracers   

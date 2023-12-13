@@ -49,7 +49,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         Tnew_cpu .=   Array(Arrays.T)
 
         Tracers, Tnew_cpu,Vol,Dikes.dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, Dikes.nTr_dike, dike_poly=Dikes.dike_poly);     # Add dike, move hostrocks
-       
+        
         if Num.flux_bottom_BC==false
             # Keep bottom T constant (advection modifies this)
             if Num.dim==2
@@ -137,8 +137,13 @@ Initialize temperature and phases
 function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters)
     # Initalize T
     Arrays.T_init      .=   @. Num.Tsurface_Celcius - Arrays.Z*Num.Geotherm;                # Initial (linear) temperature profile
-    
-    # Initialize Phases
+
+    # Open pvd file if requested
+    if Num.Output_VTK 
+        name =  joinpath(Num.SimName,Num.SimName*".pvd")
+        Num.pvd = Movie_Paraview(name=name, Initialize=true);
+    end
+
     return nothing
 end
 
@@ -152,7 +157,7 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
     # NOTE: this almost certainly requires changes if we use GPUs
 
     if Num.USE_GPU
-        Arrays.T_init .= Data.Array(CartData_input.fields.Temp[:,:,1])
+        Arrays.T_init       .= Data.Array(CartData_input.fields.Temp[:,:,1])
         
         Arrays.Phases       .= Data.Array(CartData_input.fields.Phases[:,:,1]);
         Arrays.Phases_init  .= Data.Array(CartData_input.fields.Phases[:,:,1]);
@@ -210,7 +215,7 @@ function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::Di
         Dip       = rand(-Dikes.Dip_ran/2.0    :   0.1:   Dikes.Dip_ran/2.0)
         Strike    = rand(-Dikes.Strike_ran/2.0 :   0.1:   Dikes.Strike_ran/2.0)
        
-        if cen[end]<Dikes.SillsAbove;  
+        if cen[end]>Dikes.SillsAbove;  
             Dip = Dip   + 90.0                                          # Orientation: near-vertical @ depth             
         end                        
         
