@@ -24,9 +24,7 @@ using CUDA
     Analytical geotherm used for the UCLA setups, which includes radioactive heating
 """
 function AnalyticalGeotherm!(T, Z, Tsurf, qm, qs, k, hr)
-
     T      .=  @. Tsurf - (qm/k)*Z + (qs-qm)*hr/k*( 1.0 - exp(Z/hr)) 
-
     return nothing
 end
 
@@ -36,7 +34,6 @@ end
 Function that injects dikes once in a while
 """
 function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters, Tracers::StructVector, Tnew_cpu)
-
 
     if floor(Num.time/Dikes.InjectionInterval)> Dikes.dike_inj      
         Dikes.dike_inj      =   floor(Num.time/Dikes.InjectionInterval)                 # Keeps track on what was injected already
@@ -139,7 +136,7 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
     Arrays.T_init      .=   @. Num.Tsurface_Celcius - Arrays.Z*Num.Geotherm;                # Initial (linear) temperature profile
 
     # Open pvd file if requested
-    if Num.Output_VTK 
+    if Num.Output_VTK & !isempty(Num.pvd)
         name =  joinpath(Num.SimName,Num.SimName*".pvd")
         Num.pvd = Movie_Paraview(name=name, Initialize=true);
     end
@@ -167,7 +164,6 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
             Arrays.Phases_init  .= Data.Array(CartData_input.fields.Phases);
         end
     else
-      
         if Num.dim==2
             Arrays.T_init       .= CartData_input.fields.Temp[:,:,1];
             Arrays.Phases       .= CartData_input.fields.Phases[:,:,1];
@@ -210,7 +206,6 @@ Update arrays and structs of the simulation (in case you want to change them dur
 You can use this, for example, to change the size and location of an intruded dike
 """
 function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
-
 
     if Num.AddRandomSills && mod(Num.it,Num.RandomSills_timestep)==0
         # This randomly changes the location and orientation of the sills
@@ -291,14 +286,11 @@ Updates info on tracers
 function MTK_updateTracers(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters)
 
     if mod(Num.it,10)==0
-        # Update T vector on tracers
-        update_Tvec!(Tracers, Num.time/SecYear*1e-6)                                    # update T & time vectors on tracers
+        update_Tvec!(Tracers, Num.time/SecYear*1e-6)  # update T & time vectors on tracers
     end
 
     return Tracers
 end
-
-
 
 """
     Num = Setup_Model_CartData(d::CartData, Num::NumericalParameters, Mat_tup::Tuple)

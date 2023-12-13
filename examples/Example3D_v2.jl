@@ -1,7 +1,9 @@
 using MagmaThermoKinematics
 const USE_GPU=false;
-if USE_GPU  environment!(:gpu, Float64, 3)      # initialize parallel stencil in 2D
-else        environment!(:cpu, Float64, 3)      # initialize parallel stencil in 2D
+if USE_GPU  
+    environment!(:gpu, Float64, 3)      # initialize parallel stencil in 2D
+else        
+    environment!(:cpu, Float64, 3)      # initialize parallel stencil in 2D
 end
 using MagmaThermoKinematics.Diffusion3D 
 using Plots                                     
@@ -41,8 +43,11 @@ using WriteVTK
     # CPU buffers 
     Tnew_cpu                =   zeros(Float64, Grid.N...)
     Phi_melt_cpu            =   similar(Tnew_cpu)
-    if USE_GPU; Phases      =   CUDA.ones(Int64,Grid.N...)
-    else        Phases      =   ones(Int64,Grid.N...)   end
+    if USE_GPU; 
+        Phases      =   CUDA.ones(Int64,Grid.N...)
+    else        
+        Phases      =   ones(Int64,Grid.N...)   
+    end
 
     @parallel (1:Nx,1:Ny,1:Nz) GridArray!(Arrays.X,Arrays.Y,Arrays.Z, Grid.coord1D[1], Grid.coord1D[2], Grid.coord1D[3])   
     Tracers                 =   StructArray{Tracer}(undef, 1)                           # Initialize tracers   
@@ -50,7 +55,11 @@ using WriteVTK
     Arrays.T               .=   -Arrays.Z.*GeoT;                                        # Initial (linear) temperature profile
 
     # Preparation of VTK/Paraview output 
-    if isdir("viz3D_out")==false mkdir("viz3D_out") end; loadpath = "./viz3D_out/"; pvd = paraview_collection("Example3D");
+    if isdir("viz3D_out")==false 
+        mkdir("viz3D_out") 
+    end; 
+    loadpath = "./viz3D_out/"; 
+    pvd = paraview_collection("Example3D");
 
     time, dike_inj, InjectVol, Time_vec,Melt_Time = 0.0, 0.0, 0.0,zeros(nt,1),zeros(nt,1);
     for it = 1:nt   # Time loop
@@ -58,8 +67,11 @@ using WriteVTK
         if floor(time/InjectionInterval)> dike_inj       # Add new dike every X years
             dike_inj  =     floor(time/InjectionInterval)                                               # Keeps track on what was injected already
             cen       =     (Grid.max .+ Grid.min)./2 .+ rand(-0.5:1e-3:0.5, 3).*[W_ran;W_ran;H_ran];   # Randomly vary center of dike 
-            if cen[end]<-12e3;  Angle_rand = [rand(80.0:0.1:100.0); rand(0:360)]                        # Dikes at depth             
-            else                Angle_rand = [rand(-10.0:0.1:10.0); rand(0:360)] end                    # Sills at shallower depth
+            if cen[end]<-12e3;  
+                Angle_rand = [rand(80.0:0.1:100.0); rand(0:360)]                        # Dikes at depth             
+            else                
+                Angle_rand = [rand(-10.0:0.1:10.0); rand(0:360)] 
+            end                    # Sills at shallower depth
             dike      =     Dike(dike, Center=cen[:],Angle=Angle_rand);                                 # Specify dike with random location/angle but fixed size/T 
             Tnew_cpu .=     Array(Arrays.T)
             Tracers, Tnew_cpu, Vol   =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, nTr_dike);   # Add dike, move hostrocks

@@ -66,9 +66,9 @@ There are a few functions that you can overwrite in your user code to customize 
 
     # Set up model geometry & initial T structure
     if isnothing(CartData_input)
-        Grid                    = CreateGrid(size=(Num.Nx,Num.Nz), extent=(Num.W, Num.H))   
+        Grid    = CreateGrid(size=(Num.Nx,Num.Nz), extent=(Num.W, Num.H))   
     else
-        Grid                    = CreateGrid(CartData_input)   
+        Grid    = CreateGrid(CartData_input)   
     end
     GridArray!(Arrays.R, Arrays.Z, Grid)        
     Arrays.Rc              .=   (Arrays.R[2:end,:] + Arrays.R[1:end-1,:])/2     # center points in x
@@ -130,7 +130,9 @@ There are a few functions that you can overwrite in your user code to customize 
     @parallel assign!(Arrays.Tnew, Arrays.T_init)
     @parallel assign!(Arrays.T, Arrays.T_init)
 
-    if isdir(Num.SimName)==false mkdir(Num.SimName) end;        # create simulation directory if needed
+    if isdir(Num.SimName)==false 
+        mkdir(Num.SimName)          # create simulation directory if needed
+    end;        
     # --------------------------------------------
 
     for Num.it = 1:Num.nt   # Time loop
@@ -189,9 +191,7 @@ There are a few functions that you can overwrite in your user code to customize 
     MTK_GMG.MTK_finalize!(Arrays, Grid, Num, Tracers, Dikes, CartData_input);
     # --------------------------------------------
 
-
     return Grid, Arrays, Tracers, Dikes, time_props
 end # end of main function
-
 
 end

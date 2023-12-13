@@ -1,7 +1,9 @@
 using MagmaThermoKinematics
 const USE_GPU=false;
-if USE_GPU  environment!(:gpu, Float64, 2)      # initialize in 2D on GPU
-else        environment!(:cpu, Float64, 2)      # initialize in 3D on CPU
+if USE_GPU  
+    environment!(:gpu, Float64, 2)      # initialize in 2D on GPU
+else        
+    environment!(:cpu, Float64, 2)      # initialize in 3D on CPU
 end
 using MagmaThermoKinematics.Diffusion2D 
 using Plots                                     
@@ -40,8 +42,11 @@ using Plots
     # CPU buffers 
     Tnew_cpu                =   Matrix{Float64}(undef, Grid.N...)
     Phi_melt_cpu            =   similar(Tnew_cpu)
-    if USE_GPU; Phases      =   CUDA.ones(Int64,Grid.N...)
-    else        Phases      =   ones(Int64,Grid.N...)   end
+    if USE_GPU; 
+        Phases      =   CUDA.ones(Int64,Grid.N...)
+    else        
+        Phases      =   ones(Int64,Grid.N...)   
+    end
 
     @parallel (1:Nx, 1:Nz) GridArray!(Arrays.X,  Arrays.Z, Grid.coord1D[1], Grid.coord1D[2])   
     Tracers                 =   StructArray{Tracer}(undef, 1)                           # Initialize tracers   
@@ -57,8 +62,11 @@ using Plots
         if floor(time/InjectionInterval)> dike_inj       # Add new dike every X years
             dike_inj  =     floor(time/InjectionInterval)                                               # Keeps track on what was injected already
             cen       =     (Grid.max .+ Grid.min)./2 .+ rand(-0.5:1e-3:0.5, 2).*[W_ran;H_ran];         # Randomly vary center of dike 
-            if cen[end]<-12e3;  Angle_rand = rand( 80.0:0.1:100.0)                                      # Orientation: near-vertical @ depth             
-            else                Angle_rand = rand(-10.0:0.1:10.0); end                                  # Orientation: near-vertical @ shallower depth     
+            if cen[end]<-12e3;  
+                Angle_rand = rand( 80.0:0.1:100.0)                                      # Orientation: near-vertical @ depth             
+            else                
+                Angle_rand = rand(-10.0:0.1:10.0); 
+            end                                  # Orientation: near-vertical @ shallower depth     
             dike      =     Dike(dike, Center=cen[:],Angle=[Angle_rand]);                               # Specify dike with random location/angle but fixed size/T 
             Tnew_cpu .=     Array(Arrays.T)
             Tracers, Tnew_cpu, Vol   =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, nTr_dike);   # Add dike, move hostrocks
