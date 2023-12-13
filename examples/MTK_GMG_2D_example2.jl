@@ -152,7 +152,7 @@ end
 
 # Define a new structure with time-dependent properties
 @with_kw mutable struct TimeDepProps1 <: TimeDependentProperties
-    Time_vec::Vector{Float64}  = [];        # Center of dike 
+    Time_vec::Vector{Float64}  = [];        # Time of Dike
     MeltFraction::Vector{Float64} = [];     # Melt fraction over time
     Tav_magma::Vector{Float64} = [];        # Average magma 
     Tmax::Vector{Float64} = [];             # Max magma temperature
