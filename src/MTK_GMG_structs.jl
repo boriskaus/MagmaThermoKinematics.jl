@@ -169,8 +169,8 @@ dp = DikeParam(Type="MyDike", Center=[0., -7.0e3], ...)
     nTr_dike::Int64                 =   300                     # Number of tracers 
     InjectVol::Float64              =   0.0;                    # injected volume
     Qrate_km3_yr::Float64           =   0.0;                    # Dikes insertion rate
-    BackgroundPhase                 =   1;                      # Background phase  (non-dikes)
-    DikePhase                       =   2;                      # Dike phase
+    BackgroundPhase::Int64           =   1; # Background phase  (non-dikes)
+    DikePhase::Int64                       =   2; # Dike phase
     dike_poly::Vector               =   [];                     # polygon with dike
     dike_inj::Float64               =   0.0
 
