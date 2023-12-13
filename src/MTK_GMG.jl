@@ -37,17 +37,26 @@ Function that injects dikes once in a while
 """
 function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters, Tracers::StructVector, Tnew_cpu)
 
+
     if floor(Num.time/Dikes.InjectionInterval)> Dikes.dike_inj      
         Dikes.dike_inj      =   floor(Num.time/Dikes.InjectionInterval)                 # Keeps track on what was injected already
-        T_bottom  =   Tnew_cpu[:,1]
-        dike      =   Dike(W=Dikes.W_in,H=Dikes.H_in,Type=Dikes.Type,T=Dikes.T_in_Celsius, Center=Dikes.Center[:],  Angle=Dikes.Angle, Phase=Dikes.DikePhase);               # "Reference" dike with given thickness,radius and T
+        if Num.dim==2
+            T_bottom  =   Tnew_cpu[:,1]
+        else
+            T_bottom  =   Tnew_cpu[:,:,1]
+        end
+        dike      =   Dike(W=Dikes.W_in, H=Dikes.H_in, Type=Dikes.Type, T=Dikes.T_in_Celsius, Center=Dikes.Center[:],  Angle=Dikes.Angle, Phase=Dikes.DikePhase);               # "Reference" dike with given thickness,radius and T
         Tnew_cpu .=   Array(Arrays.T)
 
         Tracers, Tnew_cpu,Vol,Dikes.dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, Dikes.nTr_dike, dike_poly=Dikes.dike_poly);     # Add dike, move hostrocks
        
         if Num.flux_bottom_BC==false
             # Keep bottom T constant (advection modifies this)
-            Tnew_cpu[:,1]   .=  T_bottom
+            if Num.dim==2
+                Tnew_cpu[:,1]     .=  T_bottom
+            else
+                Tnew_cpu[:,:,1]   .=  T_bottom
+            end
         end
 
         Arrays.T           .=   Data.Array(Tnew_cpu)
@@ -155,7 +164,7 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
     end
 
     # open pvd file if requested
-    if Num.Output_VTK & !isnothing(CartData_input)
+    if Num.Output_VTK 
         name =  joinpath(Num.SimName,Num.SimName*".pvd")
         Num.pvd = Movie_Paraview(name=name, Initialize=true);
     end
@@ -170,12 +179,13 @@ end
 Finalize model run
 """
 function MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::Union{Nothing,CartData})
-    if Num.Output_VTK & !isnothing(CartData_input)
+    if Num.Output_VTK 
         Movie_Paraview(pvd=Num.pvd, Finalize=true)
     end
 
     return nothing
 end
+
 
 """
     MTK_update_Arrays!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
@@ -184,8 +194,32 @@ Update arrays and structs of the simulation (in case you want to change them dur
 You can use this, for example, to change the size and location of an intruded dike
 """
 function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
+
+
+    if Num.AddRandomSills && mod(Num.it,Num.RandomSills_timestep)==0
+        # This randomly changes the location and orientation of the sills
+        if Num.dim==2
+            Loc = [Dikes.W_ran; Dikes.H_ran]
+        else
+            Loc = [Dikes.W_ran; Dikes.L_ran; Dikes.H_ran]
+        end
+
+        # Randomly change location of center of dike/sill 
+        cen       = (Grid.max .+ Grid.min)./2 .+ rand(-0.5:1e-3:0.5, Num.dim).*Loc;    
+
+        Dip       = rand(-Dikes.Dip_ran/2.0    :   0.1:   Dikes.Dip_ran/2.0)
+        Strike    = rand(-Dikes.Strike_ran/2.0 :   0.1:   Dikes.Strike_ran/2.0)
+       
+        if cen[end]<Dikes.SillsAbove;  
+            Dip = Dip   + 90.0                                          # Orientation: near-vertical @ depth             
+        end                        
+        
+        Dikes.Center = cen; 
+        Dikes.Angle  = [Dip, Strike];
+    end
     return nothing
 end
+
 
 """
     MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input::Union{CartData, Nothing})
@@ -196,15 +230,21 @@ function MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArra
 
     if mod(Num.it,Num.SaveOutput_steps)==0
         # Save output
-        if Num.Output_VTK & !isnothing(CartData_input)
-            # add datasets 
-            CartData_input = add_2Ddata_CartData(CartData_input, "Temp",            Array(Arrays.Tnew));
-            CartData_input = add_2Ddata_CartData(CartData_input, "Phases",          Array(Arrays.Phases));
-            CartData_input = add_2Ddata_CartData(CartData_input, "MeltFraction",    Array(Arrays.ϕ));
-
-            # Save output to CartData
+        if Num.Output_VTK
             name = joinpath(Num.SimName,Num.SimName*"_$(Num.it)")
-            Num.pvd  = Write_Paraview(CartData_input, name, pvd=Num.pvd,time=Num.time/SecYear/1e3);
+            if !isnothing(CartData_input)
+                # add datasets 
+                CartData_input = add_2Ddata_CartData(CartData_input, "Temp",         Array(Arrays.Tnew));
+                CartData_input = add_2Ddata_CartData(CartData_input, "Phases",       Array(Arrays.Phases));
+                CartData_input = add_2Ddata_CartData(CartData_input, "MeltFraction", Array(Arrays.ϕ));
+
+                # Save output to CartData
+                Num.pvd  = Write_Paraview(CartData_input, name, pvd=Num.pvd,time=Num.time/SecYear/1e3);
+            else
+                X,Y,Z       =   XYZGrid(Grid.coord1D...)
+                Data_set3D  =   CartData(X/1e3,Y/1e3,Z/1e3,(Phases=Array(Arrays.Phases),Temp=Array(Arrays.Tnew), MeltFraction=Array(Arrays.ϕ)));       # 3D dataset
+                Num.pvd     =   Write_Paraview(Data_set3D, name, pvd=Num.pvd,time=Num.time/SecYear/1e3);
+            end
         end
     end
     return nothing

@@ -73,8 +73,6 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     maxTime_Myrs::Float64       =   1.5             # maximum timestep 
     SecYear::Float64            =   3600*24*365.25;
     maxTime::Float64            =   maxTime_Myrs*SecYear*1e6 # maximum timestep  in seconds
-    SaveOutput_steps::Int64     =   1e3;            # saves output every x steps 
-    CreateFig_steps::Int64      =   500;            # Create a figure every X steps
     flux_bottom_BC::Bool        =   false           # flux bottom BC?
     flux_bottom::Float64        =   167e-3          # Flux in W/m2 in case flux_bottom_BC=true
     plot_tracers::Bool          =   true            # adds passive tracers to the plot
@@ -92,13 +90,20 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     max_iter::Int64             =   5000;           # max. number of nonlinear iterations        
     verbose::Bool               =   false;    
     convergence::Float64        =   1e-5;           # nonlinear convergence criteria      
-    deactivate_La_at_depth::Bool=   false           # deactivate latent heating @ the bottom of the model box?
-    deactivationDepth::Float64  =   -15e3           # deactivation depth
     USE_GPU                     =   false;
     keep_init_RockPhases::Bool  =   true;           # keep initial rock phases (if false, all phases are initialized as Dikes.BackgroundPhase)
     pvd                         =   [];             # pvd file info for paraview
     Output_VTK                  =   true;           # output VTK files in case CartData is an input?
+    SaveOutput_steps::Int64     =   1e3;            # saves output every x steps 
+    CreateFig_steps::Int64      =   500;            # Create a figure every X steps
 
+    AddRandomSills::Bool        =   false;          # Add random sills/dikes to the model?
+    RandomSills_timestep::Int64 =   10;             # After how many timesteps do we add a new sill/dike?
+
+
+    # parts that can be removed @ some stage
+    deactivate_La_at_depth::Bool=   false           # deactivate latent heating @ the bottom of the model box?
+    deactivationDepth::Float64  =   -15e3           # deactivation depth
     AnalyticalInitialGeo::Bool  =   false;      
     qs_anal::Float64            =   170e-3;
     qm_anal::Float64            =   167e-3;
@@ -134,6 +139,14 @@ This mutable structure represents parameters related to a dike in the simulation
 - `dike_poly`: Polygon representing the dike.
 - `dike_inj`: Injection into the dike.
 
+- `H_ran`:    Zone in which we vary the vertical location of the dike (if we add random dikes)
+- `L_ran`:    Zone in which we vary the horizontal (x) location of the dike (if we add random dikes)
+- `W_ran`:    Zone in which we vary the horizontal (y) location of the dike (if we add random dikes)
+
+- `Dip_ran`:  maximum variation of dip (if we add random dikes)
+- `Strike_ran`: maximum variation of strike (if we add random dikes)
+
+
 # Examples
 
 ```julia
@@ -154,15 +167,20 @@ dp = DikeParam(Type="MyDike", Center=[0., -7.0e3], ...)
     SecYear                         =   3600*24*365.25;         # s/year
     InjectionInterval::Float64      =   InjectionInterval_year*SecYear;           # Injection interval [s]
     nTr_dike::Int64                 =   300                     # Number of tracers 
-    InjectVol                       =   0.0;                    # injected volume
-    Qrate_km3_yr                    =   0.0;                    # Dikes insertion rate
+    InjectVol::Float64              =   0.0;                    # injected volume
+    Qrate_km3_yr::Float64           =   0.0;                    # Dikes insertion rate
     BackgroundPhase                 =   1;                      # Background phase  (non-dikes)
     DikePhase                       =   2;                      # Dike phase
-    dike_poly                       =   [];                     # polygon with dike
-    dike_inj                        =   0.0
-    H_ran                           =   5000                    # Zone in which we vary the horizontal location of the dike
-    L_ran                           =   2000                    # Zone in which we vary the horizontal location of the dike
-    W_ran                           =   2000                    # Zone in which we vary the vertical location of the dike
+    dike_poly::Vector{Float64}      =   [];                     # polygon with dike
+    dike_inj::Float64               =   0.0
+
+    H_ran::Float64                  =   5000.0                    # Zone in which we vary the horizontal location of the dike
+    L_ran::Float64                  =   2000.0                    # Zone in which we vary the horizontal location of the dike
+    W_ran::Float64                  =   2000.0                   # Zone in which we vary the vertical location of the dike
+    Dip_ran::Float64                =   30.0;                     # maximum variation of dip
+    Strike_ran::Float64             =   90.0;                     # maximum variation of strike
+    SillsAbove::Float64             =   -15e3;                    # Sills above this depth
+
 end
 
 

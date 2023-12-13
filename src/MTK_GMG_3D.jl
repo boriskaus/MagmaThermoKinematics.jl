@@ -66,12 +66,12 @@ There are a few functions that you can overwrite in your user code to customize 
                                     (Num.Nx  ,Num.Ny  , Num.Nz-1)=>(qz=0,Kz=0 )
                                     ))
     end
-
+    
     # Set up model geometry & initial T structure
     if isnothing(CartData_input)
-        Grid = CreateGrid(size=(Num.Nx,Num.Ny,Num.Nz), extent=(Num.W, Num.L, Num.H))   
+        Grid = CreateGrid(size=(Num.Nx,Num.Ny,Num.Nz), x = (-Num.W/2, Num.W/2),  y = (-Num.L/2, Num.L/2), z=(-Num.H, 0.0))   
     else
-        Grid = CreateGrid(size=(Num.Nx,Num.Ny,Num.Nz), x=extrema(CartData_input.x.val.*1e3), y=extrema(CartData_input.y.val.*1e3), z=extrema(CartData_input.z.val.*1e3))   
+        Grid = CreateGrid(CartData_input)    
     end
     # --------------------------------------------
 
