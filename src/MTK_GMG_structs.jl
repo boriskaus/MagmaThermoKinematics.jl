@@ -171,7 +171,7 @@ dp = DikeParam(Type="MyDike", Center=[0., -7.0e3], ...)
     Qrate_km3_yr::Float64           =   0.0;                    # Dikes insertion rate
     BackgroundPhase                 =   1;                      # Background phase  (non-dikes)
     DikePhase                       =   2;                      # Dike phase
-    dike_poly::Vector{Float64}      =   [];                     # polygon with dike
+    dike_poly::Vector               =   [];                     # polygon with dike
     dike_inj::Float64               =   0.0
 
     H_ran::Float64                  =   5000.0                    # Zone in which we vary the horizontal location of the dike
