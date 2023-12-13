@@ -24,7 +24,7 @@ function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arra
     return nothing
 end
 
-if USE_GPU
+@static if USE_GPU
     function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
         println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
         return nothing
