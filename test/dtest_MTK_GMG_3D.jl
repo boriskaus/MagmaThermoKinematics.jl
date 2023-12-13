@@ -19,10 +19,12 @@ const rng = Random.seed!(1234);     # same seed such that we can reproduce resul
 # Allow overwriting user routines
 using MagmaThermoKinematics.MTK_GMG
 
-#@testset "MTK_GMG_3D" begin
+@testset "MTK_GMG_3D" begin
 
 function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
-    println("$(Num.it), $(Num.time/SecYear/1e3) kyrs; max(T)=$(maximum(Arrays.Tnew))") 
+    if mod(Num.it,10) == 0
+        println("$(Num.it), $(Num.time/SecYear/1e3) kyrs; max(T)=$(maximum(Arrays.Tnew))") 
+    end
     return nothing
 end
 
@@ -75,72 +77,53 @@ Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_3D(MatParam, Num, Dike_
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 303.1195760751668  rtol= 1e-2
 @test sum(time_props.MeltFraction)  ≈ 3.2384408012256802  rtol= 1e-5
-
 # -----------------------------
 
-#=
+
 Topo_cart = load_GMG("../examples/Topo_cart")       # Note: Laacher seee is around [10,20]
 
 # Create 3D grid of the region
-X,Y,Z       =   XYZGrid(-23:.1:23,-19:.1:19,-20:.1:5)
-Data_set3D  =   CartData(X,Y,Z,(Phases=zeros(Int64,size(X)),Temp=zeros(size(X))));       # 3D dataset
-
-# Create 2D cross-section
-Nx          =   135;  # resolution in x
-Nz          =   135;
-Data_2D     =   CrossSection(Data_set3D, Start=(-20,4), End=(20,4), dims=(Nx, Nz))
-Data_2D     =   AddField(Data_2D,"FlatCrossSection", FlattenCrossSection(Data_2D))
-Data_2D     =   AddField(Data_2D,"Phases", Int64.(Data_2D.fields.Phases))
+Nx,Ny,Nz = 100,100,100
+X,Y,Z       =   XYZGrid(range(-23,23, length=Nx),range(-19,19, length=Ny),range(-20,5, length=Nz))
+Data_3D     =   CartData(X,Y,Z,(Phases=zeros(Int64,size(X)),Temp=zeros(size(X))));       # 3D dataset
 
 # Intersect with topography
-Below = BelowSurface(Data_2D, Topo_cart)
-Data_2D.fields.Phases[Below] .= 1
+Below = BelowSurface(Data_3D, Topo_cart)
+Data_3D.fields.Phases[Below] .= 1
 
 # Set Moho
-ind = findall(Data_2D.z.val .< -30.0)
-Data_2D.fields.Phases[ind] .= 2
+ind = findall(Data_3D.z.val .< -30.0)
+Data_3D.fields.Phases[ind] .= 2
 
 # Set T:
 gradient = 30
-Data_2D.fields.Temp .= -Data_2D.z.val*gradient
-ind = findall(Data_2D.fields.Temp .< 10.0)
-Data_2D.fields.Temp[ind] .= 10.0
+Data_3D.fields.Temp .= -Data_3D.z.val*gradient
+ind = findall(Data_3D.fields.Temp .< 10.0)
+Data_3D.fields.Temp[ind] .= 10.0
 
 # Set thermal anomaly
-x_c, z_c, r = -10, -15, 2.5
+x_c, y_c, z_c, r = -10, -10, -15, 2.5
 Volume  = 4/3*pi*r^3 # equivalent 3D volume of the anomaly [km^3]
-ind = findall((Data_2D.x.val .- x_c).^2 .+ (Data_2D.z.val .- z_c).^2 .< r^2)
-Data_2D.fields.Temp[ind] .= 800.0
+ind = findall((Data_3D.x.val .- x_c).^2 .+ (Data_3D.y.val .- y_c).^2 .+ (Data_3D.z.val .- z_c).^2 .< r^2)
+Data_3D.fields.Temp[ind] .= 800.0
 
-"""
-Randomly change orientation and location of a dike
-"""
-function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
-    if mod(Num.it,10)==0
-        cen       =     (Grid.max .+ Grid.min)./2 .+ 0*rand(rng, -0.5:1e-3:0.5, 2).*[Dikes.W_ran; Dikes.H_ran];    # Randomly vary center of dike 
-        if cen[end]<-15e3;  Angle_rand = 0*rand(rng, 80.0:0.1:100.0)                                              # Orientation: near-vertical @ depth             
-        else                Angle_rand = 0*rand(rng,-10.0:0.1:10.0); end                        
-        
-        Dikes.Center = cen; 
-        Dikes.Angle = [Angle_rand];
-    end
-    return nothing
-end
 
 # Define numerical parameters
-Num         = NumParam( SimName="Unzen1", axisymmetric=false,
+Num         = NumParam( SimName="Unzen2", axisymmetric=false,
                         maxTime_Myrs=0.005, 
-                        fac_dt=0.2, ω=0.5, verbose=false, 
-                        SaveOutput_steps=10000, CreateFig_steps=1000, plot_tracers=false, advect_polygon=false,
-                        USE_GPU=USE_GPU);
+                        fac_dt=0.2,
+                        SaveOutput_steps=20, CreateFig_steps=1000, plot_tracers=false, advect_polygon=false,
+                        USE_GPU=USE_GPU,
+                        AddRandomSills = false, RandomSills_timestep=5);
 
 # dike parameters
 Dike_params = DikeParam(Type="ElasticDike", 
                         InjectionInterval_year = 1000,       # flux= 14.9e-6 km3/km2/yr
-                        W_in=5e3, H_in=250,
+                        W_in=5e3, H_in=250*4,
                         nTr_dike=300*1,
                         H_ran = 5000, W_ran = 5000,
                         DikePhase=3, BackgroundPhase=1,
+                        Center=[0.0,0.0, -7000], Angle=[0.0, 0.0],
                 )
 
 # Define parameters for the different phases 
@@ -178,10 +161,10 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params, CartData_input=Data_2D); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_3D(MatParam, Num, Dike_params, CartData_input=Data_3D); # start the main code
 
-@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 251.5482011114283  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 0.9709394385527761 rtol= 1e-5
+@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 244.14916470514495  rtol= 1e-2
+@test sum(time_props.MeltFraction)  ≈ 5.706560313331254 rtol= 1e-5
 
-=#
-#end
+
+end

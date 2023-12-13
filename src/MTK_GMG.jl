@@ -157,15 +157,26 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
     # NOTE: this almost certainly requires changes if we use GPUs
 
     if Num.USE_GPU
-        Arrays.T_init       .= Data.Array(CartData_input.fields.Temp[:,:,1])
-        
-        Arrays.Phases       .= Data.Array(CartData_input.fields.Phases[:,:,1]);
-        Arrays.Phases_init  .= Data.Array(CartData_input.fields.Phases[:,:,1]);
+        if Num.dim==2
+            Arrays.T_init       .= Data.Array(CartData_input.fields.Temp[:,:,1])
+            Arrays.Phases       .= Data.Array(CartData_input.fields.Phases[:,:,1]);
+            Arrays.Phases_init  .= Data.Array(CartData_input.fields.Phases[:,:,1]);
+        else
+            Arrays.T_init       .= Data.Array(CartData_input.fields.Temp)
+            Arrays.Phases       .= Data.Array(CartData_input.fields.Phases);
+            Arrays.Phases_init  .= Data.Array(CartData_input.fields.Phases);
+        end
     else
-        Arrays.T_init       .= CartData_input.fields.Temp[:,:,1];
-
-        Arrays.Phases       .= CartData_input.fields.Phases[:,:,1];
-        Arrays.Phases_init  .= CartData_input.fields.Phases[:,:,1];
+      
+        if Num.dim==2
+            Arrays.T_init       .= CartData_input.fields.Temp[:,:,1];
+            Arrays.Phases       .= CartData_input.fields.Phases[:,:,1];
+            Arrays.Phases_init  .= CartData_input.fields.Phases[:,:,1];
+        else
+            Arrays.T_init       .= CartData_input.fields.Temp;
+            Arrays.Phases       .= CartData_input.fields.Phases;
+            Arrays.Phases_init  .= CartData_input.fields.Phases;
+        end
     end
 
     # open pvd file if requested
@@ -239,9 +250,9 @@ function MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArra
             name = joinpath(Num.SimName,Num.SimName*"_$(Num.it)")
             if !isnothing(CartData_input)
                 # add datasets 
-                CartData_input = add_2Ddata_CartData(CartData_input, "Temp",         Array(Arrays.Tnew));
-                CartData_input = add_2Ddata_CartData(CartData_input, "Phases",       Array(Arrays.Phases));
-                CartData_input = add_2Ddata_CartData(CartData_input, "MeltFraction", Array(Arrays.ϕ));
+                CartData_input = add_data_CartData(CartData_input, "Temp",         Array(Arrays.Tnew));
+                CartData_input = add_data_CartData(CartData_input, "Phases",       Array(Arrays.Phases));
+                CartData_input = add_data_CartData(CartData_input, "MeltFraction", Array(Arrays.ϕ));
 
                 # Save output to CartData
                 Num.pvd  = Write_Paraview(CartData_input, name, pvd=Num.pvd,time=Num.time/SecYear/1e3);
@@ -255,12 +266,22 @@ function MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArra
     return nothing
 end
 
-function add_2Ddata_CartData(d::CartData, name::String, data::Array{_T,2})  where _T<:Real
-    a = zero(d.x.val)
-    a[:,:,1] .= data;
+
+"""
+    d = add_data_CartData(d::CartData, name::String, data::Array) 
+Adds data from MTK to a CartData structure, both in 2D & 3D
+"""
+function add_data_CartData(d::CartData, name::String, data::Array)
+    if length(data) == 2
+        a = zero(d.x.val)
+        a[:,:,1] .= data;
+    else
+        a = data
+    end
     d = AddField(d, name, a)
     return d
 end
+
 
 """
     Tracers = MTK_updateTracers(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters)
