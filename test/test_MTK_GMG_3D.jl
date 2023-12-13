@@ -20,8 +20,7 @@ const rng = Random.seed!(1234);     # same seed such that we can reproduce resul
 using MagmaThermoKinematics.MTK_GMG
 
 @testset "MTK_GMG_3D" begin
-    @testset "MTK_GMG_3D" begin
-
+    
 function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
     if mod(Num.it,10) == 0
         println("$(Num.it), $(Num.time/SecYear/1e3) kyrs; max(T)=$(maximum(Arrays.Tnew))") 
