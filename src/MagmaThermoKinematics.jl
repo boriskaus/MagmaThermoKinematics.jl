@@ -24,10 +24,10 @@ abstract type TimeDependentProperties end
 include("Units.jl")                             # various useful units
 
 # Few useful parameters                                       
-SecYear     = 3600*24*365.25
-kyr         = 1000*SecYear
-Myr         = 1e6*SecYear  
-km³         = 1000^3
+const SecYear     = 3600*24*365.25
+const kyr         = 1000*SecYear
+const Myr         = 1e6*SecYear  
+const km³         = 1000^3
 export SecYear, kyr, Myr, km³
 
 export NumericalParameters, DikeParameters, TimeDependentProperties

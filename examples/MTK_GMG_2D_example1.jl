@@ -63,9 +63,7 @@ function MTK_GMG.MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::Numeri
     Arrays.T_init   .=   @. Num.Tsurface_Celcius - Arrays.Z*Num.Geotherm;                # Initial (linear) temperature profile
     
     # Initialize Phases
-    ind =  findall(Arrays.Z .> -5000);
-    Arrays.Phases[ind] .= 0;    
-    
+    @views  Arrays.Phases[Arrays.Z .> -5000] .= 0; 
     Arrays.Phases_init .= Arrays.Phases;    # Initialize all as rock
 
      # open pvd file if requested

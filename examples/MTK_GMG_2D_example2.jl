@@ -51,25 +51,23 @@ Below   =   BelowSurface(Data_2D, Topo_cart)
 Data_2D.fields.Phases[Below] .= 1
 
 # Set Moho
-ind = findall(Data_2D.z.val .< -30.0)
-Data_2D.fields.Phases[ind] .= 2
+@views Data_2D.fields.Phases[Data_2D.z.val .< -30.0] .= 2
 
 # Set T:
 gradient = 30
 Data_2D.fields.Temp .= -Data_2D.z.val*gradient
-ind = findall(Data_2D.fields.Temp .< 10.0)
-Data_2D.fields.Temp[ind] .= 10.0
+@views Data_2D.fields.Temp[ata_2D.fields.Temp .< 10.0] .= 10
 
 # Set thermal anomaly
 x_c, z_c, r = -10, -15, 2.5
 Volume      = 4/3*pi*r^3 # equivalent 3D volume of the anomaly [km^3]
-ind         = findall((Data_2D.x.val .- x_c).^2 .+ (Data_2D.z.val .- z_c).^2 .< r^2)
-Data_2D.fields.Temp[ind] .= 800.0
+@views Data_2D.fields.Temp[(Data_2D.x.val .- x_c).^2 .+ (Data_2D.z.val .- z_c).^2 .< r^2] .= 800.0
+
 
 println(" --- Performing MTK models --- ")
 
 # Overwrite some of the default functions
-if USE_GPU
+@static if USE_GPU
     function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
         println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
         return nothing
@@ -126,17 +124,17 @@ function MTK_GMG.MTK_update_TimeDepProps!(time_props::TimeDependentProperties, G
     else
         Tav_magma_Time = NaN;
     end
-    push!(time_props.Tav_magma, Tav_magma_Time);       # average magma T
-    push!(time_props.Tmax,      maximum(Arrays.T));   # maximum magma T
+    push!(time_props.Tav_magma, Tav_magma_Time);        # average magma T
+    push!(time_props.Tmax,      maximum(Arrays.T));     # maximum magma T
     return nothing
 end
 
 # Define a new structure with time-dependent properties
 @with_kw mutable struct TimeDepProps1 <: TimeDependentProperties
-    Time_vec::Vector{Float64}       = [];        # Center of dike 
-    MeltFraction::Vector{Float64}   = [];     # Melt fraction over time
-    Tav_magma::Vector{Float64}      = [];        # Average magma 
-    Tmax::Vector{Float64}           = [];             # Max magma temperature
+    Time_vec::Vector{Float64}       = [];           # Center of dike 
+    MeltFraction::Vector{Float64}   = [];           # Melt fraction over time
+    Tav_magma::Vector{Float64}      = [];           # Average magma 
+    Tmax::Vector{Float64}           = [];           # Max magma temperature
     Tmax_1::Vector{Float64}         = [];           # Another magma temperature vector
 end
 
