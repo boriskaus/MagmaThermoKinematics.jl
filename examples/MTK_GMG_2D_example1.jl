@@ -44,31 +44,13 @@ else
     
             Plots.heatmap!(p[1],x_1d, z_1d, temp_data, c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Temperature, t=$(round(t)) yrs", aspect_ratio=:equal, ylimits=(-20,0))
     #        Plots.heatmap!(p[2],x_1d, z_1d, ϕ_data,    c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Melt fraction", clims=(0,1), aspect_ratio=:equal, ylimits=(-20,0))
-            Plots.heatmap!(p[2],x_1d, z_1d, phase_data,    c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Melt fraction, t=$(round(t)) yrs", aspect_ratio=:equal, ylimits=(-20,0))
+            Plots.heatmap!(p[2],x_1d, z_1d, phase_data,    c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Phases", aspect_ratio=:equal, ylimits=(-20,0))
     
            # p = plot(ps, layout=(1,2))
             display(p)
         end
         return nothing
     end
-end
-
-"""
-Randomly change orientation and location of a dike
-"""
-function MTK_GMG.MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
-    if mod(Num.it,10)==0
-        cen       =     (Grid.max .+ Grid.min)./2 .+ rand(-0.5:1e-3:0.5, 2).*[Dikes.W_ran; Dikes.H_ran];    # Randomly vary center of dike 
-        if cen[end]<-12e3;  
-            Angle_rand = rand( 80.0:0.1:100.0)                                              # Orientation: near-vertical @ depth             
-        else                
-            Angle_rand = rand(-10.0:0.1:10.0); 
-        end                        
-        
-        Dikes.Center    = cen; 
-        Dikes.Angle     = [Angle_rand];
-    end
-    return nothing
 end
 
 """
@@ -97,23 +79,26 @@ end
 
 
 # Define numerical parameters
-Num         = NumParam( Nx               =   135*2, 
-                        Nz               =   135*2, 
-                        SimName          =   "Test1", 
-                        maxTime_Myrs     =   0.005, 
-                        fac_dt           =   0.2, 
-                        ω                =   0.5, 
-                        CreateFig_steps  =   20,
-                        SaveOutput_steps =  100,
-                        USE_GPU          =   USE_GPU);
+Num         = NumParam( Nx                      =   135*2, 
+                        Nz                      =   135*2, 
+                        SimName                 =   "Test1", 
+                        maxTime_Myrs            =   0.005, 
+                        fac_dt                  =   0.2, 
+                        ω                       =   0.5, 
+                        CreateFig_steps         =   20,
+                        SaveOutput_steps        =   100,
+                        USE_GPU                 =   USE_GPU,
+                        AddRandomSills          =   true, 
+                        RandomSills_timestep    =   5);
 
 Dike_params = DikeParam(Type                    =   "ElasticDike", 
                         InjectionInterval_year  =   1000,       
                         W_in                    =   5e3, 
-                        H_in                    =   250*2,
+                        H_in                    =   250,
                         nTr_dike                =   300*4,
                         DikePhase               =   2, 
-                        T_in_Celsius            =   1000
+                        T_in_Celsius            =   1000,
+                        SillsAbove              =   -12e3       # below this we have dikes; above sills
                 )
 
 MatParam     = (SetMaterialParams(Name="Host rock 1", Phase=0, 
