@@ -1,3 +1,4 @@
+using GeophysicalModelGenerator
 
 """
 This mutable structure represents numerical parameters in the program. It is used to store and manage numerical values that are used throughout the program.
@@ -92,7 +93,7 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     convergence::Float64        =   1e-5;           # nonlinear convergence criteria      
     USE_GPU::Bool               =   false;
     keep_init_RockPhases::Bool  =   true;           # keep initial rock phases (if false, all phases are initialized as Dikes.BackgroundPhase)
-    pvd                         =   [];             # pvd file info for paraview
+    pvd::Union{Nothing,GeophysicalModelGenerator.WriteVTK.CollectionFile}     =   nothing;             # pvd file info for paraview
     Output_VTK::Bool            =   true;           # output VTK files in case CartData is an input?
     SaveOutput_steps::Int64     =   1e3;            # saves output every x steps 
     CreateFig_steps::Int64      =   500;            # Create a figure every X steps
@@ -168,8 +169,8 @@ dp = DikeParam(Type="MyDike", Center=[0., -7.0e3], ...)
     nTr_dike::Int64                 =   300                     # Number of tracers 
     InjectVol::Float64              =   0.0;                    # injected volume
     Qrate_km3_yr::Float64           =   0.0;                    # Dikes insertion rate
-    BackgroundPhase::Int64           =   1; # Background phase  (non-dikes)
-    DikePhase::Int64                       =   2; # Dike phase
+    BackgroundPhase::Int64          =   1; # Background phase  (non-dikes)
+    DikePhase::Int64                =   2; # Dike phase
     dike_poly::Vector               =   [];                     # polygon with dike
     dike_inj::Float64               =   0.0
 

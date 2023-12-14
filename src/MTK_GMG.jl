@@ -191,7 +191,7 @@ end
 Finalize model run
 """
 function MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::Union{Nothing,CartData})
-    if Num.Output_VTK
+    if Num.Output_VTK & !isnothing(Num.pvd)
         Movie_Paraview(pvd=Num.pvd, Finalize=true)
     end
 
@@ -244,18 +244,22 @@ function MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArra
         if Num.Output_VTK
             name = joinpath(Num.SimName,Num.SimName*"_$(Num.it)")
             if !isnothing(CartData_input)
-                # add datasets 
-                CartData_input = add_data_CartData(CartData_input, "Temp",         Array(Arrays.Tnew));
-                CartData_input = add_data_CartData(CartData_input, "Phases",       Array(Arrays.Phases));
-                CartData_input = add_data_CartData(CartData_input, "MeltFraction", Array(Arrays.ϕ));
-
-                # Save output to CartData
-                Num.pvd  = Write_Paraview(CartData_input, name, pvd=Num.pvd,time=Num.time/SecYear/1e3);
+                Data_set3D  = CartData_input
             else
-                X,Y,Z       =   XYZGrid(Grid.coord1D...)
-                Data_set3D  =   CartData(X/1e3,Y/1e3,Z/1e3,(Phases=Array(Arrays.Phases),Temp=Array(Arrays.Tnew), MeltFraction=Array(Arrays.ϕ)));       # 3D dataset
-                Num.pvd     =   Write_Paraview(Data_set3D, name, pvd=Num.pvd,time=Num.time/SecYear/1e3);
+                if length(Grid.coord1D)==3
+                    X,Y,Z   =   XYZGrid(Grid.coord1D...)
+                elseif length(Grid.coord1D)==2
+                    X,Y,Z   =   XYZGrid(Grid.coord1D[1], 0, Grid.coord1D[2])
+                end
+                Data_set3D  =   CartData(X/1e3,Y/1e3,Z/1e3, (Z=Z,))
             end
+            # add datasets 
+            Data_set3D = add_data_CartData(Data_set3D, "Temp",         Array(Arrays.Tnew));
+            Data_set3D = add_data_CartData(Data_set3D, "Phases",       Array(Arrays.Phases));
+            Data_set3D = add_data_CartData(Data_set3D, "MeltFraction", Array(Arrays.ϕ));
+
+            # Save output to CartData
+            Num.pvd  = Write_Paraview(Data_set3D, name, pvd=Num.pvd,time=Num.time/SecYear/1e3);
         end
     end
     return nothing
@@ -269,7 +273,11 @@ Adds data from MTK to a CartData structure, both in 2D & 3D
 function add_data_CartData(d::CartData, name::String, data::Array)
     if length(size(data)) == 2
         a = zero(d.x.val)
-        a[:,:,1] .= data;
+        if size(a)[3]==1
+            a[:,:,1] .= data;
+        elseif size(a)[2]==1
+            a[:,1,:] .= data;
+        end
     else
         a = data
     end

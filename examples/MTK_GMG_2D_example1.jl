@@ -10,6 +10,7 @@ else
 end
 using MagmaThermoKinematics.Diffusion2D
 using MagmaThermoKinematics.MTK_GMG     # Allow overwriting user routines
+using MagmaThermoKinematics.GeophysicalModelGenerator
 using Plots                             # plots
 using Random, GeoParams
 
@@ -84,26 +85,35 @@ function MTK_GMG.MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::Numeri
     Arrays.Phases[ind] .= 0;    
     
     Arrays.Phases_init .= Arrays.Phases;    # Initialize all as rock
+
+     # open pvd file if requested
+     if Num.Output_VTK 
+        name =  joinpath(Num.SimName,Num.SimName*".pvd")
+        Num.pvd = Movie_Paraview(name=name, Initialize=true);
+    end
+
     return nothing
 end
 
 
 # Define numerical parameters
-Num         = NumParam( Nx=135*1, Nz=135*1, 
-                        SimName="Test1", 
-                        axisymmetric=false,
-                        maxTime_Myrs=0.005, 
-                        fac_dt=0.2, ω=0.5, verbose=false, 
-                        flux_bottom_BC=false, flux_bottom=0, deactivate_La_at_depth=false, 
-                        Geotherm=30/1e3, 
-                        CreateFig_steps=20,
-                        USE_GPU=USE_GPU);
+Num         = NumParam( Nx               =   135*2, 
+                        Nz               =   135*2, 
+                        SimName          =   "Test1", 
+                        maxTime_Myrs     =   0.005, 
+                        fac_dt           =   0.2, 
+                        ω                =   0.5, 
+                        CreateFig_steps  =   20,
+                        SaveOutput_steps =  100,
+                        USE_GPU          =   USE_GPU);
 
-Dike_params = DikeParam(Type="ElasticDike", 
-                        InjectionInterval_year = 1000,       # flux= 14.9e-6 km3/km2/yr
-                        W_in=5e3, H_in=250,
-                        nTr_dike=300*1,
-                        DikePhase=2, BackgroundPhase=1,
+Dike_params = DikeParam(Type                    =   "ElasticDike", 
+                        InjectionInterval_year  =   1000,       
+                        W_in                    =   5e3, 
+                        H_in                    =   250*2,
+                        nTr_dike                =   300*4,
+                        DikePhase               =   2, 
+                        T_in_Celsius            =   1000
                 )
 
 MatParam     = (SetMaterialParams(Name="Host rock 1", Phase=0, 

@@ -16,7 +16,7 @@ using MagmaThermoKinematics.Diffusion2D
 using MagmaThermoKinematics.MTK_GMG     # Allow overwriting user routines
 using Plots
 using Random
-using  GeophysicalModelGenerator
+using GeophysicalModelGenerator
 
 # Test setup
 println("Example 2 of the MTK - GMG integration")
@@ -40,8 +40,8 @@ X,Y,Z       =   XYZGrid(-23:.1:23,-19:.1:19,-20:.1:5)
 Data_set3D  =   CartData(X,Y,Z,(Phases=zeros(Int64,size(X)),Temp=zeros(size(X))));       # 3D dataset
 
 # Create 2D cross-section
-Nx      =   135*2;  # resolution in x
-Nz      =   135*2;
+Nx      =   135*6;  # resolution in x
+Nz      =   135*4;
 Data_2D =   CrossSection(Data_set3D, Start=(-20,4), End=(20,4), dims=(Nx, Nz))
 Data_2D =   AddField(Data_2D,"FlatCrossSection", FlattenCrossSection(Data_2D))
 Data_2D =   AddField(Data_2D,"Phases", Int64.(Data_2D.fields.Phases))
@@ -141,19 +141,27 @@ end
 end
 
 # Define numerical parameters
-Num         = NumParam( SimName="Unzen1", axisymmetric=false,
-                        maxTime_Myrs=0.005, 
-                        fac_dt=0.2, ω=0.5, verbose=false, 
-                        SaveOutput_steps=25, CreateFig_steps=5,
-                        USE_GPU=USE_GPU);
+Num         = NumParam( SimName             =   "Unzen1",
+                        dim                 =   2,
+                        maxTime_Myrs        =   0.005, 
+                        SaveOutput_steps    =   25, 
+                        CreateFig_steps     =   5,
+                        USE_GPU             =   USE_GPU,
+                        ω                   =   0.5,
+                        AddRandomSills      =   true, 
+                        RandomSills_timestep=   5);
 
 # dike parameters
-Dike_params = DikeParam(Type="ElasticDike", 
-                        InjectionInterval_year = 1000,       # flux= 14.9e-6 km3/km2/yr
-                        W_in=5e3, H_in=250,
-                        nTr_dike=300*1,
-                        H_ran = 5000, W_ran = 5000,
-                        DikePhase=3, BackgroundPhase=1,
+Dike_params = DikeParam(Type                    =   "ElasticDike", 
+                        InjectionInterval_year  =   1000,       # flux= 14.9e-6 km3/km2/yr
+                        W_in                    =   5e3, 
+                        H_in                    =   250,
+                        H_ran                   =   5000, 
+                        W_ran                   =   5000,       # width of random injection area 
+                        nTr_dike                =   2000,
+                        Dip_ran                 =   45,         # angle aroun d which we randomly change the dip
+                        DikePhase               =   3,          # phase of dike
+                        SillsAbove              =   -10e3       # below this we have dikes; above sills
                 )
 
 # Define parameters for the different phases 
