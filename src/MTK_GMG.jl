@@ -136,7 +136,7 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
     Arrays.T_init      .=   @. Num.Tsurface_Celcius - Arrays.Z*Num.Geotherm;                # Initial (linear) temperature profile
 
     # Open pvd file if requested
-    if Num.Output_VTK & !isempty(Num.pvd)
+    if Num.Output_VTK
         name =  joinpath(Num.SimName,Num.SimName*".pvd")
         Num.pvd = Movie_Paraview(name=name, Initialize=true);
     end
@@ -191,7 +191,7 @@ end
 Finalize model run
 """
 function MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::Union{Nothing,CartData})
-    if Num.Output_VTK & !isempty(Num.pvd)
+    if Num.Output_VTK
         Movie_Paraview(pvd=Num.pvd, Finalize=true)
     end
 
@@ -221,7 +221,7 @@ function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::Di
         Dip       = rand(-Dikes.Dip_ran/2.0    :   0.1:   Dikes.Dip_ran/2.0)
         Strike    = rand(-Dikes.Strike_ran/2.0 :   0.1:   Dikes.Strike_ran/2.0)
        
-        if cen[end]>Dikes.SillsAbove;  
+        if cen[end]<Dikes.SillsAbove;  
             Dip = Dip   + 90.0                                          # Orientation: near-vertical @ depth             
         end                        
         
@@ -267,7 +267,7 @@ end
 Adds data from MTK to a CartData structure, both in 2D & 3D
 """
 function add_data_CartData(d::CartData, name::String, data::Array)
-    if length(data) == 2
+    if length(size(data)) == 2
         a = zero(d.x.val)
         a[:,:,1] .= data;
     else

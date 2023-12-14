@@ -77,7 +77,7 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     flux_bottom::Float64        =   167e-3          # Flux in W/m2 in case flux_bottom_BC=true
     plot_tracers::Bool          =   true            # adds passive tracers to the plot
     advect_polygon::Bool        =   false           # adds a polygon around the intrusion area
-    axisymmetric::Bool          =   true            # axisymmetric (if true) of 2D geometry?
+    axisymmetric::Bool          =   false           # axisymmetric (if true) of 2D geometry?
     κ_time::Float64             =   3.3/(1000*2700) # κ to determine the stable timestep 
     fac_dt::Float64             =   0.4;            # prefactor with which dt is multiplied   
     Δ::Vector{Float64}          =   [dx, dy, dz];                   # grid spacing
@@ -90,16 +90,15 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     max_iter::Int64             =   5000;           # max. number of nonlinear iterations        
     verbose::Bool               =   false;    
     convergence::Float64        =   1e-5;           # nonlinear convergence criteria      
-    USE_GPU                     =   false;
+    USE_GPU::Bool               =   false;
     keep_init_RockPhases::Bool  =   true;           # keep initial rock phases (if false, all phases are initialized as Dikes.BackgroundPhase)
     pvd                         =   [];             # pvd file info for paraview
-    Output_VTK                  =   true;           # output VTK files in case CartData is an input?
+    Output_VTK::Bool            =   true;           # output VTK files in case CartData is an input?
     SaveOutput_steps::Int64     =   1e3;            # saves output every x steps 
     CreateFig_steps::Int64      =   500;            # Create a figure every X steps
 
     AddRandomSills::Bool        =   false;          # Add random sills/dikes to the model?
     RandomSills_timestep::Int64 =   10;             # After how many timesteps do we add a new sill/dike?
-
 
     # parts that can be removed @ some stage
     deactivate_La_at_depth::Bool=   false           # deactivate latent heating @ the bottom of the model box?
