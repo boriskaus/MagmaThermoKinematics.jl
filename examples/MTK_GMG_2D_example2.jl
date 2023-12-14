@@ -56,7 +56,7 @@ Data_2D.fields.Phases[Below] .= 1
 # Set T:
 gradient = 30
 Data_2D.fields.Temp .= -Data_2D.z.val*gradient
-@views Data_2D.fields.Temp[ata_2D.fields.Temp .< 10.0] .= 10
+@views Data_2D.fields.Temp[Data_2D.fields.Temp .< 10.0] .= 10
 
 # Set thermal anomaly
 x_c, z_c, r = -10, -15, 2.5
