@@ -15,7 +15,7 @@ using MagmaThermoKinematics.Grid
 using MagmaThermoKinematics.Data
 import MagmaThermoKinematics: NumericalParameters, DikeParameters, TimeDependentProperties
 import MagmaThermoKinematics: update_Tvec!, Dike, InjectDike, km³, kyr, Myr, CreateDikePolygon
-import MagmaThermoKinematics: PhasesFromTracers!
+import MagmaThermoKinematics: PhasesFromTracers!, CreateArrays
 SecYear = 3600*24*365.25;
 
 using CUDA
@@ -142,6 +142,29 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
     end
 
     return nothing
+end
+
+"""
+    Ararys = MTK_initialize_arrays(Num::NumericalParameters)
+
+Initialize arrays used in the computations
+"""
+function MTK_initialize_arrays(Num::NumericalParameters)
+
+    if Num.dim==2
+        Arrays = CreateArrays(Dict( (Num.Nx,  Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0),
+                                    (Num.Nx-1,Num.Nz  )=>(qx=0,Kx=0, Rc=0), 
+                                    (Num.Nx  ,Num.Nz-1)=>(qz=0,Kz=0 )
+                                    ))
+    else
+        Arrays = CreateArrays(Dict( (Num.Nx,  Num.Ny  , Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, X=0, Y=0, Z=0, P=0),
+                                    (Num.Nx-1,Num.Ny  , Num.Nz  )=>(qx=0,Kx=0), 
+                                    (Num.Nx  ,Num.Ny-1, Num.Nz  )=>(qy=0,Ky=0), 
+                                    (Num.Nx  ,Num.Ny  , Num.Nz-1)=>(qz=0,Kz=0 )
+                                    ))
+    end
+   
+    return Arrays
 end
 
 """
