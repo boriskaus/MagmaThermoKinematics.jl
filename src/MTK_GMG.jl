@@ -223,12 +223,12 @@ end
 
 
 """
-    MTK_update_Arrays!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
+    MTK_update_Arrays!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters, Mat_tup::Tuple)
 
 Update arrays and structs of the simulation (in case you want to change them during a simulation)
 You can use this, for example, to change the size and location of an intruded dike
 """
-function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
+function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters, Mat_tup::Tuple)
 
     if Num.AddRandomSills && mod(Num.it,Num.RandomSills_timestep)==0
         # This randomly changes the location and orientation of the sills

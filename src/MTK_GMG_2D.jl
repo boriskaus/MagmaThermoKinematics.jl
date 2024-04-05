@@ -176,7 +176,7 @@ There are a few functions that you can overwrite in your user code to customize 
         # --------------------------------------------
 
         # Optionally update arrays and structs (such as T or Dike) -------
-        MTK_GMG.MTK_update_ArraysStructs!(Arrays, Grid, Dikes, Num)
+        MTK_GMG.MTK_update_ArraysStructs!(Arrays, Grid, Dikes, Num, Mat_tup)
         # --------------------------------------------
         
         # Display output -----------------------------
