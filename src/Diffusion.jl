@@ -108,7 +108,11 @@ function Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
     @parallel assign!(Arrays.T_K, Arrays.T, 273.15)
     @parallel assign!(Arrays.T_it_old, Arrays.T)
     Nx, Nz = (Grid.N...,)
-    args1  = (;T=Arrays.T_K, P=Arrays.P)
+    if haskey(Arrays,:index)
+        args1  = (;T=Arrays.T_K, P=Arrays.P, index=Arrays.index)
+    else
+        args1  = (;T=Arrays.T_K, P=Arrays.P)
+    end
     args2  = (;z=-Arrays.Z)
     Tupdate = similar(Arrays.Tnew)                 # relaxed picard update
     Tbuffer = similar(Arrays.T)
@@ -346,7 +350,11 @@ function Nonlinear_Diffusion_step_3D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
     @parallel assign!(Arrays.T_K, Arrays.T, 273.15)
     @parallel assign!(Arrays.T_it_old, Arrays.T)
     Nx, Ny, Nz = (Grid.N...,)
-    args1 = (;T=Arrays.T_K, P=Arrays.P)
+    if haskey(Arrays,:index)
+        args1  = (;T=Arrays.T_K, P=Arrays.P, index=Arrays.index)
+    else
+        args1  = (;T=Arrays.T_K, P=Arrays.P)
+    end
     args2 = (;z=-Arrays.Z)
     Tupdate = similar(Arrays.Tnew)                 # relaxed picard update
     Tbuffer = similar(Arrays.T)
