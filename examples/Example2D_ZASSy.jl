@@ -2,11 +2,11 @@
 #  It includes comparisons with 2D simulations done by the Geneva (Gregor Weber, Luca Caricchi) & UCLA (Oscar Lovera) Tracers_SimParams
 #
 # 
-const USE_GPU=true;
+const USE_GPU=false;
 using MagmaThermoKinematics
 if USE_GPU
     environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    CUDA.device!(1)                     # select the GPU you use (starts @ zero)
+   # CUDA.device!(1)                     # select the GPU you use (starts @ zero)
 else
     environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
 end
@@ -446,7 +446,7 @@ if 1==0
                             #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
                                   Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
                                  #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                  HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                  HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
                                        Melting = SmoothMelting(MeltingParam_4thOrder())),      # Marxer & Ulmer melting     
                                       # Melting = MeltingParam_Caricchi()),                     # Caricchi melting
 
@@ -665,7 +665,7 @@ if 1==1
                                  Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
                                   HeatCapacity = T_HeatCapacity_Whittington(),                      # T-dependent cp
                                  # Conductivity = ConstantConductivity(k=3.3Watt/K/m),               # in case we use constant k
-                                 # HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                 # HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
                                  Melting = MeltingParam_Assimilation()                              # Quadratic parameterization as in Tierney et al.
                                  #Melting = MeltingParam_Caricchi()
                                   ),       
@@ -676,7 +676,7 @@ if 1==1
                                   Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
                                   HeatCapacity = T_HeatCapacity_Whittington(),                       # T-dependent cp
                                   #Conductivity = ConstantConductivity(k=3.3Watt/K/m),               # in case we use constant k
-                                  #HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                  #HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
                                         Melting = SmoothMelting(MeltingParam_Quadratic(T_s=(700+273.15)K, T_l=(1100+273.15)K))
                                         #Melting = MeltingParam_Caricchi()
                                         )       

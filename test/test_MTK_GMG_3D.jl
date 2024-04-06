@@ -66,7 +66,7 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
                         #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
                             Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
                             #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                            HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                            HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
                                 Melting = SmoothMelting(MeltingParam_4thOrder())),      # Marxer & Ulmer melting     
                                 # Melting = MeltingParam_Caricchi()),                     # Caricchi melting
                 # add more parameters here, in case you have >1 phase in the model                                    
@@ -84,7 +84,7 @@ Topo_cart = load_GMG("../examples/Topo_cart")       # Note: Laacher seee is arou
 
 # Create 3D grid of the region
 Nx,Ny,Nz = 100,100,100
-X,Y,Z       =   XYZGrid(range(-23,23, length=Nx),range(-19,19, length=Ny),range(-20,5, length=Nz))
+X,Y,Z       =   xyz_grid(range(-23,23, length=Nx),range(-19,19, length=Ny),range(-20,5, length=Nz))
 Data_3D     =   CartData(X,Y,Z,(Phases=zeros(Int64,size(X)),Temp=zeros(size(X))));       # 3D dataset
 
 # Intersect with topography
@@ -131,7 +131,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
                                 LatentHeat = ConstantLatentHeat(Q_L=0.0J/kg),
                                 Conductivity = ConstantConductivity(k=3Watt/K/m),          # in case we use constant k
-                                HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
                                 Melting = SmoothMelting(MeltingParam_4thOrder())),          # Marxer & Ulmer melting     
 
                 SetMaterialParams(Name="Crust", Phase=1, 
@@ -139,14 +139,14 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
                                 LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
                                 Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
                                 #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
                                 Melting = SmoothMelting(MeltingParam_4thOrder())),      # Marxer & Ulmer melting 
 
                 SetMaterialParams(Name="Mantle", Phase=2, 
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
                                 LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
                                 Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
-                                HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K)),
+                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K)),
 
                 SetMaterialParams(Name="Dikes", Phase=3, 
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
@@ -154,7 +154,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
                         #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
                                 Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
                                 #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
                                 Melting = SmoothMelting(MeltingParam_4thOrder()))      # Marxer & Ulmer melting     
                                   
                 )

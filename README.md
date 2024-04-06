@@ -10,10 +10,14 @@ This easy to use and versatile package simulates the thermal evolution of magmat
 Below we give a number of example scripts that show how it can be used to simulate a number of scenarios.
 
 ## Contents
+- [MagmaThermoKinematics.jl](#magmathermokinematicsjl)
+  - [Contents](#contents)
   - [100-lines 2D example](#100-lines-2d-example)
   - [100-lines 3D example](#100-lines-3d-example)
   - [Dependencies](#dependencies)
   - [Installation](#installation)
+  - [Ongoing development](#ongoing-development)
+  - [Related work](#related-work)
 
 ## 100-lines 2D example
 A simple example that simulates the emplacement of dikes within the crust over a period of 10'000 years is shown below. 
@@ -41,7 +45,7 @@ Num                     =   Numeric_params(verbose=false)                   # No
 MatParam                =   (
         SetMaterialParams(Name="Rock", Phase=1, 
              Density    = ConstantDensity(ρ=2800kg/m^3),               
-           HeatCapacity = ConstantHeatCapacity(cp=1050J/kg/K),
+           HeatCapacity = ConstantHeatCapacity(Cp=1050J/kg/K),
            Conductivity = ConstantConductivity(k=1.5Watt/K/m),       
              LatentHeat = ConstantLatentHeat(Q_L=350e3J/kg),
                 Melting = MeltingParam_Caricchi()),
@@ -166,7 +170,7 @@ using WriteVTK
     MatParam                =   (
             SetMaterialParams(Name="Rock", Phase=1, 
                  Density    = ConstantDensity(ρ=2800kg/m^3),               
-               HeatCapacity = ConstantHeatCapacity(cp=1050J/kg/K),
+               HeatCapacity = ConstantHeatCapacity(Cp=1050J/kg/K),
                Conductivity = ConstantConductivity(k=1.5Watt/K/m),       
                  LatentHeat = ConstantLatentHeat(Q_L=350e3J/kg),
                     Melting = MeltingParam_Caricchi()),

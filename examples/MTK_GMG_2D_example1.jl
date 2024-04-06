@@ -69,7 +69,7 @@ function MTK_GMG.MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::Numeri
      # open pvd file if requested
      if Num.Output_VTK 
         name =  joinpath(Num.SimName,Num.SimName*".pvd")
-        Num.pvd = Movie_Paraview(name=name, Initialize=true);
+        Num.pvd = movie_paraview(name=name, Initialize=true);
     end
 
     return nothing

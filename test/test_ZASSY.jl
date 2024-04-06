@@ -355,7 +355,7 @@ if 1==1
                             #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
                                 Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
                                 #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
                                     Melting = SmoothMelting(MeltingParam_4thOrder())),      # Marxer & Ulmer melting     
                                     # Melting = MeltingParam_Caricchi()),                     # Caricchi melting
                     # add more parameters here, in case you have >1 phase in the model                                    

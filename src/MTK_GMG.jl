@@ -138,7 +138,7 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
     # Open pvd file if requested
     if Num.Output_VTK
         name =  joinpath(Num.SimName,Num.SimName*".pvd")
-        Num.pvd = Movie_Paraview(name=name, Initialize=true);
+        Num.pvd = movie_paraview(name=name, Initialize=true);
     end
 
     return nothing
@@ -201,7 +201,7 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
     # open pvd file if requested
     if Num.Output_VTK 
         name =  joinpath(Num.SimName,Num.SimName*".pvd")
-        Num.pvd = Movie_Paraview(name=name, Initialize=true);
+        Num.pvd = movie_paraview(name=name, Initialize=true);
     end
 
     return nothing
@@ -215,7 +215,7 @@ Finalize model run
 """
 function MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::Union{Nothing,CartData})
     if Num.Output_VTK & !isnothing(Num.pvd)
-        Movie_Paraview(pvd=Num.pvd, Finalize=true)
+        movie_paraview(pvd=Num.pvd, Finalize=true)
     end
 
     return nothing
@@ -270,9 +270,9 @@ function MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArra
                 Data_set3D  = CartData_input
             else
                 if length(Grid.coord1D)==3
-                    X,Y,Z   =   XYZGrid(Grid.coord1D...)
+                    X,Y,Z   =   xyz_grid(Grid.coord1D...)
                 elseif length(Grid.coord1D)==2
-                    X,Y,Z   =   XYZGrid(Grid.coord1D[1], 0, Grid.coord1D[2])
+                    X,Y,Z   =   xyz_grid(Grid.coord1D[1], 0, Grid.coord1D[2])
                 end
                 Data_set3D  =   CartData(X/1e3,Y/1e3,Z/1e3, (Z=Z,))
             end
@@ -282,7 +282,7 @@ function MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArra
             Data_set3D = add_data_CartData(Data_set3D, "MeltFraction", Array(Arrays.ϕ));
 
             # Save output to CartData
-            Num.pvd  = Write_Paraview(Data_set3D, name, pvd=Num.pvd,time=Num.time/SecYear/1e3);
+            Num.pvd  = write_paraview(Data_set3D, name, pvd=Num.pvd,time=Num.time/SecYear/1e3);
         end
     end
     return nothing
@@ -304,7 +304,7 @@ function add_data_CartData(d::CartData, name::String, data::Array)
     else
         a = data
     end
-    d = AddField(d, name, a)
+    d = addfield(d, name, a)
     return d
 end
 

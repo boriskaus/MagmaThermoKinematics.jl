@@ -58,7 +58,7 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
                         #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
                             Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
                             #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                            HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                            HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
                                 Melting = SmoothMelting(MeltingParam_4thOrder())),      # Marxer & Ulmer melting     
                                 # Melting = MeltingParam_Caricchi()),                     # Caricchi melting
                 # add more parameters here, in case you have >1 phase in the model                                    
@@ -75,15 +75,15 @@ Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_
 Topo_cart = load_GMG("../examples/Topo_cart")       # Note: Laacher seee is around [10,20]
 
 # Create 3D grid of the region
-X,Y,Z       =   XYZGrid(-23:.1:23,-19:.1:19,-20:.1:5)
+X,Y,Z       =   xyz_grid(-23:.1:23,-19:.1:19,-20:.1:5)
 Data_set3D  =   CartData(X,Y,Z,(Phases=zeros(Int64,size(X)),Temp=zeros(size(X))));       # 3D dataset
 
 # Create 2D cross-section
 Nx          =   Num.Nx;  # resolution in x
 Nz          =   Num.Nz;
 Data_2D     =   CrossSection(Data_set3D, Start=(-20,4), End=(20,4), dims=(Nx, Nz))
-Data_2D     =   AddField(Data_2D,"FlatCrossSection", FlattenCrossSection(Data_2D))
-Data_2D     =   AddField(Data_2D,"Phases", Int64.(Data_2D.fields.Phases))
+Data_2D     =   addfield(Data_2D,"FlatCrossSection", FlattenCrossSection(Data_2D))
+Data_2D     =   addfield(Data_2D,"Phases", Int64.(Data_2D.fields.Phases))
 
 # Intersect with topography
 Below = BelowSurface(Data_2D, Topo_cart)
@@ -141,7 +141,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
                                 LatentHeat = ConstantLatentHeat(Q_L=0.0J/kg),
                                 Conductivity = ConstantConductivity(k=3Watt/K/m),          # in case we use constant k
-                                HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
                                 Melting = SmoothMelting(MeltingParam_4thOrder())),          # Marxer & Ulmer melting     
 
                 SetMaterialParams(Name="Crust", Phase=1, 
@@ -149,14 +149,14 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
                                 LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
                                 Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
                                 #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
                                 Melting = SmoothMelting(MeltingParam_4thOrder())),      # Marxer & Ulmer melting 
 
                 SetMaterialParams(Name="Mantle", Phase=2, 
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
                                 LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
                                 Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
-                                HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K)),
+                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K)),
 
                 SetMaterialParams(Name="Dikes", Phase=3, 
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
@@ -164,7 +164,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
                         #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
                                 Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
                                 #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                HeatCapacity = ConstantHeatCapacity(cp=1000J/kg/K),
+                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
                                 Melting = SmoothMelting(MeltingParam_4thOrder()))      # Marxer & Ulmer melting     
                                   
                 )

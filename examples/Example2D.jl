@@ -18,7 +18,7 @@ using Plots
     MatParam                =   (
             SetMaterialParams(Name="Rock", Phase=1, 
                  Density    = ConstantDensity(ρ=2800kg/m^3),               
-               HeatCapacity = ConstantHeatCapacity(cp=1050J/kg/K),
+               HeatCapacity = ConstantHeatCapacity(Cp=1050J/kg/K),
                Conductivity = ConstantConductivity(k=1.5Watt/K/m),       
                  LatentHeat = ConstantLatentHeat(Q_L=350e3J/kg),
                     Melting = MeltingParam_Caricchi()),
