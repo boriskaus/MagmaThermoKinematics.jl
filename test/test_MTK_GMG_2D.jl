@@ -86,7 +86,7 @@ Data_2D     =   addfield(Data_2D,"FlatCrossSection", flatten_cross_section(Data_
 Data_2D     =   addfield(Data_2D,"Phases", Int64.(Data_2D.fields.Phases))
 
 # Intersect with topography
-Below = BelowSurface(Data_2D, Topo_cart)
+Below = below_surface(Data_2D, Topo_cart)
 Data_2D.fields.Phases[Below] .= 1
 
 # Set Moho
