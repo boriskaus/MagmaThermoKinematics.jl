@@ -53,7 +53,7 @@ There are a few functions that you can overwrite in your user code to customize 
     if !isnothing(CartData_input)
        
         if !hasfield(typeof(CartData_input.fields),:FlatCrossSection)
-           error("You should add a Field :FlatCrossSection to your data structure with Data_Cross = addfield(Data_Cross,\"FlatCrossSection\", FlattenCrossSection(Data_Cross))")
+           error("You should add a Field :FlatCrossSection to your data structure with Data_Cross = addfield(Data_Cross,\"FlatCrossSection\", flatten_cross_section(Data_Cross))")
         end
 
         Num = MTK_GMG.Setup_Model_CartData(CartData_input, Num, Mat_tup)

@@ -38,7 +38,7 @@ Data_set3D  =   CartData(X,Y,Z,(Phases=zeros(Int64,size(X)),Temp=zeros(size(X)))
 Nx      =   135*6;  # resolution in x
 Nz      =   135*4;
 Data_2D =   CrossSection(Data_set3D, Start=(-20,4), End=(20,4), dims=(Nx, Nz))
-Data_2D =   addfield(Data_2D,"FlatCrossSection", FlattenCrossSection(Data_2D))
+Data_2D =   addfield(Data_2D,"FlatCrossSection", flatten_cross_section(Data_2D))
 Data_2D =   addfield(Data_2D,"Phases", Int64.(Data_2D.fields.Phases))
 
 # Intersect with topography
