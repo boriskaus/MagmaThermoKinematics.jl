@@ -88,7 +88,7 @@ X,Y,Z       =   xyz_grid(range(-23,23, length=Nx),range(-19,19, length=Ny),range
 Data_3D     =   CartData(X,Y,Z,(Phases=zeros(Int64,size(X)),Temp=zeros(size(X))));       # 3D dataset
 
 # Intersect with topography
-Below = BelowSurface(Data_3D, Topo_cart)
+Below = below_surface(Data_3D, Topo_cart)
 Data_3D.fields.Phases[Below] .= 1
 
 # Set Moho
