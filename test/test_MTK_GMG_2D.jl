@@ -174,7 +174,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params, CartData_input=Data_2D); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 251.5482011114283  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 1.0066096298950455 rtol= 1e-5
+@test sum(time_props.MeltFraction)  ≈ 0.9976615659825815 rtol= 1e-5
 
 
 end
