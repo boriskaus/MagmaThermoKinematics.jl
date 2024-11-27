@@ -13,9 +13,11 @@ using GeophysicalModelGenerator
 using StructArrays
 using MagmaThermoKinematics.Grid
 using MagmaThermoKinematics.Data
+import MagmaThermoKinematics.Fields2D: CreateArrays as CreateArrays2D
+import MagmaThermoKinematics.Fields3D: CreateArrays as CreateArrays3D
 import MagmaThermoKinematics: NumericalParameters, DikeParameters, TimeDependentProperties
 import MagmaThermoKinematics: update_Tvec!, Dike, InjectDike, km³, kyr, Myr, CreateDikePolygon
-import MagmaThermoKinematics: PhasesFromTracers!, CreateArrays
+import MagmaThermoKinematics: PhasesFromTracers!
 SecYear = 3600*24*365.25;
 
 using CUDA
@@ -24,7 +26,7 @@ using CUDA
     Analytical geotherm used for the UCLA setups, which includes radioactive heating
 """
 function AnalyticalGeotherm!(T, Z, Tsurf, qm, qs, k, hr)
-    T      .=  @. Tsurf - (qm/k)*Z + (qs-qm)*hr/k*( 1.0 - exp(Z/hr)) 
+    T      .=  @. Tsurf - (qm/k)*Z + (qs-qm)*hr/k*( 1.0 - exp(Z/hr))
     return nothing
 end
 
@@ -35,7 +37,7 @@ Function that injects dikes once in a while
 """
 function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters, Tracers::StructVector, Tnew_cpu)
 
-    if floor(Num.time/Dikes.InjectionInterval)> Dikes.dike_inj      
+    if floor(Num.time/Dikes.InjectionInterval)> Dikes.dike_inj
         Dikes.dike_inj      =   floor(Num.time/Dikes.InjectionInterval)                 # Keeps track on what was injected already
         if Num.dim==2
             T_bottom  =   Tnew_cpu[:,1]
@@ -46,7 +48,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         Tnew_cpu .=   Array(Arrays.T)
 
         Tracers, Tnew_cpu,Vol,Dikes.dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, Dikes.nTr_dike, dike_poly=Dikes.dike_poly);     # Add dike, move hostrocks
-        
+
         if Num.flux_bottom_BC==false
             # Keep bottom T constant (advection modifies this)
             if Num.dim==2
@@ -61,14 +63,14 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         Qrate               =   Dikes.InjectVol/Num.time
         Dikes.Qrate_km3_yr  =   Qrate*SecYear/km³
         Qrate_km3_yr_km2    =   Dikes.Qrate_km3_yr/(pi*(Dikes.W_in/2/1e3)^2)
-        println("  Added new dike; time=$(Num.time/kyr) kyrs, total injected magma volume = $(Dikes.InjectVol/km³) km³; rate Q= $(Dikes.Qrate_km3_yr) km³yr⁻¹") 
-        
+        println("  Added new dike; time=$(Num.time/kyr) kyrs, total injected magma volume = $(Dikes.InjectVol/km³) km³; rate Q= $(Dikes.Qrate_km3_yr) km³yr⁻¹")
+
         if Num.advect_polygon==true && isempty(Dikes.dike_poly)
             Dikes.dike_poly   =   CreateDikePolygon(dike);            # create dike for the 1th time
         end
 
         if length(Mat_tup)>1
-           PhasesFromTracers!(Arrays.Phases, Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant");    # update phases from grid 
+           PhasesFromTracers!(Arrays.Phases, Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant");    # update phases from grid
 
            # Ensure that we keep the initial phase of the area (host rocks are not deformable)
            if Num.keep_init_RockPhases==true
@@ -88,7 +90,7 @@ end
 """
     MTK_display_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
 
-Function that creates plots 
+Function that creates plots
 """
 function MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
 
@@ -98,10 +100,10 @@ end
 """
     MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
 
-Function that prints output to the REPL 
+Function that prints output to the REPL
 """
 function MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
-    
+
     return nothing
 end
 
@@ -111,10 +113,10 @@ end
 Update time-dependent properties during a simulation
 """
 function MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
-    push!(time_props.Time_vec,      Num.time);   # time 
-    push!(time_props.MeltFraction,  sum( Arrays.ϕ)/(Num.Nx*Num.Nz));    # melt fraction       
+    push!(time_props.Time_vec,      Num.time);   # time
+    push!(time_props.MeltFraction,  sum( Arrays.ϕ)/(Num.Nx*Num.Nz));    # melt fraction
 
-    ind = findall(Arrays.T.>700);          
+    ind = findall(Arrays.T.>700);
     if ~isempty(ind)
         Tav_magma_Time = sum(Arrays.T[ind])/length(ind)     # average T of part with magma
     else
@@ -122,14 +124,14 @@ function MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::Gri
     end
     push!(time_props.Tav_magma, Tav_magma_Time);       # average magma T
     push!(time_props.Tmax,      maximum(Arrays.T));   # maximum magma T
-    
+
     return nothing
 end
 
 """
     MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters)
 
-Initialize temperature and phases 
+Initialize temperature and phases
 """
 function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters)
     # Initalize T
@@ -152,25 +154,25 @@ Initialize arrays used in the computations
 function MTK_initialize_arrays(Num::NumericalParameters)
 
     if Num.dim==2
-        Arrays = CreateArrays(Dict( (Num.Nx,  Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0),
-                                    (Num.Nx-1,Num.Nz  )=>(qx=0,Kx=0, Rc=0), 
+        Arrays = CreateArrays2D(Dict( (Num.Nx,  Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0),
+                                    (Num.Nx-1,Num.Nz  )=>(qx=0,Kx=0, Rc=0),
                                     (Num.Nx  ,Num.Nz-1)=>(qz=0,Kz=0 )
                                     ))
     else
-        Arrays = CreateArrays(Dict( (Num.Nx,  Num.Ny  , Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, X=0, Y=0, Z=0, P=0),
-                                    (Num.Nx-1,Num.Ny  , Num.Nz  )=>(qx=0,Kx=0), 
-                                    (Num.Nx  ,Num.Ny-1, Num.Nz  )=>(qy=0,Ky=0), 
+        Arrays = CreateArrays3D(Dict( (Num.Nx,  Num.Ny  , Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, X=0, Y=0, Z=0, P=0),
+                                    (Num.Nx-1,Num.Ny  , Num.Nz  )=>(qx=0,Kx=0),
+                                    (Num.Nx  ,Num.Ny-1, Num.Nz  )=>(qy=0,Ky=0),
                                     (Num.Nx  ,Num.Ny  , Num.Nz-1)=>(qz=0,Kz=0 )
                                     ))
     end
-   
+
     return Arrays
 end
 
 """
     MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::CartData)
 
-Initialize temperature and phases 
+Initialize temperature and phases
 """
 function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::Union{Nothing,CartData})
     # Initalize T from CartData set
@@ -199,7 +201,7 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
     end
 
     # open pvd file if requested
-    if Num.Output_VTK 
+    if Num.Output_VTK
         name =  joinpath(Num.SimName,Num.SimName*".pvd")
         Num.pvd = movie_paraview(name=name, Initialize=true);
     end
@@ -238,17 +240,17 @@ function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::Di
             Loc = [Dikes.W_ran; Dikes.L_ran; Dikes.H_ran]
         end
 
-        # Randomly change location of center of dike/sill 
-        cen       = (Grid.max .+ Grid.min)./2 .+ rand(-0.5:1e-3:0.5, Num.dim).*Loc;    
+        # Randomly change location of center of dike/sill
+        cen       = (Grid.max .+ Grid.min)./2 .+ rand(-0.5:1e-3:0.5, Num.dim).*Loc;
 
         Dip       = rand(-Dikes.Dip_ran/2.0    :   0.1:   Dikes.Dip_ran/2.0)
         Strike    = rand(-Dikes.Strike_ran/2.0 :   0.1:   Dikes.Strike_ran/2.0)
-       
-        if cen[end]<Dikes.SillsAbove;  
-            Dip = Dip   + 90.0                                          # Orientation: near-vertical @ depth             
-        end                        
-        
-        Dikes.Center = cen; 
+
+        if cen[end]<Dikes.SillsAbove;
+            Dip = Dip   + 90.0                                          # Orientation: near-vertical @ depth
+        end
+
+        Dikes.Center = cen;
         Dikes.Angle  = [Dip, Strike];
     end
     return nothing
@@ -276,7 +278,7 @@ function MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArra
                 end
                 Data_set3D  =   CartData(X/1e3,Y/1e3,Z/1e3, (Z=Z,))
             end
-            # add datasets 
+            # add datasets
             Data_set3D = add_data_CartData(Data_set3D, "Temp",         Array(Arrays.Tnew));
             Data_set3D = add_data_CartData(Data_set3D, "Phases",       Array(Arrays.Phases));
             Data_set3D = add_data_CartData(Data_set3D, "MeltFraction", Array(Arrays.ϕ));
@@ -290,7 +292,7 @@ end
 
 
 """
-    d = add_data_CartData(d::CartData, name::String, data::Array) 
+    d = add_data_CartData(d::CartData, name::String, data::Array)
 Adds data from MTK to a CartData structure, both in 2D & 3D
 """
 function add_data_CartData(d::CartData, name::String, data::Array)
@@ -343,12 +345,12 @@ function Setup_Model_CartData_2D(d::CartData, Num::NumericalParameters, Mat_tup:
     @assert size(d.x)[3] == 1
     x = extrema(d.fields.FlatCrossSection.*1e3)
     z = extrema(d.z.val.*1e3)
-    
+
     Num.W = (x[2]-x[1])
-    Num.H = (z[2]-z[1]) 
+    Num.H = (z[2]-z[1])
     Num.Nx = size(d.x)[1]
     Num.Nz = size(d.x)[2]
-  
+
     dx = (x[2]-x[1])/(Num.Nx-1)
     dz = (z[2]-z[1])/(Num.Nz-1)
 
@@ -385,7 +387,7 @@ function Setup_Model_CartData_2D(d::CartData, Num::NumericalParameters, Mat_tup:
     Num.dz = dz;
 
     Num.nt = floor(Num.maxTime/Num.dt)
-    
+
     return Num
 end
 
@@ -393,14 +395,14 @@ function Setup_Model_CartData_3D(d::CartData, Num::NumericalParameters, Mat_tup:
     x = extrema(d.x.val.*1e3)
     y = extrema(d.y.val.*1e3)
     z = extrema(d.z.val.*1e3)
-    
+
     Num.W = (x[2]-x[1])
     Num.L = (y[2]-y[1])
-    Num.H = (z[2]-z[1]) 
+    Num.H = (z[2]-z[1])
     Num.Nx = size(d.x)[1]
     Num.Ny = size(d.x)[2]
     Num.Nz = size(d.x)[3]
-  
+
     dx = (x[2]-x[1])/(Num.Nx-1)
     dy = (y[2]-y[1])/(Num.Ny-1)
     dz = (z[2]-z[1])/(Num.Nz-1)
@@ -438,7 +440,7 @@ function Setup_Model_CartData_3D(d::CartData, Num::NumericalParameters, Mat_tup:
     Num.dz = dz;
 
     Num.nt = floor(Num.maxTime/Num.dt)
-    
+
     return Num
 end
 

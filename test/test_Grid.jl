@@ -1,6 +1,9 @@
 using Test
 using MagmaThermoKinematics
-environment!(:cpu, Float64, 2) 
+using ParallelStencil, ParallelStencil.FiniteDifferences2D
+@init_parallel_stencil(Threads, Float64, 2)
+
+environment!(:cpu, Float64, 2)
 using MagmaThermoKinematics.Diffusion2D
 
 @testset "Grid" begin
