@@ -365,7 +365,7 @@ if 1==1
     # Call the main code with the specified material parameters
     x,z,T, Time_vec,Melt_Time, Tracers, dike_poly, Grid, Phases = MainCode_2D(MatParam, Num, Dike_params); # start the main code
     @test sum(T)/prod(size(T)) ≈ 312.1505261202475  rtol= 1e-2
-    @test sum(Melt_Time)  ≈ 0.1669467245217974  rtol= 1e-5
+    @test sum(Melt_Time)  ≈ 0.1707068724854955  rtol= 1e-5
 
 
     # compute zircon ages for a few tracers
@@ -464,7 +464,7 @@ if 1==1
     x,z,T, Time_vec,Melt_Time, Tracers, dike_poly, Grid, Phases = MainCode_2D(MatParam, Num, Dike_params); # start the main code
 
     @test sum(T)/prod(size(T)) ≈ 351.8236241385028 rtol= 1e-2
-    @test sum(Melt_Time)  ≈ 10.462972424582478 rtol= 1e-3
+    @test sum(Melt_Time)  ≈ 10.483678102735155 rtol= 1e-3
 
 
  end

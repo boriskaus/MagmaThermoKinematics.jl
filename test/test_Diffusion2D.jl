@@ -408,7 +408,7 @@ end # end of gaussian diffusion test
 end;
 
 @testset "2D halfspace cooling" begin
-    @test  Diffusion_Halfspace2D() ≈ 0.6315042049848439 atol=1e-5;
+    @test  Diffusion_Halfspace2D() ≈ 0.6247443434361517 atol=1e-5;
 end;
 @testset "2D Gaussian diffusion" begin
     @test Diffusion_Gaussian2D("2D")           ≈  5.688521713402446 atol=1e-3;

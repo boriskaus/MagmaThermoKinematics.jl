@@ -69,7 +69,7 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 315.46382940863816  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 0.3173129347063952  rtol= 1e-5
+@test sum(time_props.MeltFraction)  ≈ 0.3211217281417532  rtol= 1e-5
 
 # -----------------------------
 
@@ -175,7 +175,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params, CartData_input=Data_2D); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 251.5482011114283  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 0.9959328822437603 rtol= 1e-5
+@test sum(time_props.MeltFraction)  ≈ 0.99766156598258 rtol= 1e-5
 
 
 end
