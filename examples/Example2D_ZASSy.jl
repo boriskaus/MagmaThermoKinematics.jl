@@ -168,7 +168,7 @@ end
         Tnew_cpu           .=   Array(Arrays.T)
         @timeit to "Dike intrusion" Tracers, Tnew_cpu,Vol,dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike_initial, Dikes.nTr_dike, dike_poly=dike_poly);     # Add dike, move hostrocks
 
-        Arrays.T           .=   Data.Array(Tnew_cpu)
+        Arrays.T           .=   Array(Tnew_cpu)
         InjectVol          +=   Vol                                                     # Keep track of injected volume
         if Num.advect_polygon==true && isempty(dike_poly)
             dike_poly   =   CreateDikePolygon(dike_initial);            # create dike for the 1th time
@@ -223,7 +223,7 @@ end
                 Z               = Array(Arrays.Z)
                 Tnew_cpu[:,1]   .=   @. Num.Tsurface_Celcius - Z[:,1]*Num.Geotherm
             end
-            Arrays.T           .=   Data.Array(Tnew_cpu)
+            Arrays.T           .=   Array(Tnew_cpu)
             InjectVol          +=   Vol                                                     # Keep track of injected volume
             Qrate               =   InjectVol/time
             Qrate_km3_yr        =   Qrate*SecYear/km³
@@ -258,8 +258,8 @@ end
             update_Tvec!(Tracers_grid, time/SecYear*1e-6)                                                        # update T & time vectors on tracers
         end
         # copy back to gpu
-        Arrays.Tnew   .= Data.Array(Tnew_cpu)
-        Arrays.ϕ      .= Data.Array(Phi_melt_cpu)
+        Arrays.Tnew   .= Array(Tnew_cpu)
+        Arrays.ϕ      .= Array(Phi_melt_cpu)
 
         @parallel assign!(Arrays.T, Arrays.Tnew)
         @parallel assign!(Arrays.Tnew, Arrays.T)

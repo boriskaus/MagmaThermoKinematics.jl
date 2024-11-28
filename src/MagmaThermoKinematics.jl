@@ -118,7 +118,7 @@ function environment!(model_device, precision, dimension)
     Base.@eval begin
         include(joinpath(@__DIR__, "Diffusion.jl"))
         @reexport import .$module_names
-        export Data
+        # export Data
     end
 
     # Create arrays (depends on PS, so should be loaded after)
@@ -126,7 +126,7 @@ function environment!(model_device, precision, dimension)
     Base.@eval begin
         include(joinpath(@__DIR__, "Fields.jl"))
         @reexport import .$module_names
-        export CreateArrays
+        # export CreateArrays
     end
 
     # Various helpful routines

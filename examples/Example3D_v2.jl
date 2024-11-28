@@ -1,4 +1,6 @@
 using MagmaThermoKinematics
+using ParallelStencil, ParallelStencil.FiniteDifferences3D
+@init_parallel_stencil(Threads, Float64, 3)
 const USE_GPU=false;
 if USE_GPU
     environment!(:gpu, Float64, 3)      # initialize parallel stencil in 2D
@@ -76,7 +78,7 @@ using WriteVTK
             dike      =     Dike(dike, Center=cen[:],Angle=Angle_rand);                                 # Specify dike with random location/angle but fixed size/T
             Tnew_cpu .=     Array(Arrays.T)
             Tracers, Tnew_cpu, Vol   =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, nTr_dike);   # Add dike, move hostrocks
-            Arrays.T .=     Data.Array(Tnew_cpu)
+            Arrays.T .=     Array(Tnew_cpu)
             InjectVol +=    Vol                                                                 # Keep track of injected volume
             println("Added new dike; total injected magma volume = $(round(InjectVol/km³,digits=2)) km³; rate Q=$(round(InjectVol/(time),digits=2)) m³/s")
         end
