@@ -71,7 +71,7 @@ using MagmaThermoKinematics
 using ParallelStencil
 using ParallelStencil.FiniteDifferences3D
 
-__init__() = @init_parallel_stencil(Threads, Float64, 3)
+__init__() = @init_parallel_stencil(CUDA, Float64, 3)
 
 using CUDA
 
