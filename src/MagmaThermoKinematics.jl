@@ -162,11 +162,11 @@ function environment!(model_device, precision, dimension)
 
             include(joinpath(@__DIR__, "MTK_GMG.jl"))
 
-            include(joinpath(@__DIR__, "MTK_GMG_2D.jl"))
+            include(joinpath(@__DIR__, "MTK_GMG_2D_CUDA.jl"))
             using .MTK_GMG_2D
             export MTK_GeoParams_2D
 
-            include(joinpath(@__DIR__, "MTK_GMG_3D.jl"))
+            include(joinpath(@__DIR__, "MTK_GMG_3D_CUDA.jl"))
             using .MTK_GMG_3D
             export MTK_GeoParams_3D
         end
@@ -177,11 +177,11 @@ function environment!(model_device, precision, dimension)
 
             include(joinpath(@__DIR__, "MTK_GMG.jl"))
 
-            include(joinpath(@__DIR__, "MTK_GMG_2D_CUDA.jl"))
+            include(joinpath(@__DIR__, "MTK_GMG_2D.jl"))
             using .MTK_GMG_2D
             export MTK_GeoParams_2D
 
-            include(joinpath(@__DIR__, "MTK_GMG_3D_CUDA.jl"))
+            include(joinpath(@__DIR__, "MTK_GMG_3D.jl"))
             using .MTK_GMG_3D
             export MTK_GeoParams_3D
         end
