@@ -78,7 +78,8 @@ end
     The orientation and the type of the dike are described by the structure     
 
     General form:
-        T, Velocity, VolumeInjected = InjectDike(Tracers, T, Grid, FullGrid, dike, nTr_dike; AdvectionMethod="RK2", InterpolationMethod="Quadratic", dike_poly=[])
+          Tracers, Tnew, VolumeInjected, dike_poly, Velocity = InjectDike(Tracers, T, Grid, FullGrid, dike, nTr_dike; AdvectionMethod="RK2", InterpolationMethod="Quadratic", dike_poly=[])
+      
 
     with:
         T:          Temperature grid (will be modified)
@@ -754,21 +755,21 @@ function DisplacementAroundPennyShapedDike(dike::Dike, CartesianPoint::SVector, 
     R2  =   sqrt(r^2. + (z + im*a)^2);
 
     # equation 7a:
-    U   =   im*p*(1+ν)*(1-2ν)/(2pi*E)*( r*log( (R2+z+im*a)/(R1 +z- im*a)) 
+    dU   =   im*p*(1+ν)*(1-2ν)/(2pi*E)*( r*log( (R2+z+im*a)/(R1 +z- im*a)) 
                                                 - r/2*((im*a-3z-R2)/(R2+z+im*a) 
                                                 + (R1+3z+im*a)/(R1+z-im*a)) 
                                                 - (2z^2 * r)/(1 -2ν)*(1/(R2*(R2+z+im*a)) -1/(R1*(R1+z-im*a))) 
                                                 + (2*z*r)/(1-2ν)*(1/R2 - 1/R1) );
     # equation 7b:
-    W   =       2*im*p*(1-ν^2)/(pi*E)*( z*log( (R2+z+im*a)/(R1+z-im*a)) 
+    dW   =       2*im*p*(1-ν^2)/(pi*E)*( z*log( (R2+z+im*a)/(R1+z-im*a)) 
                                                 - (R2-R1) 
                                                 - 1/(2*(1-ν))*( z*log( (R2+z+im*a)/(R1+z-im*a)) - im*a*z*(1/R2 + 1/R1)) );
 
     # Displacements are the real parts of U and W. 
     #  Note that this is the total required elastic displacement (in m) to open the dike.
     #  If we only want to open the dike partially, we will need to normalize these values accordingly (done externally)  
-    Uz   =  real(W);  # vertical displacement should be corrected for z<0
-    Ur   =  real(U);
+    Uz   =  real(dW);  # vertical displacement should be corrected for z<0
+    Ur   =  real(dU);
     if (CartesianPoint[end]<0); Uz = -Uz; end
     if (CartesianPoint[1]  <0); Ur = -Ur; end
     
