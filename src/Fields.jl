@@ -72,8 +72,6 @@ using ParallelStencil.FiniteDifferences3D
 
 __init__() = @init_parallel_stencil(Threads, Float64, 3)
 
-using CUDA
-
 # Some helping routines that simplifies creating fields and work arrays
 export CreateArrays
 

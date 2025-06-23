@@ -46,13 +46,16 @@ function environment!(model_device, precision, dimension)
 
     # start ParallelStencil
     if model_device == :gpu
-        # eval(:(@init_parallel_stencil(CUDA, $(precision), $(dimension))))
+        println("Using GPU for ParallelStencil")
+        # eval(:(@init_parallel_stencil(CUDA, $(precision), $(dimensione))))
         Base.eval(@__MODULE__, :(@init_parallel_stencil(CUDA, $(precision), $(dimension))))
         Base.eval(Main, Meta.parse("using CUDA"))
     else
+        println("Using CPU for ParallelStencil")
+        #Base.eval(@__MODULE__, :(@init_parallel_stencil(Threads, $(precision), $(dimension))))
         @eval begin
-            ParallelStencil.@reset_parallel_stencil()
-            @init_parallel_stencil(Threads, $(precision), $(dimension))
+             ParallelStencil.@reset_parallel_stencil()
+             @init_parallel_stencil(Threads, $(precision), $(dimension))
         end
     end
 

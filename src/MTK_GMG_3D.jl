@@ -8,7 +8,6 @@ using ParallelStencil.FiniteDifferences3D
 using Parameters
 using StructArrays
 using GeophysicalModelGenerator
-using CUDA
 
 __init__() = @init_parallel_stencil(Threads, Float64, 3)
 

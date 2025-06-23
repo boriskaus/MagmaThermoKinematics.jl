@@ -1,16 +1,21 @@
-# This is a relatively complicated test, but is added to ensure that the simulations published in the ZASSY paper:
+# This is a relatively complicated test, but is added to ensure that the simulations published in the ZASSY paper remain reproducible:
 #
-# remain reproducible
 using Test, Random
-using ParallelStencil, ParallelStencil.FiniteDifferences2D
-@init_parallel_stencil(Threads, Float64, 2)
 const USE_GPU=true;
-using MagmaThermoKinematics
 if USE_GPU
+    using CUDA      # needs to be loaded before loading Parallkel=
+end
+using ParallelStencil, ParallelStencil.FiniteDifferences2D
+
+using MagmaThermoKinematics
+@static if USE_GPU
+    @show USE_GPU
     environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    CUDA.device!(1)                     # select the GPU you use (starts @ zero)
+    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
+    @init_parallel_stencil(CUDA, Float64, 2)
 else
     environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
+    @init_parallel_stencil(Threads, Float64, 2)
 end
 using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
 using MagmaThermoKinematics.Fields2D
@@ -165,7 +170,7 @@ end
         Tnew_cpu           .=   Array(Arrays.T)
         Tracers, Tnew_cpu,Vol,dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike_initial, Dikes.nTr_dike, dike_poly=dike_poly);     # Add dike, move hostrocks
 
-        Arrays.T           .=   Array(Tnew_cpu)
+        Arrays.T           .=   Data.Array(Tnew_cpu)
         InjectVol          +=   Vol                                                     # Keep track of injected volume
         if Num.advect_polygon==true && isempty(dike_poly)
             dike_poly   =   CreateDikePolygon(dike_initial);            # create dike for the 1th time
@@ -220,7 +225,7 @@ end
                 Z               = Array(Arrays.Z)
                 Tnew_cpu[:,1]   .=   @. Num.Tsurface_Celcius - Z[:,1]*Num.Geotherm
             end
-            Arrays.T           .=   Array(Tnew_cpu)
+            Arrays.T           .=   Data.Array(Tnew_cpu)
             InjectVol          +=   Vol                                                     # Keep track of injected volume
             Qrate               =   InjectVol/time
             Qrate_km3_yr        =   Qrate*SecYear/km³
@@ -233,7 +238,7 @@ end
             end
 
             if length(Mat_tup)>1
-               PhasesFromTracers!(Phases, Grid, Tracers, BackgroundPhase=1, InterpolationMethod="Constant");    # update phases from grid
+               PhasesFromTracers!(Array(Phases), Grid, Tracers, BackgroundPhase=1, InterpolationMethod="Constant");    # update phases from grid
             end
 
         end
@@ -254,9 +259,10 @@ end
             UpdateTracers_T_ϕ!(Tracers_grid, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);                             # Initialize info on grid tracers
             update_Tvec!(Tracers_grid, time/SecYear*1e-6)                                                        # update T & time vectors on tracers
         end
+
         # copy back to gpu
-        Arrays.Tnew   .= Array(Tnew_cpu)
-        Arrays.ϕ      .= Array(Phi_melt_cpu)
+        Arrays.Tnew   .= Data.Array(Tnew_cpu)
+        Arrays.ϕ      .= Data.Array(Phi_melt_cpu)
 
         @parallel assign!(Arrays.T, Arrays.Tnew)
         @parallel assign!(Arrays.Tnew, Arrays.T)

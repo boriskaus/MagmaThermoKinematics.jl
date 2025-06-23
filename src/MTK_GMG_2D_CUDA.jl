@@ -149,8 +149,8 @@ There are a few functions that you can overwrite in your user code to customize 
 
         # Update variables ---------------------------
         # copy to cpu
-        Tnew_cpu      .= Data.Array(Arrays.Tnew)
-        Phi_melt_cpu  .= Data.Array(Arrays.ϕ)
+        Tnew_cpu      .= Array(Arrays.Tnew)
+        Phi_melt_cpu  .= Array(Arrays.ϕ)
 
         UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);     # Update info on tracers
 

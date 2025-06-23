@@ -10,7 +10,6 @@ export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!, bc2D_z!, bc2D_z_bo
 using LinearAlgebra: norm
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
-using CUDA
 using Parameters
 
 using MagmaThermoKinematics.Grid
@@ -272,7 +271,7 @@ using LinearAlgebra: norm
 using ParallelStencil
 using ParallelStencil.FiniteDifferences3D
 using Parameters
-using CUDA
+#using CUDA
 
 using MagmaThermoKinematics.Grid
 
