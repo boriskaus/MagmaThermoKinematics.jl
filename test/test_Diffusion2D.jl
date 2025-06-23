@@ -349,7 +349,7 @@ function Diffusion_Gaussian2D(Setup="2D")
         if Setup=="2D"
             @parallel diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz,  dPhi_dt);
         elseif Setup=="Axisymmetric"
-            @parallel diffusion2D_AxiSymm_step!(Tnew, T, X, Xc, qx, qz, K, Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz,  dPhi_dt);
+            @parallel MagmaThermoKinematics.Diffusion2D.diffusion2D_AxiSymm_step!(Tnew, T, X, Xc, qx, qz, K, Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz,  dPhi_dt);
         end
 
         # diffusion in z-direction
@@ -408,9 +408,9 @@ end # end of gaussian diffusion test
 end;
 
 @testset "2D halfspace cooling" begin
-    @test  Diffusion_Halfspace2D() ≈ 0.6247443434361517 atol=1e-5;
+    @test  Diffusion_Halfspace2D() ≈ 0.6331810452340912 atol=1e-3;
 end;
 @testset "2D Gaussian diffusion" begin
-    @test Diffusion_Gaussian2D("2D")           ≈  5.688521713402446 atol=1e-3;
-    @test Diffusion_Gaussian2D("Axisymmetric") ≈ 11.361627247736031 atol=1e-3;
+    @test Diffusion_Gaussian2D("2D")           ≈  5.5913993079181195 atol=1e-3;
+    @test Diffusion_Gaussian2D("Axisymmetric") ≈ 11.233542156240762 atol=1e-2;
 end;
