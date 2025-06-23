@@ -59,16 +59,16 @@ end
 
 function copy_arrays_GPU2CPU!(T_CPU::AbstractArray,  ϕ_CPU::AbstractArray, T_GPU::AbstractArray, ϕ_GPU::AbstractArray)
 
-    T_CPU  .= Array(T_GPU)
-    ϕ_CPU  .= Array(ϕ_GPU)
+    T_CPU  .= Data.Array(T_GPU)
+    ϕ_CPU  .= Data.Array(ϕ_GPU)
 
     return nothing
 end
 
 function copy_arrays_CPU2GPU!(T_GPU::Array,  ϕ_GPU::Array, T_CPU::AbstractArray, ϕ_CPU::AbstractArray)
 
-    T_GPU  .= Array(T_CPU)
-    ϕ_GPU  .= Array(ϕ_CPU)
+    T_GPU  .= Data.Array(T_CPU)
+    ϕ_GPU  .= Data.Array(ϕ_CPU)
 
     return nothing
 end

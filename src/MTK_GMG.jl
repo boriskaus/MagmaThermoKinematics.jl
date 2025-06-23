@@ -45,7 +45,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
             T_bottom  =   Tnew_cpu[:,:,1]
         end
         dike      =   Dike(W=Dikes.W_in, H=Dikes.H_in, Type=Dikes.Type, T=Dikes.T_in_Celsius, Center=Dikes.Center[:],  Angle=Dikes.Angle, Phase=Dikes.DikePhase);               # "Reference" dike with given thickness,radius and T
-        Tnew_cpu .=   Array(Arrays.T)
+        Tnew_cpu .=   Data.Array(Arrays.T)
 
         Tracers, Tnew_cpu,Vol,Dikes.dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, Dikes.nTr_dike, dike_poly=Dikes.dike_poly);     # Add dike, move hostrocks
 
@@ -58,7 +58,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
             end
         end
 
-        Arrays.T           .=   Array(Tnew_cpu)
+        Arrays.T           .=   Data.Array(Tnew_cpu)
         Dikes.InjectVol    +=   Vol                                                     # Keep track of injected volume
         Qrate               =   Dikes.InjectVol/Num.time
         Dikes.Qrate_km3_yr  =   Qrate*SecYear/km³
@@ -180,13 +180,13 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
 
     if Num.USE_GPU
         if Num.dim==2
-            Arrays.T_init       .= Array(CartData_input.fields.Temp[:,:,1])
-            Arrays.Phases       .= Array(CartData_input.fields.Phases[:,:,1]);
-            Arrays.Phases_init  .= Array(CartData_input.fields.Phases[:,:,1]);
+            Arrays.T_init       .= Data.Array(CartData_input.fields.Temp[:,:,1])
+            Arrays.Phases       .= Data.Array(CartData_input.fields.Phases[:,:,1]);
+            Arrays.Phases_init  .= Data.Array(CartData_input.fields.Phases[:,:,1]);
         else
-            Arrays.T_init       .= Array(CartData_input.fields.Temp)
-            Arrays.Phases       .= Array(CartData_input.fields.Phases);
-            Arrays.Phases_init  .= Array(CartData_input.fields.Phases);
+            Arrays.T_init       .= Data.Array(CartData_input.fields.Temp)
+            Arrays.Phases       .= Data.Array(CartData_input.fields.Phases);
+            Arrays.Phases_init  .= Data.Array(CartData_input.fields.Phases);
         end
     else
         if Num.dim==2

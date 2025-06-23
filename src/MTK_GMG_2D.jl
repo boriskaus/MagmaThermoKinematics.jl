@@ -149,14 +149,14 @@ There are a few functions that you can overwrite in your user code to customize 
 
         # Update variables ---------------------------
         # copy to cpu
-        Tnew_cpu      .= Array(Arrays.Tnew)
-        Phi_melt_cpu  .= Array(Arrays.ϕ)
+        Tnew_cpu      .= Data.Array(Arrays.Tnew)
+        Phi_melt_cpu  .= Data.Array(Arrays.ϕ)
 
         UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);     # Update info on tracers
 
         # copy back to gpu
-        Arrays.Tnew   .= Array(Tnew_cpu)
-        Arrays.ϕ      .= Array(Phi_melt_cpu)
+        Arrays.Tnew   .= Data.Array(Tnew_cpu)
+        Arrays.ϕ      .= Data.Array(Phi_melt_cpu)
 
         @parallel assign!(Arrays.T, Arrays.Tnew)
         @parallel assign!(Arrays.Tnew, Arrays.T)

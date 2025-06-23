@@ -1,7 +1,7 @@
 using Test
 #using Plots
 
-const USE_GPU=false;
+const USE_GPU=true;
 
 using MagmaThermoKinematics
 if USE_GPU
