@@ -115,19 +115,38 @@ function environment!(model_device, precision, dimension)
 
     # conditional submodule load
     module_names = Symbol("Diffusion$(dimension)D")
-    Base.@eval begin
-        include(joinpath(@__DIR__, "Diffusion.jl"))
-        @reexport import .$module_names
-        # export Data
+    if model_device == :gpu
+        Base.@eval begin
+            include(joinpath(@__DIR__, "DiffusionCUDA.jl"))
+            @reexport import .$module_names
+            # export Data
+        end
+    else
+        Base.@eval begin
+            include(joinpath(@__DIR__, "Diffusion.jl"))
+            @reexport import .$module_names
+            # export Data
+        end
     end
 
+
     # Create arrays (depends on PS, so should be loaded after)
-    module_names = Symbol("Fields$(dimension)D")
-    Base.@eval begin
-        include(joinpath(@__DIR__, "Fields.jl"))
-        @reexport import .$module_names
-        # export CreateArrays
+    if model_device == :gpu
+        module_names = Symbol("Fields$(dimension)D")
+        Base.@eval begin
+            include(joinpath(@__DIR__, "FieldsCUDA.jl"))
+            @reexport import .$module_names
+            # export CreateArrays
+        end
+    else
+        module_names = Symbol("Fields$(dimension)D") 
+        Base.@eval begin
+            include(joinpath(@__DIR__, "Fields.jl"))
+            @reexport import .$module_names
+            # export CreateArrays
+        end
     end
+
 
     # Various helpful routines
     Base.@eval begin
@@ -136,21 +155,39 @@ function environment!(model_device, precision, dimension)
     end
 
     # GMG integration
-    Base.@eval begin
-        include(joinpath(@__DIR__, "MTK_GMG_structs.jl"))
-        export NumParam, DikeParam, TimeDepProps
+      if model_device == :gpu
+        Base.@eval begin
+            include(joinpath(@__DIR__, "MTK_GMG_structs.jl"))
+            export NumParam, DikeParam, TimeDepProps
 
-        include(joinpath(@__DIR__, "MTK_GMG.jl"))
+            include(joinpath(@__DIR__, "MTK_GMG.jl"))
 
-        include(joinpath(@__DIR__, "MTK_GMG_2D.jl"))
-        using .MTK_GMG_2D
-        export MTK_GeoParams_2D
+            include(joinpath(@__DIR__, "MTK_GMG_2D.jl"))
+            using .MTK_GMG_2D
+            export MTK_GeoParams_2D
 
-        include(joinpath(@__DIR__, "MTK_GMG_3D.jl"))
-        using .MTK_GMG_3D
-        export MTK_GeoParams_3D
+            include(joinpath(@__DIR__, "MTK_GMG_3D.jl"))
+            using .MTK_GMG_3D
+            export MTK_GeoParams_3D
+        end
+    else
+        Base.@eval begin
+            include(joinpath(@__DIR__, "MTK_GMG_structs.jl"))
+            export NumParam, DikeParam, TimeDepProps
 
+            include(joinpath(@__DIR__, "MTK_GMG.jl"))
+
+            include(joinpath(@__DIR__, "MTK_GMG_2D_CUDA.jl"))
+            using .MTK_GMG_2D
+            export MTK_GeoParams_2D
+
+            include(joinpath(@__DIR__, "MTK_GMG_3D_CUDA.jl"))
+            using .MTK_GMG_3D
+            export MTK_GeoParams_3D
+        end
     end
+
+
 
 end
 

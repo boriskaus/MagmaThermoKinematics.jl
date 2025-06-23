@@ -20,7 +20,7 @@ import MagmaThermoKinematics: update_Tvec!, Dike, InjectDike, km³, kyr, Myr, Cr
 import MagmaThermoKinematics: PhasesFromTracers!
 SecYear = 3600*24*365.25;
 
-using CUDA
+#using CUDA
 
 """
     Analytical geotherm used for the UCLA setups, which includes radioactive heating

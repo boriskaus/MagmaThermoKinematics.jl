@@ -5,7 +5,8 @@ using MagmaThermoKinematics
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
 
-__init__() = @init_parallel_stencil(Threads, Float64, 2)
+__init__() = @init_parallel_stencil(CUDA, Float64, 2)
+using CUDA
 
 # Some helping routines that simplifies creating fields and work arrays
 export CreateArrays

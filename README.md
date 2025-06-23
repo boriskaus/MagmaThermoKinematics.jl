@@ -88,7 +88,7 @@ for it = 1:nt   # Time loop
         if cen[end]<-12e3;  Angle_rand = rand( 80.0:0.1:100.0)                                      # Orientation: near-vertical @ depth             
         else                Angle_rand = rand(-10.0:0.1:10.0); end                                  # Orientation: near-vertical @ shallower depth     
         dike      =     Dike(dike, Center=cen[:],Angle=[Angle_rand]);                               # Specify dike with random location/angle but fixed size/T 
-        Tnew_cpu .=     Array(Arrays.T)
+        Tnew_cpu .=     Data.Array(Arrays.T)
         Tracers, Tnew_cpu, Vol   =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, nTr_dike);   # Add dike, move hostrocks
         Arrays.T .=     Data.Array(Tnew_cpu)
         InjectVol +=    Vol                                                                 # Keep track of injected volume
@@ -109,8 +109,8 @@ for it = 1:nt   # Time loop
     
     if mod(it,20)==0  # Visualisation
         x,z         =   Grid.coord1D[1], Grid.coord1D[2]
-        p1          =   heatmap(x/1e3, z/1e3, Array(Arrays.T)',  aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:lajolla, clims=(0.,900.), xlabel="Width [km]",ylabel="Depth [km]", title="$(round(time/kyr, digits=2)) kyrs", dpi=200, fontsize=6, colorbar_title="Temperature")
-        p2          =   heatmap(x/1e3,z/1e3, Array(Arrays.ϕ)',  aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:nuuk,    clims=(0., 1. ), xlabel="Width [km]",             dpi=200, fontsize=6, colorbar_title="Melt Fraction")
+        p1          =   heatmap(x/1e3, z/1e3, Data.Array(Arrays.T)',  aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:lajolla, clims=(0.,900.), xlabel="Width [km]",ylabel="Depth [km]", title="$(round(time/kyr, digits=2)) kyrs", dpi=200, fontsize=6, colorbar_title="Temperature")
+        p2          =   heatmap(x/1e3,z/1e3, Data.Array(Arrays.ϕ)',  aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:nuuk,    clims=(0., 1. ), xlabel="Width [km]",             dpi=200, fontsize=6, colorbar_title="Melt Fraction")
         plot(p1, p2, layout=(1,2)); frame(anim)
     end
 end
@@ -214,7 +214,7 @@ using WriteVTK
             if cen[end]<-12e3;  Angle_rand = [rand(80.0:0.1:100.0); rand(0:360)]                        # Dikes at depth             
             else                Angle_rand = [rand(-10.0:0.1:10.0); rand(0:360)] end                    # Sills at shallower depth
             dike      =     Dike(dike, Center=cen[:],Angle=Angle_rand);                                 # Specify dike with random location/angle but fixed size/T 
-            Tnew_cpu .=     Array(Arrays.T)
+            Tnew_cpu .=     Data.Array(Arrays.T)
             Tracers, Tnew_cpu, Vol   =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, nTr_dike);   # Add dike, move hostrocks
             Arrays.T .=     Data.Array(Tnew_cpu)
             InjectVol +=    Vol                                                                 # Keep track of injected volume
@@ -236,7 +236,7 @@ using WriteVTK
         if mod(it,20)==0  # Visualisation
             x,y,z         =   Grid.coord1D[1], Grid.coord1D[2], Grid.coord1D[3]
             vtkfile = vtk_grid("./viz3D_out/ex3D_$(Int32(it+1e4))", Vector(x/1e3), Vector(y/1e3), Vector(z/1e3)) # 3-D VTK file
-            vtkfile["Temperature"] = Array(Arrays.T); vtkfile["MeltFraction"] = Array(Arrays.ϕ);                 # Store fields in file
+            vtkfile["Temperature"] = Data.Array(Arrays.T); vtkfile["MeltFraction"] = Data.Array(Arrays.ϕ);                 # Store fields in file
             outfiles = vtk_save(vtkfile); pvd[time/kyr] = vtkfile                                   # Save file & update pvd file
         end
     end

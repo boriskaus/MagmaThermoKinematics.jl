@@ -4,7 +4,7 @@
 using Test, Random
 using ParallelStencil, ParallelStencil.FiniteDifferences2D
 @init_parallel_stencil(Threads, Float64, 2)
-const USE_GPU=false;
+const USE_GPU=true;
 using MagmaThermoKinematics
 if USE_GPU
     environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
@@ -14,6 +14,7 @@ else
 end
 using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
 using MagmaThermoKinematics.Fields2D
+
 
 using Printf        # pretty print
 

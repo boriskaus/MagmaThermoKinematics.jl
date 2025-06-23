@@ -2,7 +2,9 @@ using MagmaThermoKinematics
 
 using ParallelStencil
 ParallelStencil.@reset_parallel_stencil()
-environment!(:cpu, Float64, 2)
+#environment!(:cpu, Float64, 2)
+environment!(:gpu, Float64, 2)
+
 using MagmaThermoKinematics.Diffusion2D
 
 using Plots
@@ -11,7 +13,8 @@ using SpecialFunctions
 using Test
 
 # Initialize for multiple threads (GPU is not tested here)
-@init_parallel_stencil(Threads, Float64, 2);    # initialize parallel stencil in 2D
+#@init_parallel_stencil(Threads, Float64, 2);    # initialize parallel stencil in 2D
+@init_parallel_stencil(CUDA, Float64, 2);    # initialize parallel stencil in 2D
 
 const CreatePlots = false      # easy way to deactivate plotting throughout
 
