@@ -1,11 +1,13 @@
 # This is a relatively complicated test, but is added to ensure that the simulations published in the ZASSY paper remain reproducible:
 #
 using Test, Random
-const USE_GPU=true;
+const USE_GPU=false;
 if USE_GPU
     using CUDA      # needs to be loaded before loading Parallkel=
 end
 using ParallelStencil, ParallelStencil.FiniteDifferences2D
+
+Random.seed!(1234);     # such that we can reproduce results
 
 using MagmaThermoKinematics
 @static if USE_GPU
@@ -210,6 +212,7 @@ end
     end
     # --------------------------------------------
 
+
     for it = 1:Num.nt   # Time loop
         time                =   time + Num.dt;                                     # Keep track of evolved time
 
@@ -240,7 +243,7 @@ end
             if length(Mat_tup)>1
                PhasesFromTracers!(Array(Phases), Grid, Tracers, BackgroundPhase=1, InterpolationMethod="Constant");    # update phases from grid
             end
-
+            @show  sum(Melt_Time) sum(Array(Arrays.Tnew))
         end
         # --------------------------------------------
 
@@ -248,10 +251,15 @@ end
         Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Phases, Grid, Num.dt, Num)
         # --------------------------------------------
 
+
+    @show sum(Arrays.Tnew) sum(Arrays.ϕ) Num.dt sum(Phases) # Show initial T and melt fraction
+    error("stop")
+    
         # Update variables ---------------------------
         # copy to cpu
         Tnew_cpu      .= Array(Arrays.Tnew)
         Phi_melt_cpu  .= Array(Arrays.ϕ)
+      
 
         UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);     # Update info on tracers
 
@@ -344,7 +352,7 @@ if 1==1
                             SimName="ZASSy_Geneva_9_1e_6", axisymmetric=true,
                             #maxTime_Myrs=1.5,
                             maxTime_Myrs=0.025,
-                            fac_dt=0.2, ω=0.5, verbose=false,
+                            fac_dt=0.2, ω=0.5, verbose=true,
                             flux_bottom_BC=false, flux_bottom=0, deactivate_La_at_depth=false,
                             Geotherm=30/1e3, TrackTracersOnGrid=true,
                             SaveOutput_steps=100000, CreateFig_steps=100000, plot_tracers=false, advect_polygon=true,

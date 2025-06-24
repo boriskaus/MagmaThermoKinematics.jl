@@ -1,3 +1,4 @@
+#=
 using MagmaThermoKinematics
 using ParallelStencil
 ParallelStencil.@reset_parallel_stencil()
@@ -8,11 +9,31 @@ using Plots
 using LinearAlgebra
 using SpecialFunctions
 using Test
+=#
+
+using Test, LinearAlgebra, SpecialFunctions, Random
+const USE_GPU=false;
+if USE_GPU
+    using CUDA      # needs to be loaded before loading Parallkel=
+end
+using ParallelStencil, ParallelStencil.FiniteDifferences3D
+
+using MagmaThermoKinematics
+@static if USE_GPU
+    @show USE_GPU
+    environment!(:gpu, Float64, 3)      # initialize parallel stencil in 2D
+    CUDA.device!(1)                     # select the GPU you use (starts @ zero)
+    @init_parallel_stencil(CUDA, Float64, 3)
+else
+    environment!(:cpu, Float64, 3)      # initialize parallel stencil in 2D
+    @init_parallel_stencil(Threads, Float64, 3)
+end
+using MagmaThermoKinematics.Diffusion3D # to load AFTER calling environment!()
+#using MagmaThermoKinematics.Fields3D
+
 
 const CreatePlots = false      # easy way to deactivate plotting throughout
 
-# Initialize for multiple threads (GPU is not tested here)
-@init_parallel_stencil(Threads, Float64, 3);    # initialize parallel stencil in 3D
 
 function Diffusion_Gaussian3D(Setup="3D")
     # Test the
@@ -50,15 +71,19 @@ function Diffusion_Gaussian3D(Setup="3D")
     Tnew, qx,qy,qz          =   @zeros(Nx,Ny,Nz),       @zeros(Nx-1,Ny,Nz),     @zeros(Nx, Ny-1, Nz),   @zeros(Nx,Ny,Nz-1)  # thermal solver
     Kx, Ky, Kz              =                           @zeros(Nx-1, Ny, Nz),   @zeros(Nx,Ny-1,Nz),     @zeros(Nx,Ny,Nz-1)  # thermal conductivities
     X,Y,Z                   =   @zeros(Nx,Ny,Nz),       @zeros(Nx,Ny,Nz),       @zeros(Nx,Ny,Nz)                            # 3D gridpoints
+    @parallel MagmaThermoKinematics.Diffusion3D.diffusion3D_conductivity!(Kx, Ky, Kz, K)
+
 
     # Set up model geometry & initial T structure
     x,y,z                   =   -W/2*1e3:dx:(-W/2*1e3+(Nx-1)*dx), -L/2*1e3:dy:(-L/2*1e3+(Ny-1)*dy), -H/2*1e3:dz:(-H/2*1e3+(Nz-1)*dz);
     coords                  =   collect(Iterators.product(x,y,z))                               # generate coordinates from 1D coordinate vectors
     X,Y,Z                   =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);     # transfer coords to 3D arrays
     Grid, Spacing           =   (X,Y,Z), (dx,dy,dz);
-    T                      .=   Tmax.*exp.(  -((X.^2 .+ Y.^2 .+ Z.^2)./(σ^2)) );                 # initial gaussian profile
+    T                      .=   Data.Array(Tmax.*exp.(  -((X.^2 .+ Y.^2 .+ Z.^2)./(σ^2)) ));                 # initial gaussian profile
     Tnew                   .=   T;
 
+
+ 
     #ENV["GKSwstype"]="nul"; if isdir("viz2D_out")==false mkdir("viz2D_out") end; loadpath = "./viz2D_out/"; anim = Animation(loadpath,String[])
     #println("Animation directory: $(anim.dir)")
 
@@ -70,7 +95,7 @@ function Diffusion_Gaussian3D(Setup="3D")
 
         # Perform a diffusion step
         if Setup=="3D"
-            @parallel diffusion3D_step_varK!(Tnew, T, qx, qy, qz, K, Kx, Ky, Kz, Rho, Cp, Hs, Hl, dt, dx, dy, dz, dPhi_dt);
+            diffusion3D_step_varK!(Tnew, T, qx, qy, qz, K, Kx, Ky, Kz, Rho, Cp, Hs, Hl, dt, dx, dy, dz, dPhi_dt);
             #@parallel diffusion3D_step!(Tnew, T, K, 1.0/(ρ*cp), dt, dx, dy, dz)
         end
 
@@ -104,7 +129,7 @@ function Diffusion_Gaussian3D(Setup="3D")
         Tanal  =  Tmax./(1 + 4*time*κ/σ^2)^(3/2).*exp.(  -(X.^2 .+ Y.^2 .+ Z.^2)./(σ^2 + 4*time*κ));                     # initial gaussian profile
         fname = "Diffusion_3D_Gaussian";
     end
-    Terror =  T - Tanal
+    Terror =  Array(T) - Tanal
 
     Tslice  = T[:,Int(Ny/2),:];
     Tanal1  = Tanal[:,Int(Ny/2),:];

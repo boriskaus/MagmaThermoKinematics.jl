@@ -1,16 +1,25 @@
+using Test, LinearAlgebra, SpecialFunctions, Random
+const USE_GPU=false;
+if USE_GPU
+    using CUDA      # needs to be loaded before loading Parallkel=
+end
+using ParallelStencil, ParallelStencil.FiniteDifferences2D
+
 using MagmaThermoKinematics
+@static if USE_GPU
+    @show USE_GPU
+    environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
+    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
+    @init_parallel_stencil(CUDA, Float64, 2)
+else
+    environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
+    @init_parallel_stencil(Threads, Float64, 2)
+end
+using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
+#using MagmaThermoKinematics.Fields2D
 
-using ParallelStencil
-ParallelStencil.@reset_parallel_stencil()
-#environment!(:cpu, Float64, 2)
-environment!(:gpu, Float64, 2)
 
-using MagmaThermoKinematics.Diffusion2D
-
-using Plots
-using LinearAlgebra
-using SpecialFunctions
-using Test
+Random.seed!(1234);     # such that we can reproduce results
 
 # Initialize for multiple threads (GPU is not tested here)
 #@init_parallel_stencil(Threads, Float64, 2);    # initialize parallel stencil in 2D
@@ -96,7 +105,7 @@ while (err>1e-10) & (it<1e6)
 
     it += 1
     # Perform a diffusion step
-    @parallel diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz, dPhi_dt);
+    diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz, dPhi_dt);
     if Setup=="Constant_Zdirection" || Setup=="VariableK_Zdirection"
          # diffusion in z-direction
         @parallel (1:size(T,2)) bc2D_x!(Tnew);                                                      # set lateral boundary conditions (flux-free)
@@ -176,14 +185,14 @@ if      Setup=="Constant_Zdirection" || Setup=="VariableK_Zdirection"
         plot(Tanal,z_km, label = "Analytics");
         plot!(Tnum,z_km,ylabel="Depth [km]",xlabel="Temperature [C]", label = "Numerics",  marker = 2,   linewidth = 0);
     end
-    error = norm(T[1,:] .- Tanal,2);
+    error = norm(Array(T[1,:]) .- Tanal,2);
 else
     if CreatePlots
         # create plot
         plot(x_km, Tanal,label = "Analytics");
         plot!(x_km,Tnum, xlabel="Width [km]",ylabel="Temperature [C]", label = "Numerics",  marker = 2,   linewidth = 0);
     end
-    error = norm(T[:,1] .- Tanal,2);
+    error = norm(Array(T[:,1]) .- Tanal,2);
 end
 if CreatePlots
     png(fname)
@@ -244,11 +253,11 @@ function Diffusion_Halfspace2D()
     for it=1:nt
 
         # Perform a diffusion step
-        @parallel diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz, dPhi_dt);
+        diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz, dPhi_dt);
+
         # diffusion in z-direction
         @parallel (1:size(T,2)) bc2D_x!(Tnew);                                                      # set lateral boundary conditions (flux-free)
         Tnew[:,1] .= Tbot; Tnew[:,end] .= 0.0;                                                    # bottom & top temperature (constant)
-
 
 
         # Tracers         =   UpdateTracers(Tracers, Grid, Spacing, Tnew, Phi);                       # Update info on tracers
@@ -281,7 +290,7 @@ function Diffusion_Halfspace2D()
         png(fname)
     end
 
-    error = norm(T[1,:] .- Tanal,2);
+    error = norm(Array(T[1,:]) .- Tanal,2);
     return error;        # return error
 
 end # end of halfspace cooling test
@@ -326,13 +335,14 @@ function Diffusion_Gaussian2D(Setup="2D")
     # Set up model geometry & initial T structure
     x,z                     =   -W/2*1e3:dx:W/2*1e3, -H/2*1e3:dz:(-H/2*1e3+(Nz-1)*dz);
     X,Z                     =   ones(Nz)' .* x, z' .* ones(Nx);                             # 2D coordinate grids
-    Xc                      =   (X[2:Nx,:] + X[1:Nx-1,:])/2.0;
+    X,Z = Data.Array(X), Data.Array(Z)
+    Xc                      =   Data.Array((X[2:Nx,:] + X[1:Nx-1,:])/2.0);
     Grid, Spacing           =   (X,Z), (dx,dz);
 
     if Setup=="2D"
-        T                  .=  Tmax.*exp.(  -(X.^2 .+ Z.^2)./(σ^2));                     # initial gaussian profile
+        T                  .=  Data.Array(Tmax.*exp.(  -(X.^2 .+ Z.^2)./(σ^2)));                     # initial gaussian profile
     elseif Setup=="Axisymmetric"
-        T                  .=  Tmax.*exp.(  -(X.^2 .+ Z.^2)./(σ^2));                     # initial gaussian profile
+        T                  .=  Data.Array(Tmax.*exp.(  -(X.^2 .+ Z.^2)./(σ^2)));                     # initial gaussian profile
     else
         error("Unknown setup")
     end
@@ -350,9 +360,9 @@ function Diffusion_Gaussian2D(Setup="2D")
 
         # Perform a diffusion step
         if Setup=="2D"
-            @parallel diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz,  dPhi_dt);
+            diffusion2D_step!(Tnew, T, qx, qz, K,Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz,  dPhi_dt)
         elseif Setup=="Axisymmetric"
-            @parallel MagmaThermoKinematics.Diffusion2D.diffusion2D_AxiSymm_step!(Tnew, T, X, Xc, qx, qz, K, Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz,  dPhi_dt);
+            MagmaThermoKinematics.Diffusion2D.diffusion2D_AxiSymm_step!(Tnew, T, X, Xc, qx, qz, K, Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz,  dPhi_dt);
         end
 
         # diffusion in z-direction
@@ -387,7 +397,7 @@ function Diffusion_Gaussian2D(Setup="2D")
         Tanal  =  Tmax./( (1 + 4*time*κ/σ^2)^(3/2) ).*exp.(  -(X.^2 .+ Z.^2)./(σ^2 + 4*time*κ));                     # initial gaussian profile
         fname = "Diffusion_Axisymmetric_Gaussian";
     end
-    Terror =  T - Tanal
+    Terror =  Array(T) - Array(Tanal)
 
     if CreatePlots
         # create plot
@@ -396,7 +406,7 @@ function Diffusion_Gaussian2D(Setup="2D")
         png(fname)
     end
 
-    error = norm(Terror[:],2);
+    error = norm(Array(Terror[:]),2);
 
     return error;        # return error
 
@@ -404,16 +414,17 @@ end # end of gaussian diffusion test
 
 # Create a range of 2D diffusion tests which calls the routines above
 @testset "2D steady state diffusion" begin
-    @test Diffusion_SteadyState2D("VariableK_Zdirection") ≈ 8.749  atol=1e-3;
-    @test Diffusion_SteadyState2D("Constant_Zdirection")  ≈ 1e-5   atol=1e-4;
-    @test Diffusion_SteadyState2D("VariableK_Xdirection") ≈ 2.041  atol=1e-3;
-    @test Diffusion_SteadyState2D("Constant_Xdirection")  ≈ 1e-4   atol=1e-4;
+    @test Diffusion_SteadyState2D("VariableK_Zdirection") ≈ 8.749073037094778  atol=1e-5;
+    @test Diffusion_SteadyState2D("Constant_Zdirection")  ≈ 1e-5   atol=1e-5;
+    @test Diffusion_SteadyState2D("VariableK_Xdirection") ≈ 2.041013962386462  atol=1e-5;
+    @test Diffusion_SteadyState2D("Constant_Xdirection")  ≈ 1.0268559132246036e-5   atol=1e-5;
 end;
 
 @testset "2D halfspace cooling" begin
-    @test  Diffusion_Halfspace2D() ≈ 0.6331810452340912 atol=1e-3;
+    err = Diffusion_Halfspace2D()
+    @test  err ≈ 0.6339708451156041 atol=1e-5;
 end;
 @testset "2D Gaussian diffusion" begin
-    @test Diffusion_Gaussian2D("2D")           ≈  5.5913993079181195 atol=1e-3;
-    @test Diffusion_Gaussian2D("Axisymmetric") ≈ 11.233542156240762 atol=1e-2;
+    @test Diffusion_Gaussian2D("2D")           ≈  5.229954229551127 atol=1e-5;
+    @test Diffusion_Gaussian2D("Axisymmetric") ≈ 10.587520589916926 atol=1e-5;
 end;

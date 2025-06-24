@@ -20,6 +20,12 @@ import ..compute_meltfraction_ps!, ..compute_dϕdT_ps!, ..compute_density_ps!, .
 
 __init__() = @init_parallel_stencil(Threads, Float64, 2)
 
+#include("Diffusion_combined2D.jl")
+
+"""
+Diffusion2D provides GPU/CPU functions 
+"""
+
 """
     GridArray!(X::AbstractArray, Z::AbstractArray, Grid::GridData)
 
@@ -135,10 +141,10 @@ function Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
 
         # Diffusion step:
         if Num.axisymmetric==true
-            @parallel diffusion2D_AxiSymm_step!(Arrays.Tnew, Arrays.T, Arrays.R, Arrays.Rc, Arrays.qx, Arrays.qz, Arrays.Kc, Arrays.Kx, Arrays.Kz,
+            diffusion2D_AxiSymm_step!(Arrays.Tnew, Arrays.T, Arrays.R, Arrays.Rc, Arrays.qx, Arrays.qz, Arrays.Kc, Arrays.Kx, Arrays.Kz,
                                                 Arrays.Rho, Arrays.Cp, Arrays.Hr, Arrays.Hl, dt, Grid.Δ[1], Grid.Δ[2], Arrays.dϕdT) # axisymmetric diffusion step
         else
-            @parallel diffusion2D_step!(Arrays.Tnew, Arrays.T, Arrays.qx, Arrays.qz, Arrays.Kc, Arrays.Kx, Arrays.Kz,
+            diffusion2D_step!(Arrays.Tnew, Arrays.T, Arrays.qx, Arrays.qz, Arrays.Kc, Arrays.Kx, Arrays.Kz,
                                         Arrays.Rho, Arrays.Cp, Arrays.Hr, Arrays.Hl, dt, Grid.Δ[1], Grid.Δ[2], Arrays.dϕdT) # 2D diffusion step
         end
 
@@ -176,8 +182,82 @@ function Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
     return nothing
 end
 
+
+
 #------------------------------------------------------------------------------------------
+@parallel function diffusion2D_flux_AxiSymm!(qr, qz, T, Rc, Kr, Kz, dr, dz)
+    @all(qr)    =  @all(Rc)*@all(Kr)*@d_xa(T)/dr;                # heatflux in r
+    @all(qz)    =           @all(Kz)*@d_ya(T)/dz;                # heatflux in z
+    return
+end
+
+@parallel function update_T_AxiSymm!(Tnew, T, R, qr, qz, Rho, Cp, H, Hl, dt, dr, dz,  dϕdT)
+   @inn(Tnew)  =  @inn(T) + dt/(@inn(Rho)*(@inn(Cp) + @inn(Hl)*@inn(dϕdT)))*
+                                 ( 1.0/@inn(R)*@d_xi(qr)/dr +     # 2nd derivative in r
+                                                 @d_yi(qz)/dz +     # 2nd derivative in z
+                                                 @inn(H)             # heat sources
+                                );
+    return
+end
+
+@parallel function update_Res_AxiSymm!(Residual, R, qr, qz, Rho, Cp, H, Hl, dr, dz,  dϕdT)
+    @inn(Residual)  =  1.0/(@inn(Rho)*(@inn(Cp) + @inn(Hl)*@inn(dϕdT)))*
+                                        ( 1.0/@inn(R)*@d_xi(qr)/dr +      # 2nd derivative in r
+                                                      @d_yi(qz)/dz +      # 2nd derivative in z
+                                                      @inn(H)             # heat sources
+                                        );
+
+    return
+end
+
+@parallel function diffusion2D_conductivity!(Kx, Kz, K)
+    @all(Kx)    =  @av_xa(K);                            
+    @all(Kz)    =  @av_ya(K);                            # heatflux in z
+    return
+end
+
+@parallel function diffusion2D_flux!(qx, qz, T, Kx, Kz, dx, dz)
+    @all(qx)    =   @all(Kx)*@d_xa(T)/dx;                            # heatflux in x
+    @all(qz)    =   @all(Kz)*@d_ya(T)/dz;                            # heatflux in z
+    return
+end
+
+@parallel function update_T!(Tnew, T, qx, qz, Rho, Cp, H, Hl, dt, dx, dz,  dϕdT)
+  @inn(Tnew)  =  @inn(T) + dt/(@inn(Rho)*(@inn(Cp) + @inn(Hl)*@inn(dϕdT)))*
+                                 (        @d_xi(qx)/dx +
+                                          @d_yi(qz)/dz +            # 2nd derivative
+                                          @inn(H)                   # heat sources
+                                 );
+    return
+end
+
+
+
 # Solve one diffusion timestep in axisymmetric geometry, including latent heat, with spatially variable Rho, Cp and K
+function diffusion2D_AxiSymm_step!(Tnew, T, R, Rc, qr, qz, K, Kr, Kz, Rho, Cp, H, Hl, dt, dr, dz, dϕdT)
+    @parallel diffusion2D_conductivity!(Kr, Kz, K)
+    @parallel diffusion2D_flux_AxiSymm!(qr, qz, T, Rc, Kr, Kz, dr, dz)
+    @parallel update_T_AxiSymm!(Tnew, T, R, qr, qz, Rho, Cp, H, Hl, dt, dr, dz,  dϕdT)
+    return
+end
+
+function diffusion2D_AxiSymm_residual!(Residual, T, R, Rc, qr, qz, K, Kr, Kz, Rho, Cp, H, Hl, dr, dz, dϕdT)
+    @parallel diffusion2D_conductivity!(Kr, Kz, K)
+    @parallel diffusion2D_flux_AxiSymm!(qr, qz, T, Rc, Kr, Kz, dr, dz)
+    @parallel update_Res_AxiSymm!(Residual, R, qr, qz, Rho, Cp, H, Hl, dr, dz,  dϕdT)
+    return
+end
+
+# Solve one diffusion timestep in 2D geometry, including latent heat, with spatially variable Rho, Cp and K
+function diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, H, Hl, dt, dx, dz,  dϕdT)
+    @parallel diffusion2D_conductivity!(Kx, Kz, K)
+    @parallel diffusion2D_flux!(qx, qz, T, Kx, Kz, dx, dz)
+    @parallel update_T!(Tnew, T, qx, qz, Rho, Cp, H, Hl, dt, dx, dz,  dϕdT)
+    return
+end
+
+
+#=
 @parallel function diffusion2D_AxiSymm_step!(Tnew, T, R, Rc, qr, qz, K, Kr, Kz, Rho, Cp, H, Hl, dt, dr, dz, dϕdT)
     @all(Kr)    =  @av_xa(K);                                       # average K in r direction
     @all(Kz)    =  @av_ya(K);                                       # average K in z direction
@@ -191,7 +271,10 @@ end
 
     return
 end
+=#
 
+
+#=
 @parallel function diffusion2D_AxiSymm_residual!(Residual, T, R, Rc, qr, qz, K, Kr, Kz, Rho, Cp, H, Hl, dr, dz, dϕdT)
     @all(Kr)        =  @av_xa(K);                                       # average K in r direction
     @all(Kz)        =  @av_ya(K);                                       # average K in z direction
@@ -205,8 +288,9 @@ end
 
     return
 end
-
+=#
 # Solve one diffusion timestep in 2D geometry, including latent heat, with spatially variable Rho, Cp and K
+#=
 @parallel function diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, H, Hl, dt, dx, dz,  dϕdT)
     @all(Kx)    =  @av_xa(K);                                       # average K in x direction
     @all(Kz)    =  @av_ya(K);                                       # average K in z direction
@@ -220,6 +304,8 @@ end
 
     return
 end
+=#
+
 
 
 # Set x- boundary conditions to be zero-flux
@@ -261,6 +347,8 @@ end
 
 end
 
+
+
 """
 Diffusion3D provides 3D diffusion routines
 """
@@ -274,6 +362,16 @@ using Parameters
 #using CUDA
 
 using MagmaThermoKinematics.Grid
+
+export  diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_flux!, assign!, GridArray!,
+        Numeric_params, Nonlinear_Diffusion_step_3D!, bc3D_T!
+
+import ..compute_meltfraction_ps_3D!, ..compute_dϕdT_ps_3D!, ..compute_density_ps_3D!, ..compute_heatcapacity_ps_3D!,
+        ..compute_conductivity_ps_3D!, ..compute_radioactive_heat_ps_3D!, ..compute_latent_heat_ps_3D!
+
+__init__() = @init_parallel_stencil(Threads, Float64, 3)
+
+#include("Diffusion_combined3D.jl")
 
 export  diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_flux!, assign!, GridArray!,
         Numeric_params, Nonlinear_Diffusion_step_3D!, bc3D_T!
@@ -378,7 +476,7 @@ function Nonlinear_Diffusion_step_3D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
         end
 
         # Diffusion step:
-        @parallel diffusion3D_step_varK!(Arrays.Tnew, Arrays.T, Arrays.qx, Arrays.qy, Arrays.qz, Arrays.Kc, Arrays.Kx, Arrays.Ky, Arrays.Kz,
+        diffusion3D_step_varK!(Arrays.Tnew, Arrays.T, Arrays.qx, Arrays.qy, Arrays.qz, Arrays.Kc, Arrays.Kx, Arrays.Ky, Arrays.Kz,
                                             Arrays.Rho, Arrays.Cp, Arrays.Hr, Arrays.Hl, dt, Grid.Δ[1], Grid.Δ[2], Grid.Δ[3], Arrays.dϕdT)
 
         @parallel (1:Ny, 1:Nz) bc3D_x!(Arrays.Tnew);                      # flux-free lateral boundary conditions
@@ -417,22 +515,37 @@ function Nonlinear_Diffusion_step_3D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
 end
 
 
-# Solve one diffusion timestep in 3D geometry, including latent heat, with spatially variable Rho, Cp and K
-#  Note: needs the 3D stencil routines; hence part is commented
-@parallel function diffusion3D_step_varK!(Tnew, T, qx, qy, qz, K, Kx, Ky, Kz, Rho, Cp, H, Hl, dt, dx, dy, dz, dϕdT)
+@parallel function diffusion3D_conductivity!(Kx, Ky, Kz, K)
     @all(Kx)    =  @av_xa(K);                                       # average K in x direction
     @all(Ky)    =  @av_ya(K);                                       # average K in y direction
     @all(Kz)    =  @av_za(K);                                       # average K in z direction
+    return
+end
+
+@parallel function diffusion3D_flux!(qx, qy, qz, T, Kx, Ky, Kz, dx, dy, dz)
     @all(qx)    =  @all(Kx)*@d_xa(T)/dx;                          # heatflux in x
     @all(qy)    =  @all(Ky)*@d_ya(T)/dy;                          # heatflux in y
     @all(qz)    =  @all(Kz)*@d_za(T)/dz;                          # heatflux in z
+    return
+end
 
-    @inn(Tnew)  =  @inn(T) + dt/(@inn(Rho)*(@inn(Cp) + @inn(Hl)*@inn(dϕdT)))*
+@parallel function update_T!(Tnew, T, qx, qy, qz, Rho, Cp, H, Hl, dt, dx, dy, dz,  dϕdT)
+  @inn(Tnew)  =  @inn(T) + dt/(@inn(Rho)*(@inn(Cp) + @inn(Hl)*@inn(dϕdT)))*
                    (  @d_xi(qx)/dx +
                       @d_yi(qy)/dy +
                       @d_zi(qz)/dz +               # 2nd derivative
                       @inn(H)  );                   # heat sources
 
+    return
+end
+
+# Solve one diffusion timestep in 3D geometry, including latent heat, with spatially variable Rho, Cp and K
+#  Note: needs the 3D stencil routines; hence part is commented
+function diffusion3D_step_varK!(Tnew, T, qx, qy, qz, K, Kx, Ky, Kz, Rho, Cp, H, Hl, dt, dx, dy, dz, dϕdT)
+    @parallel diffusion3D_conductivity!(Kx, Ky, Kz, K)
+    @parallel diffusion3D_flux!(qx, qy, qz, T, Kx, Ky, Kz, dx, dy, dz)
+    @parallel update_T!(Tnew, T, qx, qy, qz, Rho, Cp, H, Hl, dt, dx, dy, dz,  dϕdT)
+   
     return
 end
 
