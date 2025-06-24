@@ -21,8 +21,6 @@ import ..compute_meltfraction_ps!, ..compute_dϕdT_ps!, ..compute_density_ps!, .
 
 __init__() = @init_parallel_stencil(CUDA, Float64, 2)
 
-#include("Diffusion_combined2D.jl")
-
 """
 Diffusion2D provides GPU/CPU functions 
 """
@@ -372,7 +370,6 @@ import ..compute_meltfraction_ps_3D!, ..compute_dϕdT_ps_3D!, ..compute_density_
 
 __init__() = @init_parallel_stencil(CUDA, Float64, 3)
 
-#include("Diffusion_combined3D.jl")
 
 export  diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_flux!, assign!, GridArray!,
         Numeric_params, Nonlinear_Diffusion_step_3D!, bc3D_T!

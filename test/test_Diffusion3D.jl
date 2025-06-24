@@ -1,16 +1,3 @@
-#=
-using MagmaThermoKinematics
-using ParallelStencil
-ParallelStencil.@reset_parallel_stencil()
-environment!(:cpu, Float64, 3)
-using MagmaThermoKinematics.Diffusion3D
-
-using Plots
-using LinearAlgebra
-using SpecialFunctions
-using Test
-=#
-
 using Test, LinearAlgebra, SpecialFunctions, Random
 const USE_GPU=false;
 if USE_GPU
@@ -20,7 +7,6 @@ using ParallelStencil, ParallelStencil.FiniteDifferences3D
 
 using MagmaThermoKinematics
 @static if USE_GPU
-    @show USE_GPU
     environment!(:gpu, Float64, 3)      # initialize parallel stencil in 2D
     CUDA.device!(1)                     # select the GPU you use (starts @ zero)
     @init_parallel_stencil(CUDA, Float64, 3)
