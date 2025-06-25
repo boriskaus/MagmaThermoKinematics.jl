@@ -8,8 +8,9 @@ using ParallelStencil.FiniteDifferences3D
 using Parameters
 using StructArrays
 using GeophysicalModelGenerator
+using CUDA
 
-__init__() = @init_parallel_stencil(Threads, Float64, 3)
+__init__() = @init_parallel_stencil(CUDA, Float64, 3)
 
 using MagmaThermoKinematics.Diffusion3D
 using MagmaThermoKinematics.MTK_GMG
@@ -147,8 +148,8 @@ There are a few functions that you can overwrite in your user code to customize 
         UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);     # Update info on tracers
 
         # copy back to gpu
-        Arrays.Tnew   .= Array(Tnew_cpu)
-        Arrays.ϕ      .= Array(Phi_melt_cpu)
+        Arrays.Tnew   .= Data.Array(Tnew_cpu)
+        Arrays.ϕ      .= Data.Array(Phi_melt_cpu)
 
         @parallel assign!(Arrays.T, Arrays.Tnew)
         @parallel assign!(Arrays.Tnew, Arrays.T)

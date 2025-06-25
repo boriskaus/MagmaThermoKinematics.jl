@@ -8,6 +8,7 @@ export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!, bc2D_z!, bc2D_z_bo
         update_relaxed_picard!, Nonlinear_Diffusion_step_2D!, Numeric_params, bc2D_T!, GridArray!
 
 using LinearAlgebra: norm
+using CUDA
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
 using Parameters
@@ -18,9 +19,7 @@ import ..compute_meltfraction_ps!, ..compute_dϕdT_ps!, ..compute_density_ps!, .
        ..compute_conductivity_ps!, ..compute_radioactive_heat_ps!, ..compute_latent_heat_ps!
 
 
-__init__() = @init_parallel_stencil(Threads, Float64, 2)
-
-#include("Diffusion_combined2D.jl")
+__init__() = @init_parallel_stencil(CUDA, Float64, 2)
 
 """
 Diffusion2D provides GPU/CPU functions 
@@ -348,7 +347,6 @@ end
 end
 
 
-
 """
 Diffusion3D provides 3D diffusion routines
 """
@@ -356,10 +354,11 @@ module Diffusion3D
 
 # load required julia packages
 using LinearAlgebra: norm
+using CUDA
 using ParallelStencil
 using ParallelStencil.FiniteDifferences3D
 using Parameters
-#using CUDA
+
 
 using MagmaThermoKinematics.Grid
 
@@ -369,9 +368,8 @@ export  diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_
 import ..compute_meltfraction_ps_3D!, ..compute_dϕdT_ps_3D!, ..compute_density_ps_3D!, ..compute_heatcapacity_ps_3D!,
         ..compute_conductivity_ps_3D!, ..compute_radioactive_heat_ps_3D!, ..compute_latent_heat_ps_3D!
 
-__init__() = @init_parallel_stencil(Threads, Float64, 3)
+__init__() = @init_parallel_stencil(CUDA, Float64, 3)
 
-#include("Diffusion_combined3D.jl")
 
 export  diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_flux!, assign!, GridArray!,
         Numeric_params, Nonlinear_Diffusion_step_3D!, bc3D_T!
@@ -379,7 +377,7 @@ export  diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_
 import ..compute_meltfraction_ps_3D!, ..compute_dϕdT_ps_3D!, ..compute_density_ps_3D!, ..compute_heatcapacity_ps_3D!,
         ..compute_conductivity_ps_3D!, ..compute_radioactive_heat_ps_3D!, ..compute_latent_heat_ps_3D!
 
-__init__() = @init_parallel_stencil(Threads, Float64, 3)
+#__init__() = @init_parallel_stencil(Threads, Float64, 3)
 
 @parallel function assign!(A::AbstractArray, B::AbstractArray)
     @all(A) = @all(B)

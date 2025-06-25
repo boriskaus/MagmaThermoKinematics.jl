@@ -7,7 +7,8 @@ using ParallelStencil.FiniteDifferences2D
 using Parameters
 using StructArrays
 using GeophysicalModelGenerator
-using CUDA
+
+__init__() = @init_parallel_stencil(Threads, Float64, 2)
 
 using MagmaThermoKinematics.Diffusion2D
 using MagmaThermoKinematics.MTK_GMG
@@ -47,32 +48,32 @@ There are a few functions that you can overwrite in your user code to customize 
 
 """
 @views function MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::DikeParameters; CartData_input::Union{Nothing,CartData}=nothing, time_props::TimeDependentProperties = TimeDepProps());
-    
+
     # Change parameters based on CartData input
     Num.dim = 2;
     if !isnothing(CartData_input)
-       
+
         if !hasfield(typeof(CartData_input.fields),:FlatCrossSection)
            error("You should add a Field :FlatCrossSection to your data structure with Data_Cross = addfield(Data_Cross,\"FlatCrossSection\", flatten_cross_section(Data_Cross))")
         end
 
         Num = MTK_GMG.Setup_Model_CartData(CartData_input, Num, Mat_tup)
     end
-   
+
     # Array & grid initializations ---------------
     Arrays = MTK_GMG.MTK_initialize_arrays(Num);
 
     # Set up model geometry & initial T structure
     if isnothing(CartData_input)
-        Grid    = CreateGrid(size=(Num.Nx,Num.Nz), extent=(Num.W, Num.H))   
+        Grid    = CreateGrid(size=(Num.Nx,Num.Nz), extent=(Num.W, Num.H))
     else
-        Grid    = CreateGrid(CartData_input)   
+        Grid    = CreateGrid(CartData_input)
     end
-    GridArray!(Arrays.R, Arrays.Z, Grid)        
+    GridArray!(Arrays.R, Arrays.Z, Grid)
     Arrays.Rc              .=   (Arrays.R[2:end,:] + Arrays.R[1:end-1,:])/2     # center points in x
     # --------------------------------------------
 
-    Tracers                 =   StructArray{Tracer}(undef, 1)                       # Initialize tracers   
+    Tracers                 =   StructArray{Tracer}(undef, 1)                       # Initialize tracers
 
     # Update buffer & phases arrays --------------
     if Num.USE_GPU
@@ -88,7 +89,7 @@ There are a few functions that you can overwrite in your user code to customize 
         Phases_init     =   ones(Int64,Num.Nx,Num.Nz)
     end
     Arrays = (Arrays..., Phases=Phases, Phases_init=Phases_init);
-    
+
     # Initialize Geotherm and Phases -------------
     if isnothing(CartData_input)
         MTK_GMG.MTK_initialize!(Arrays, Grid, Num, Tracers, Dikes);
@@ -97,7 +98,7 @@ There are a few functions that you can overwrite in your user code to customize 
     end
     # --------------------------------------------
 
-    # check errors 
+    # check errors
     unique_Phases = unique(Array(Arrays.Phases));
     phase_specified = []
     for mm in Mat_tup
@@ -112,7 +113,7 @@ There are a few functions that you can overwrite in your user code to customize 
     if any(isnan.(Arrays.T))
         error("NaNs in T; something is wrong")
     end
-    
+
     # Optionally set initial sill in models ------
     if Dikes.Type  == "CylindricalDike_TopAccretion"
         ind = findall( (Arrays.R.<=Dikes.W_in/2) .& (abs.(Arrays.Z.-Dikes.Center[2]) .< Dikes.H_in/2) );
@@ -123,14 +124,14 @@ There are a few functions that you can overwrite in your user code to customize 
         end
     end
     # --------------------------------------------
-    
+
     # Initialise arrays --------------------------
     @parallel assign!(Arrays.Tnew, Arrays.T_init)
     @parallel assign!(Arrays.T, Arrays.T_init)
 
-    if isdir(Num.SimName)==false 
+    if isdir(Num.SimName)==false
         mkdir(Num.SimName)          # create simulation directory if needed
-    end;        
+    end;
     # --------------------------------------------
 
     for Num.it = 1:Num.nt   # Time loop
@@ -146,10 +147,10 @@ There are a few functions that you can overwrite in your user code to customize 
 
         # Update variables ---------------------------
         # copy to cpu
-        Tnew_cpu      .= Array(Arrays.Tnew)
-        Phi_melt_cpu  .= Array(Arrays.ϕ)
-        
-        UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);     # Update info on tracers 
+        Tnew_cpu      .= Data.Array(Arrays.Tnew)
+        Phi_melt_cpu  .= Data.Array(Arrays.ϕ)
+
+        UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);     # Update info on tracers
 
         # copy back to gpu
         Arrays.Tnew   .= Data.Array(Tnew_cpu)
@@ -158,7 +159,7 @@ There are a few functions that you can overwrite in your user code to customize 
         @parallel assign!(Arrays.T, Arrays.Tnew)
         @parallel assign!(Arrays.Tnew, Arrays.T)
         # --------------------------------------------
-        
+
         # Update info on tracers ---------------------
         Tracers = MTK_GMG.MTK_updateTracers(Grid, Arrays, Tracers, Dikes, time_props, Num);
         # --------------------------------------------
@@ -170,7 +171,7 @@ There are a few functions that you can overwrite in your user code to customize 
         # Visualize results --------------------------
         MTK_GMG.MTK_visualize_output(Grid, Num, Arrays, Mat_tup, Dikes)
         # --------------------------------------------
-          
+
         # Save output to disk once in a while --------
         MTK_GMG.MTK_save_output(Grid, Arrays, Tracers, Dikes, time_props, Num, CartData_input);
         # --------------------------------------------
@@ -178,7 +179,7 @@ There are a few functions that you can overwrite in your user code to customize 
         # Optionally update arrays and structs (such as T or Dike) -------
         MTK_GMG.MTK_update_ArraysStructs!(Arrays, Grid, Dikes, Num, Mat_tup)
         # --------------------------------------------
-        
+
         # Display output -----------------------------
         MTK_GMG.MTK_print_output(Grid, Num, Arrays, Mat_tup, Dikes)
         # --------------------------------------------

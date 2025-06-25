@@ -1,17 +1,20 @@
-using Test
-#using Plots
-
+using Test, Random
 const USE_GPU=false;
+if USE_GPU
+    using CUDA      # needs to be loaded before loading Parallkel=
+end
+using ParallelStencil, ParallelStencil.FiniteDifferences3D
 
 using MagmaThermoKinematics
-if USE_GPU
+@static if USE_GPU
     environment!(:gpu, Float64, 3)      # initialize parallel stencil in 2D
     CUDA.device!(1)                     # select the GPU you use (starts @ zero)
+    @init_parallel_stencil(CUDA, Float64, 3)
 else
     environment!(:cpu, Float64, 3)      # initialize parallel stencil in 2D
+    @init_parallel_stencil(Threads, Float64, 3)
 end
 using MagmaThermoKinematics.Diffusion3D
-
 using Random, GeoParams, GeophysicalModelGenerator
 
 const rng = Random.seed!(1234);     # same seed such that we can reproduce results
@@ -20,10 +23,10 @@ const rng = Random.seed!(1234);     # same seed such that we can reproduce resul
 using MagmaThermoKinematics.MTK_GMG
 
 @testset "MTK_GMG_3D" begin
-    
+
 function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
     if mod(Num.it,10) == 0
-        println("$(Num.it), $(Num.time/SecYear/1e3) kyrs; max(T)=$(maximum(Arrays.Tnew))") 
+        println("$(Num.it), $(Num.time/SecYear/1e3) kyrs; max(T)=$(maximum(Arrays.Tnew))")
     end
     return nothing
 end
@@ -33,15 +36,15 @@ println("===============================================")
 println("Testing MTK - GMG integration in 3D")
 println("===============================================")
 
-# These are the final simulations for the ZASSy paper, but done @ a lower resolution
-Num         = NumParam( #Nx=269*1, Nz=269*1, 
-                        Nx=65*1, Ny=65*1, Nz=65*1, 
-                        SimName="Test1", 
+# Perform simulations @ a lower resolution to speed up GitHub CI tests (on limited memory machines)
+Num         = NumParam( #Nx=269*1, Nz=269*1,
+                        Nx=31*1, Ny=31*1, Nz=31*1,
+                        SimName="Test1",
                         W=20e3, H=20e3, L=20e3,
-                        #maxTime_Myrs=1.5, 
-                        maxTime_Myrs=0.005, 
-                        fac_dt=0.2, ω=0.5, verbose=false, 
-                        flux_bottom_BC=false, flux_bottom=0, deactivate_La_at_depth=false, 
+                        #maxTime_Myrs=1.5,
+                        maxTime_Myrs=0.001,
+                        fac_dt=0.2, ω=0.5, verbose=false,
+                        flux_bottom_BC=false, flux_bottom=0, deactivate_La_at_depth=false,
                         Geotherm=30/1e3, TrackTracersOnGrid=true,
                         SaveOutput_steps=10, CreateFig_steps=100000, plot_tracers=false, advect_polygon=true,
                         FigTitle="Geneva Models, Geotherm 30/km",
@@ -49,8 +52,8 @@ Num         = NumParam( #Nx=269*1, Nz=269*1,
                         AddRandomSills = false, RandomSills_timestep=5
                         );
 
-Dike_params = DikeParam(Type="ElasticDike", 
-                        InjectionInterval_year = 1000,      
+Dike_params = DikeParam(Type="ElasticDike",
+                        InjectionInterval_year = 1000,
                         W_in=5e3, H_in=200.0*4,       # note: H must be numerically resolved
                         Dip_ran = 20.0, Strike_ran = 0.0,
                         W_ran = 10e3; H_ran = 10e3, L_ran=10e3,
@@ -59,7 +62,7 @@ Dike_params = DikeParam(Type="ElasticDike",
                         Center=[0.0,0.0, -7000], Angle=[0.0, 0.0],
                 )
 
-MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1, 
+MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
                                 LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
                                 #LatentHeat = ConstantLatentHeat(Q_L=0.0J/kg),
@@ -67,16 +70,16 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
                             Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
                             #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
                             HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
-                                Melting = SmoothMelting(MeltingParam_4thOrder())),      # Marxer & Ulmer melting     
+                                Melting = SmoothMelting(MeltingParam_4thOrder())),      # Marxer & Ulmer melting
                                 # Melting = MeltingParam_Caricchi()),                     # Caricchi melting
-                # add more parameters here, in case you have >1 phase in the model                                    
+                # add more parameters here, in case you have >1 phase in the model
                 )
 
 # Call the main code with the specified material parameters
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_3D(MatParam, Num, Dike_params); # start the main code
 
-@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 303.1195760751668  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 3.2384408012256802  rtol= 1e-5
+@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 299.981239425671  rtol= 1e-2
+@test sum(time_props.MeltFraction)  ≈ 0.0  rtol= 1e-5
 # -----------------------------
 
 
@@ -110,14 +113,14 @@ Data_3D.fields.Temp[ind] .= 800.0
 
 # Define numerical parameters
 Num         = NumParam( SimName="Unzen2", axisymmetric=false,
-                        maxTime_Myrs=0.005, 
+                        maxTime_Myrs=0.001,
                         fac_dt=0.2,
                         SaveOutput_steps=20, CreateFig_steps=1000, plot_tracers=false, advect_polygon=false,
                         USE_GPU=USE_GPU,
                         AddRandomSills = false, RandomSills_timestep=5);
 
 # dike parameters
-Dike_params = DikeParam(Type="ElasticDike", 
+Dike_params = DikeParam(Type="ElasticDike",
                         InjectionInterval_year = 1000,       # flux= 14.9e-6 km3/km2/yr
                         W_in=5e3, H_in=250*4,
                         nTr_dike=300*1,
@@ -126,37 +129,37 @@ Dike_params = DikeParam(Type="ElasticDike",
                         Center=[0.0,0.0, -7000], Angle=[0.0, 0.0],
                 )
 
-# Define parameters for the different phases 
-MatParam     = (SetMaterialParams(Name="Air", Phase=0, 
+# Define parameters for the different phases
+MatParam     = (SetMaterialParams(Name="Air", Phase=0,
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
                                 LatentHeat = ConstantLatentHeat(Q_L=0.0J/kg),
                                 Conductivity = ConstantConductivity(k=3Watt/K/m),          # in case we use constant k
                                 HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
-                                Melting = SmoothMelting(MeltingParam_4thOrder())),          # Marxer & Ulmer melting     
+                                Melting = SmoothMelting(MeltingParam_4thOrder())),          # Marxer & Ulmer melting
 
-                SetMaterialParams(Name="Crust", Phase=1, 
+                SetMaterialParams(Name="Crust", Phase=1,
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
                                 LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
                                 Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
                                 #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
                                 HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
-                                Melting = SmoothMelting(MeltingParam_4thOrder())),      # Marxer & Ulmer melting 
+                                Melting = SmoothMelting(MeltingParam_4thOrder())),      # Marxer & Ulmer melting
 
-                SetMaterialParams(Name="Mantle", Phase=2, 
+                SetMaterialParams(Name="Mantle", Phase=2,
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
                                 LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
                                 Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
                                 HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K)),
 
-                SetMaterialParams(Name="Dikes", Phase=3, 
+                SetMaterialParams(Name="Dikes", Phase=3,
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
                                 LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
                         #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
                                 Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
                                 #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
                                 HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
-                                Melting = SmoothMelting(MeltingParam_4thOrder()))      # Marxer & Ulmer melting     
-                                  
+                                Melting = SmoothMelting(MeltingParam_4thOrder()))      # Marxer & Ulmer melting
+
                 )
 
 
@@ -164,7 +167,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_3D(MatParam, Num, Dike_params, CartData_input=Data_3D); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 244.14916470514495  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 5.706560313331254 rtol= 1e-5
+@test sum(time_props.MeltFraction)  ≈ 0.8377621121586017 rtol= 1e-5
 
 
 end

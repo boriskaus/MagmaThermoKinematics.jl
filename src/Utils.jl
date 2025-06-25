@@ -2,7 +2,7 @@
  using Statistics: mean
 
 """
-    Process_ZirconAges(dirname; ZirconData=ZirconAgeData()) 
+    Process_ZirconAges(dirname; ZirconData=ZirconAgeData())
 
 Performs postprocessing which computes zircon ages from given Tt-paths of a simulation and saves the result in a JLD2 file
 
@@ -36,21 +36,21 @@ function Process_ZirconAges(dirname; ZirconData=ZirconAgeData())
     end
 
     # Compute zircon ages
-    time_Ma, PDF_zircons, time_Ma_average, PDF_zircon_average, time_years, prob, ages_eruptible, number_zircons, T_av_time, T_sd_time = 
+    time_Ma, PDF_zircons, time_Ma_average, PDF_zircon_average, time_years, prob, ages_eruptible, number_zircons, T_av_time, T_sd_time =
         compute_zircon_age_PDF(Tracers.time_vec*1e6, Tracers.T_vec; ZirconData = ZirconData, bandwidth=1e5, n_analyses=300);
 
 
 
 
-    # compute useful vectors (for plotting): 
+    # compute useful vectors (for plotting):
     Age_Ma = time_years[end:-1:1]/1e6;   # age of the rocks (opposite of model time)
     cum_PDF  = 1.0 .- cumsum(prob);      # cumulative probability density function from 0-1
     norm_PDF = prob;                     # normal probability density function from 0-1
 
     # save stuff as jld2 file (easier to plot later)
     filename_save = dirname*"/ZirconAges.jld2"
-    jldsave(filename_save; time_Ma, PDF_zircons, time_Ma_average, PDF_zircon_average, 
-                            time_years, prob, ages_eruptible, number_zircons, T_av_time, T_sd_time, Tav_magma_Time, 
+    jldsave(filename_save; time_Ma, PDF_zircons, time_Ma_average, PDF_zircon_average,
+                            time_years, prob, ages_eruptible, number_zircons, T_av_time, T_sd_time, Tav_magma_Time,
                             Age_Ma, cum_PDF, norm_PDF, Time_vec, T_average_magma_time)
     println("Save processed zircon age data to file: $filename_save")
 
@@ -61,16 +61,16 @@ function copy_arrays_GPU2CPU!(T_CPU::AbstractArray,  ϕ_CPU::AbstractArray, T_GP
 
     T_CPU  .= Array(T_GPU)
     ϕ_CPU  .= Array(ϕ_GPU)
-    
-    return nothing 
+
+    return nothing
 end
 
-function copy_arrays_CPU2GPU!(T_GPU::Data.Array,  ϕ_GPU::Data.Array, T_CPU::AbstractArray, ϕ_CPU::AbstractArray)
+function copy_arrays_CPU2GPU!(T_GPU::Array,  ϕ_GPU::Array, T_CPU::AbstractArray, ϕ_CPU::AbstractArray)
 
     T_GPU  .= Data.Array(T_CPU)
     ϕ_GPU  .= Data.Array(ϕ_CPU)
-    
-    return nothing 
+
+    return nothing
 end
 
 

@@ -12,7 +12,7 @@ using Random                                    # random numbers
 using StructArrays                              # for tracers and dike polygon
 using Parameters                                # More flexible definition of parameters
 using Interpolations                            # Fast interpolations
-using StaticArrays                      
+using StaticArrays
 using JLD2                                      # Load/save data to disk
 @reexport using GeoParams                                 # Material parameters calculations
 @reexport using ParallelStencil
@@ -23,10 +23,10 @@ abstract type TimeDependentProperties end
 
 include("Units.jl")                             # various useful units
 
-# Few useful parameters                                       
+# Few useful parameters
 const SecYear     = 3600*24*365.25
 const kyr         = 1000*SecYear
-const Myr         = 1e6*SecYear  
+const Myr         = 1e6*SecYear
 const km³         = 1000^3
 export SecYear, kyr, Myr, km³
 
@@ -46,13 +46,20 @@ function environment!(model_device, precision, dimension)
 
     # start ParallelStencil
     if model_device == :gpu
-        # eval(:(@init_parallel_stencil(CUDA, $(precision), $(dimension))))
-        Base.eval(@__MODULE__, :(@init_parallel_stencil(CUDA, $(precision), $(dimension))))
-        Base.eval(Main, Meta.parse("using CUDA"))
-    else
+        println("Using GPU for ParallelStencil")
+        #eval(:(@init_parallel_stencil(CUDA, $(precision), $(dimensione))))
+        #Base.eval(@__MODULE__, :(@init_parallel_stencil(CUDA, $(precision), $(dimension))))
+        #Base.eval(Main, Meta.parse("using CUDA"))
         @eval begin
-            ParallelStencil.@reset_parallel_stencil()
-            @init_parallel_stencil(Threads, $(precision), $(dimension))
+             ParallelStencil.@reset_parallel_stencil()
+             @init_parallel_stencil(CUDA, $(precision), $(dimension))
+        end
+    else
+        println("Using CPU for ParallelStencil")
+        #Base.eval(@__MODULE__, :(@init_parallel_stencil(Threads, $(precision), $(dimension))))
+        @eval begin
+             ParallelStencil.@reset_parallel_stencil()
+             @init_parallel_stencil(Threads, $(precision), $(dimension))
         end
     end
 
@@ -62,7 +69,7 @@ function environment!(model_device, precision, dimension)
       _fn = Symbol(string("compute_$(fni)"))
       fn_3D = Symbol(string("compute_$(fni)_ps_3D!"))
       @eval begin
-        # 2D version  
+        # 2D version
         @parallel_indices (i, j) function $(fn)(A,MatParam, Phases, args)
               k = keys(args)
               v = getindex.(values(args), i, j)
@@ -70,14 +77,14 @@ function environment!(model_device, precision, dimension)
               A[i, j] = $(_fn)(MatParam, Phases[i,j], argsi)
               return
           end
-          
+
         # Special version for multiple phaes
         @parallel_indices (i,j) function $(fn)(
             rho::AbstractArray,
             MatParam::Tuple,
             Phases::AbstractArray,
             args,
-        ) 
+        )
             k = keys(args)
             v = getindex.(values(args), i,j)
             argsi = (; zip(k, v)...)
@@ -85,7 +92,7 @@ function environment!(model_device, precision, dimension)
             return
         end
 
-        # 3D version  
+        # 3D version
         @parallel_indices (i, j, k) function $(fn_3D)(A,MatParam, Phases, args)
             k_3D = keys(args)
             v_3D= getindex.(values(args), i, j, k)
@@ -100,7 +107,7 @@ function environment!(model_device, precision, dimension)
             MatParam::Tuple,
             Phases::AbstractArray,
             args,
-        ) 
+        )
             k_3D = keys(args)
             v_3D= getindex.(values(args), i, j, k)
             argsi = (; zip(k_3D, v_3D)...)
@@ -115,18 +122,38 @@ function environment!(model_device, precision, dimension)
 
     # conditional submodule load
     module_names = Symbol("Diffusion$(dimension)D")
-    Base.@eval begin
-        include(joinpath(@__DIR__, "Diffusion.jl"))
-        @reexport import .$module_names
-        export Data
+    if model_device == :gpu
+        Base.@eval begin
+            include(joinpath(@__DIR__, "DiffusionCUDA.jl"))
+            @reexport import .$module_names
+            # export Data
+        end
+    else
+        Base.@eval begin
+            include(joinpath(@__DIR__, "Diffusion.jl"))
+            @reexport import .$module_names
+            # export Data
+        end
     end
 
+
     # Create arrays (depends on PS, so should be loaded after)
-    include(joinpath(@__DIR__, "Fields.jl"))
-    Base.@eval begin
-        using .Fields
-        export CreateArrays
+    if model_device == :gpu
+        module_names = Symbol("Fields$(dimension)D")
+        Base.@eval begin
+            include(joinpath(@__DIR__, "FieldsCUDA.jl"))
+            @reexport import .$module_names
+            # export CreateArrays
+        end
+    else
+        module_names = Symbol("Fields$(dimension)D") 
+        Base.@eval begin
+            include(joinpath(@__DIR__, "Fields.jl"))
+            @reexport import .$module_names
+            # export CreateArrays
+        end
     end
+
 
     # Various helpful routines
     Base.@eval begin
@@ -135,21 +162,39 @@ function environment!(model_device, precision, dimension)
     end
 
     # GMG integration
-    Base.@eval begin
-        include(joinpath(@__DIR__, "MTK_GMG_structs.jl"))
-        export NumParam, DikeParam, TimeDepProps
+      if model_device == :gpu
+        Base.@eval begin
+            include(joinpath(@__DIR__, "MTK_GMG_structs.jl"))
+            export NumParam, DikeParam, TimeDepProps
 
-        include(joinpath(@__DIR__, "MTK_GMG.jl"))
-        
-        include(joinpath(@__DIR__, "MTK_GMG_2D.jl"))
-        using .MTK_GMG_2D
-        export MTK_GeoParams_2D
+            include(joinpath(@__DIR__, "MTK_GMG.jl"))
 
-        include(joinpath(@__DIR__, "MTK_GMG_3D.jl"))
-        using .MTK_GMG_3D
-        export MTK_GeoParams_3D
+            include(joinpath(@__DIR__, "MTK_GMG_2D_CUDA.jl"))
+            using .MTK_GMG_2D
+            export MTK_GeoParams_2D
 
+            include(joinpath(@__DIR__, "MTK_GMG_3D_CUDA.jl"))
+            using .MTK_GMG_3D
+            export MTK_GeoParams_3D
+        end
+    else
+        Base.@eval begin
+            include(joinpath(@__DIR__, "MTK_GMG_structs.jl"))
+            export NumParam, DikeParam, TimeDepProps
+
+            include(joinpath(@__DIR__, "MTK_GMG.jl"))
+
+            include(joinpath(@__DIR__, "MTK_GMG_2D.jl"))
+            using .MTK_GMG_2D
+            export MTK_GeoParams_2D
+
+            include(joinpath(@__DIR__, "MTK_GMG_3D.jl"))
+            using .MTK_GMG_3D
+            export MTK_GeoParams_3D
+        end
     end
+
+
 
 end
 
@@ -171,8 +216,8 @@ export SolidFraction, ComputeLithostaticPressure, LoadPhaseDiagrams, PhaseDiagra
 export PhaseRatioAverage!, ComputeSeismicVelocities, SolidFraction_Parameterized!
 
 # Export functions that will be available outside this module
-export StructArray, LazyRow # useful 
-export Tracer 
+export StructArray, LazyRow # useful
+export Tracer
 
 include("Dikes.jl")
 export Dike, DikePoly
@@ -181,7 +226,7 @@ export Tracer, AddDike, HostRockVelocityFromDike, CreateDikePolygon, advect_dike
 
 # routines related to advection & interpolation
 include("Advection.jl")
-export AdvectTemperature, Interpolate!, CorrectBounds, evaluate_interp_2D, evaluate_interp_3D    
+export AdvectTemperature, Interpolate!, CorrectBounds, evaluate_interp_2D, evaluate_interp_3D
 
 # Routines related to Parameters.jl, which come in handy in the main routine
 export @unpack, @with_kw

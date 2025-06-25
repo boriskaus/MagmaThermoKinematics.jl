@@ -1,12 +1,22 @@
-using MagmaThermoKinematics
 const USE_GPU=false;
-if USE_GPU  
-    environment!(:gpu, Float64, 2)      # initialize in 2D on GPU
-else        
-    environment!(:cpu, Float64, 2)      # initialize in 3D on CPU
+if USE_GPU
+    using CUDA      # needs to be loaded before loading Parallkel=
 end
-using MagmaThermoKinematics.Diffusion2D 
-using Plots                                     
+using ParallelStencil, ParallelStencil.FiniteDifferences2D
+
+using MagmaThermoKinematics
+@static if USE_GPU
+    environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
+    CUDA.device!(1)                     # select the GPU you use (starts @ zero)
+    @init_parallel_stencil(CUDA, Float64, 2)
+else
+    environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
+    @init_parallel_stencil(Threads, Float64, 2)
+end
+using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
+using MagmaThermoKinematics.Fields2D
+
+using Plots
 
 #------------------------------------------------------------------------------------------
 @views function MainCode_2D();
@@ -14,24 +24,24 @@ using Plots
     Grid                    =   CreateGrid(size=(Nx,Nz), extent=(30e3, 30e3)) # grid points & domain size
     Num                     =   Numeric_params(verbose=false)                   # Nonlinear solver options
 
-    # Set material parameters                                       
+    # Set material parameters
     MatParam                =   (
-            SetMaterialParams(Name="Rock", Phase=1, 
-                 Density    = ConstantDensity(ρ=2800kg/m^3),               
+            SetMaterialParams(Name="Rock", Phase=1,
+                 Density    = ConstantDensity(ρ=2800kg/m^3),
                HeatCapacity = ConstantHeatCapacity(Cp=1050J/kg/K),
-               Conductivity = ConstantConductivity(k=1.5Watt/K/m),       
+               Conductivity = ConstantConductivity(k=1.5Watt/K/m),
                  LatentHeat = ConstantLatentHeat(Q_L=350e3J/kg),
                     Melting = MeltingParam_Caricchi()),
-                                )      
+                                )
 
     GeoT                    =   20.0/1e3;                   # Geothermal gradient [K/km]
     W_in, H_in              =   5e3,    0.2e3;              # Width and thickness of dike
     T_in                    =   900;                        # Intrusion temperature
     InjectionInterval       =   0.1kyr;                     # Inject a new dike every X kyrs
     maxTime                 =   25kyr;                      # Maximum simulation time in kyrs
-    H_ran, W_ran            =   Grid.L.*[0.3; 0.4];         # Size of domain in which we randomly place dikes and range of angles   
+    H_ran, W_ran            =   Grid.L.*[0.3; 0.4];         # Size of domain in which we randomly place dikes and range of angles
     DikeType                =   "ElasticDike"               # Type to be injected ("ElasticDike","SquareDike")
-    κ                       =   1.2/(2800*1050);            # thermal diffusivity   
+    κ                       =   1.2/(2800*1050);            # thermal diffusivity
     dt                      =   minimum(Grid.Δ.^2)/κ/10;    # stable timestep (required for explicit FD)
     nt                      =   floor(Int64,maxTime/dt);    # number of required timesteps
     nTr_dike                =   300;                        # number of tracers inserted per dike
@@ -39,17 +49,17 @@ using Plots
     # Array initializations
     Arrays = CreateArrays(Dict( (Nx,  Nz)=>(T=0,T_K=0, T_it_old=0, K=1.5, Rho=2800, Cp=1050, Tnew=0,  Hr=0, Hl=0, Kc=1, P=0, X=0, Z=0, ϕₒ=0, ϕ=0, dϕdT=0),
                                 (Nx-1,Nz)=>(qx=0,Kx=0), (Nx, Nz-1)=>(qz=0,Kz=0 ) ))
-    # CPU buffers 
+    # CPU buffers
     Tnew_cpu                =   Matrix{Float64}(undef, Grid.N...)
     Phi_melt_cpu            =   similar(Tnew_cpu)
-    if USE_GPU; 
+    if USE_GPU;
         Phases      =   CUDA.ones(Int64,Grid.N...)
-    else        
-        Phases      =   ones(Int64,Grid.N...)   
+    else
+        Phases      =   ones(Int64,Grid.N...)
     end
 
-    @parallel (1:Nx, 1:Nz) GridArray!(Arrays.X,  Arrays.Z, Grid.coord1D[1], Grid.coord1D[2])   
-    Tracers                 =   StructArray{Tracer}(undef, 1)                           # Initialize tracers   
+    @parallel (1:Nx, 1:Nz) GridArray!(Arrays.X,  Arrays.Z, Grid.coord1D[1], Grid.coord1D[2])
+    Tracers                 =   StructArray{Tracer}(undef, 1)                           # Initialize tracers
     dike                    =   Dike(W=W_in,H=H_in,Type=DikeType,T=T_in);               # "Reference" dike with given thickness,radius and T
     Arrays.T               .=   -Arrays.Z.*GeoT;                                        # Initial (linear) temperature profile
 
@@ -61,13 +71,13 @@ using Plots
 
         if floor(time/InjectionInterval)> dike_inj       # Add new dike every X years
             dike_inj  =     floor(time/InjectionInterval)                                               # Keeps track on what was injected already
-            cen       =     (Grid.max .+ Grid.min)./2 .+ rand(-0.5:1e-3:0.5, 2).*[W_ran;H_ran];         # Randomly vary center of dike 
-            if cen[end]<-12e3;  
-                Angle_rand = rand( 80.0:0.1:100.0)                                      # Orientation: near-vertical @ depth             
-            else                
-                Angle_rand = rand(-10.0:0.1:10.0); 
-            end                                  # Orientation: near-vertical @ shallower depth     
-            dike      =     Dike(dike, Center=cen[:],Angle=[Angle_rand]);                               # Specify dike with random location/angle but fixed size/T 
+            cen       =     (Grid.max .+ Grid.min)./2 .+ rand(-0.5:1e-3:0.5, 2).*[W_ran;H_ran];         # Randomly vary center of dike
+            if cen[end]<-12e3;
+                Angle_rand = rand( 80.0:0.1:100.0)                                      # Orientation: near-vertical @ depth
+            else
+                Angle_rand = rand(-10.0:0.1:10.0);
+            end                                  # Orientation: near-vertical @ shallower depth
+            dike      =     Dike(dike, Center=cen[:],Angle=[Angle_rand]);                               # Specify dike with random location/angle but fixed size/T
             Tnew_cpu .=     Array(Arrays.T)
             Tracers, Tnew_cpu, Vol   =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, nTr_dike);   # Add dike, move hostrocks
             Arrays.T .=     Data.Array(Tnew_cpu)
@@ -78,12 +88,12 @@ using Plots
         Nonlinear_Diffusion_step_2D!(Arrays, MatParam, Phases, Grid, dt, Num)   # Perform a nonlinear diffusion step
 
         copy_arrays_GPU2CPU!(Tnew_cpu, Phi_melt_cpu, Arrays.Tnew, Arrays.ϕ)     # Copy arrays to CPU to update properties
-        UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);      # Update info on tracers 
+        UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);      # Update info on tracers
 
         @parallel assign!(Arrays.T, Arrays.Tnew)
         @parallel assign!(Arrays.Tnew, Arrays.T)                                # Update temperature
         time                =   time + dt;                                      # Keep track of evolved time
-        Melt_Time[it]       =   sum(Arrays.ϕ)/prod(Grid.N)                      # Melt fraction in crust    
+        Melt_Time[it]       =   sum(Arrays.ϕ)/prod(Grid.N)                      # Melt fraction in crust
         Time_vec[it]        =   time;                                           # Vector with time
         println(" Timestep $it = $(round(time/kyr*100)/100) kyrs")
 
