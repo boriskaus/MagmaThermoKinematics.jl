@@ -355,4 +355,4 @@ The Schmitt et al. (2023) paper shows benchmarks of how `MagmaThermoKinematics` 
 
 > **Warning**
 >
-> Code users are fully responsible for the results they publish. There are many things that can go wrong with numerical modelling even if you use a well-benchmarked code (too low resolution, don't check timestep convergence, poor nonlinear convergence, used beyond what the software was developed for, etc. etc. - we have seen many epic failures over the years). If you want us to double-check, you can your manuscript before you submit.  
+> Code users are fully responsible for the results they publish. There are many things that can go wrong with numerical modelling even if you use a well-benchmarked code (too low resolution, don't check timestep convergence, poor nonlinear convergence, used beyond what the software was developed for, etc. etc. - we have seen many epic failures over the years). If you want us to double-check, you can send is your manuscript before you submit.  
