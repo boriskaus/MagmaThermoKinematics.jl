@@ -289,7 +289,7 @@ julia>]
   pkg> add MagmaThermoKinematics
   pkg> test MagmaThermoKinematics
 ```
-Dependecies such as `ParallelStencil.jl` are installed automatically.
+Dependencies such as `ParallelStencil.jl` are installed automatically.
 The testing suite run above performs a large number of tests and, among others, compares the results with analytical solutions for advection/diffusion. Let us know if you encounter problems. 
 
 If you want to run the examples and create plots, you may also want to install these packages:
@@ -324,13 +324,12 @@ MagmaThermoKinematics was benchmarked versus the code of the UCLA group (Oscar L
 
 - Schmitt, A.K., Sliwinski, J., Caricchi, L., Bachmann, O., Riel, N., Kaus, B.J.P., de Léon, A.C., Cornet, J., Friedrichs, B., Lovera, O., Sheldrake, T., Weber, G., 2023. Zircon age spectra to quantify magma evolution. Geosphere 19. https://doi.org/10.1130/GES02563.1
 
-Note that quite large differences in the thermal structure can occur, depending on the assumption you make on where and how magma is intruded (underplating, central injection, injection through dikes).
-
+Note that quite large differences in the thermal structure can occur, even for the same magma flux, depending on the *assumption* you make on where and how magma is intruded (underplating, central injection, injection through dikes). Often, but not always, this difference is larger than the effect of using different material parameters.
 
 ## Related work
 Thermal-kinematic codes such as the ones presented here have been around for some time with various degrees of sophistication (e.g., [1],[2],[3],[4],[5]). A recent effort in Julia, similar to what we do here, is described in [6].
 
-Yet, as far as we are aware, the source code of these other packages is currently not openly available (at least not in a non-binary format), which makes it often non-straightforward to understand what is actually done inside the codes. No existing code works in 3D or can take advantage of GPUs.  
+Yet, as far as we are aware, the source code of these other packages is currently not openly available (at least not in a non-binary format), which makes it often non-straightforward to understand what is actually done under the hood. No existing code works in 3D and can take advantage of GPU's.  
 
 [1] Dufek, J., & Bergantz, G. W. (2005). Lower crustal magma genesis and preservation: A stochastic framework for the evaluation of basalt–crust interaction. *Journal of Petrology*, 46(11), 2167–2195. [https://doi.org/10.1093/petrology/egi049](https://doi.org/10.1093/petrology/egi049)
 
@@ -355,4 +354,4 @@ The Schmitt et al. (2023) paper shows benchmarks of how `MagmaThermoKinematics` 
 
 > **Warning**
 >
-> Code users are fully responsible for the results they publish. There are many things that can go wrong with numerical modelling, even if you use a well-benchmarked code (too low resolution, don't check timestep convergence, poor nonlinear convergence, used beyond what the software was developed for, etc. etc. - we have seen many epic failures over the years). If you want us to double-check, you can send is your manuscript before you submit.  
+> Code users are fully responsible for the results they publish. There are many things that can go wrong with numerical modelling, even if you use a well-benchmarked code (too low resolution, don't check timestep convergence, poor nonlinear convergence, used beyond what the software was developed for, etc. etc. - we have seen many epic failures over the years). If you want us to double-check, you can send us your manuscript before you submit.  
