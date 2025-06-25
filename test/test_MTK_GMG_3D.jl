@@ -1,17 +1,20 @@
-using Test
-#using Plots
-
+using Test, Random
 const USE_GPU=false;
+if USE_GPU
+    using CUDA      # needs to be loaded before loading Parallkel=
+end
+using ParallelStencil, ParallelStencil.FiniteDifferences3D
 
 using MagmaThermoKinematics
-if USE_GPU
+@static if USE_GPU
     environment!(:gpu, Float64, 3)      # initialize parallel stencil in 2D
     CUDA.device!(1)                     # select the GPU you use (starts @ zero)
+    @init_parallel_stencil(CUDA, Float64, 3)
 else
     environment!(:cpu, Float64, 3)      # initialize parallel stencil in 2D
+    @init_parallel_stencil(Threads, Float64, 3)
 end
 using MagmaThermoKinematics.Diffusion3D
-
 using Random, GeoParams, GeophysicalModelGenerator
 
 const rng = Random.seed!(1234);     # same seed such that we can reproduce results
@@ -33,9 +36,9 @@ println("===============================================")
 println("Testing MTK - GMG integration in 3D")
 println("===============================================")
 
-# These are the final simulations for the ZASSy paper, but done @ a lower resolution
+# Perform simulations @ a lower resolution to speed up GitHub CI tests (on limited memory machines)
 Num         = NumParam( #Nx=269*1, Nz=269*1,
-                        Nx=65*1, Ny=65*1, Nz=65*1,
+                        Nx=33*1, Ny=33*1, Nz=33*1,
                         SimName="Test1",
                         W=20e3, H=20e3, L=20e3,
                         #maxTime_Myrs=1.5,
@@ -76,7 +79,7 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_3D(MatParam, Num, Dike_params); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 303.1195760751668  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 3.2384408012256802  rtol= 1e-5
+@test sum(time_props.MeltFraction)  ≈ 0.33492015727554736  rtol= 1e-5
 # -----------------------------
 
 
@@ -164,7 +167,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_3D(MatParam, Num, Dike_params, CartData_input=Data_3D); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 244.14916470514495  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 5.70656031333126 rtol= 1e-5
+@test sum(time_props.MeltFraction)  ≈ 5.6868142220120665 rtol= 1e-5
 
 
 end
