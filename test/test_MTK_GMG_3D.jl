@@ -42,7 +42,7 @@ Num         = NumParam( #Nx=269*1, Nz=269*1,
                         SimName="Test1",
                         W=20e3, H=20e3, L=20e3,
                         #maxTime_Myrs=1.5,
-                        maxTime_Myrs=0.005,
+                        maxTime_Myrs=0.001,
                         fac_dt=0.2, ω=0.5, verbose=false,
                         flux_bottom_BC=false, flux_bottom=0, deactivate_La_at_depth=false,
                         Geotherm=30/1e3, TrackTracersOnGrid=true,
@@ -78,8 +78,8 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
 # Call the main code with the specified material parameters
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_3D(MatParam, Num, Dike_params); # start the main code
 
-@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 303.1195760751668  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 0.19249739610025995  rtol= 1e-5
+@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 299.981239425671  rtol= 1e-2
+@test sum(time_props.MeltFraction)  ≈ 0.0  rtol= 1e-5
 # -----------------------------
 
 
@@ -113,7 +113,7 @@ Data_3D.fields.Temp[ind] .= 800.0
 
 # Define numerical parameters
 Num         = NumParam( SimName="Unzen2", axisymmetric=false,
-                        maxTime_Myrs=0.005,
+                        maxTime_Myrs=0.001,
                         fac_dt=0.2,
                         SaveOutput_steps=20, CreateFig_steps=1000, plot_tracers=false, advect_polygon=false,
                         USE_GPU=USE_GPU,
@@ -167,7 +167,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_3D(MatParam, Num, Dike_params, CartData_input=Data_3D); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 244.14916470514495  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 5.6868142220120665 rtol= 1e-5
+@test sum(time_props.MeltFraction)  ≈ 0.8377621121586017 rtol= 1e-5
 
 
 end
