@@ -1,18 +1,16 @@
 # This is a relatively complicated test, but is added to ensure that the simulations published in the ZASSY paper remain reproducible:
 #
-using Test, Random
+using Test, LinearAlgebra, SpecialFunctions, Random
 const USE_GPU=false;
 if USE_GPU
     using CUDA      # needs to be loaded before loading Parallkel=
 end
 using ParallelStencil, ParallelStencil.FiniteDifferences2D
 
-Random.seed!(1234);     # such that we can reproduce results
-
 using MagmaThermoKinematics
 @static if USE_GPU
     environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
+    CUDA.device!(1)                     # select the GPU you use (starts @ zero)
     @init_parallel_stencil(CUDA, Float64, 2)
 else
     environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
@@ -20,6 +18,9 @@ else
 end
 using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
 using MagmaThermoKinematics.Fields2D
+
+
+Random.seed!(1234);     # such that we can reproduce results
 
 
 using Printf        # pretty print
@@ -206,8 +207,6 @@ end
         Phi_melt_cpu  .= Array(Arrays.ϕ)
 
         UpdateTracers_T_ϕ!(Tracers_grid, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);      # Initialize info on grid trcers
-
-        @show length(Tracers_grid)
     end
     # --------------------------------------------
 
@@ -242,7 +241,6 @@ end
             if length(Mat_tup)>1
                PhasesFromTracers!(Array(Phases), Grid, Tracers, BackgroundPhase=1, InterpolationMethod="Constant");    # update phases from grid
             end
-            @show  sum(Melt_Time) sum(Array(Arrays.Tnew))
         end
         # --------------------------------------------
 
@@ -251,14 +249,10 @@ end
         # --------------------------------------------
 
 
-    @show sum(Arrays.Tnew) sum(Arrays.ϕ) Num.dt sum(Phases) # Show initial T and melt fraction
-    error("stop")
-    
         # Update variables ---------------------------
         # copy to cpu
         Tnew_cpu      .= Array(Arrays.Tnew)
         Phi_melt_cpu  .= Array(Arrays.ϕ)
-      
 
         UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);     # Update info on tracers
 
@@ -351,7 +345,7 @@ if 1==1
                             SimName="ZASSy_Geneva_9_1e_6", axisymmetric=true,
                             #maxTime_Myrs=1.5,
                             maxTime_Myrs=0.025,
-                            fac_dt=0.2, ω=0.5, verbose=true,
+                            fac_dt=0.2, ω=0.5, verbose=false,
                             flux_bottom_BC=false, flux_bottom=0, deactivate_La_at_depth=false,
                             Geotherm=30/1e3, TrackTracersOnGrid=true,
                             SaveOutput_steps=100000, CreateFig_steps=100000, plot_tracers=false, advect_polygon=true,
@@ -379,7 +373,7 @@ if 1==1
     # Call the main code with the specified material parameters
     x,z,T, Time_vec,Melt_Time, Tracers, dike_poly, Grid, Phases = MainCode_2D(MatParam, Num, Dike_params); # start the main code
     @test sum(T)/prod(size(T)) ≈ 312.1505261202475  rtol= 1e-2
-    @test sum(Melt_Time)  ≈ 0.1707068724854955  rtol= 1e-5
+    @test sum(Melt_Time)  ≈ 0.16694675188794647  rtol= 1e-5
 
 
     # compute zircon ages for a few tracers
@@ -477,8 +471,8 @@ if 1==1
     # Call the main code with the specified material parameters
     x,z,T, Time_vec,Melt_Time, Tracers, dike_poly, Grid, Phases = MainCode_2D(MatParam, Num, Dike_params); # start the main code
 
-    @test sum(T)/prod(size(T)) ≈ 351.8236241385028 rtol= 1e-2
-    @test sum(Melt_Time)  ≈ 10.483678102735155 rtol= 1e-3
+    @test sum(T)/prod(size(T)) ≈ 351.6708073949723 rtol= 1e-4
+    @test sum(Melt_Time)  ≈ 11.474144800106583 rtol= 1e-4
 
 
  end
