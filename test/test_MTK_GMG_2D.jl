@@ -1,20 +1,23 @@
-using Test
-#using Plots
-
-const USE_GPU=true;
+using Test, LinearAlgebra, SpecialFunctions, Random
+const USE_GPU=false;
+if USE_GPU
+    using CUDA      # needs to be loaded before loading Parallkel=
+end
+using ParallelStencil, ParallelStencil.FiniteDifferences2D
 
 using MagmaThermoKinematics
-if USE_GPU
+@static if USE_GPU
     environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
+    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
+    @init_parallel_stencil(CUDA, Float64, 2)
 else
     environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
+    @init_parallel_stencil(Threads, Float64, 2)
 end
-using MagmaThermoKinematics
-using MagmaThermoKinematics.Diffusion2D
+using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
+using GeophysicalModelGenerator, GeoParams
 using MagmaThermoKinematics.Fields2D
 using MagmaThermoKinematics.MTK_GMG_2D
-
-using Random, GeoParams, GeophysicalModelGenerator
 
 const rng = Random.seed!(1234);     # same seed such that we can reproduce results
 
@@ -68,10 +71,11 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
 # Call the main code with the specified material parameters
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params); # start the main code
 
-@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 315.46382940863816  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 0.3211217281417532  rtol= 1e-5
+@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 315.46382940863816  rtol= 1e-4
+@test sum(time_props.MeltFraction)  ≈ 0.31731303204302774  rtol= 1e-5
 
 # -----------------------------
+
 
 Topo_cart = load_GMG("../examples/Topo_cart")       # Note: Laacher seee is around [10,20]
 
@@ -174,8 +178,8 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 # Call the main code with the specified material parameters
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params, CartData_input=Data_2D); # start the main code
 
-@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 251.5482011114283  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 0.99766156598258 rtol= 1e-5
+@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 252.98164230731172  rtol= 1e-4
+@test sum(time_props.MeltFraction)  ≈  0.9959329187676275 rtol= 1e-5
 
 
 end

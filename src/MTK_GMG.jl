@@ -45,7 +45,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
             T_bottom  =   Tnew_cpu[:,:,1]
         end
         dike      =   Dike(W=Dikes.W_in, H=Dikes.H_in, Type=Dikes.Type, T=Dikes.T_in_Celsius, Center=Dikes.Center[:],  Angle=Dikes.Angle, Phase=Dikes.DikePhase);               # "Reference" dike with given thickness,radius and T
-        Tnew_cpu .=   Data.Array(Arrays.T)
+        Tnew_cpu .=   Array(Arrays.T)
 
         Tracers, Tnew_cpu,Vol,Dikes.dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, Dikes.nTr_dike, dike_poly=Dikes.dike_poly);     # Add dike, move hostrocks
 
@@ -70,15 +70,18 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         end
 
         if length(Mat_tup)>1
-           PhasesFromTracers!(Arrays.Phases, Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant");    # update phases from grid
+           PhasesFromTracers!(Array(Arrays.Phases), Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant");    # update phases from grid
 
            # Ensure that we keep the initial phase of the area (host rocks are not deformable)
            if Num.keep_init_RockPhases==true
-                for i in eachindex(Arrays.Phases)
-                    if Arrays.Phases[i] != Dikes.DikePhase
-                        Arrays.Phases[i] = Arrays.Phases_init[i]
+                Phases      = Array(Arrays.Phases)          # move to CPU
+                Phases_init = Array(Arrays.Phases_init)
+                for i in eachindex(Phases)
+                    if Phases[i] != Dikes.DikePhase
+                        Phases[i] = Phases_init[i]
                     end
                 end
+                Arrays.Phases .= Data.Array(Phases)          # move back to GPU
            end
         end
 
