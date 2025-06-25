@@ -1,5 +1,9 @@
-using JLD2, MagmaThermoKinematics, MAT, CSV, Tables, Statistics, StatsBase
+using JLD2, MAT, CSV, Tables, Statistics, StatsBase
 using CairoMakie
+using MagmaThermoKinematics
+using ParallelStencil, ParallelStencil.FiniteDifferences2D
+using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
+using MagmaThermoKinematics.Fields2D
 
 #dirname = "ZASSy_Geneva_isoT_variable_k_run8_withlatent_depth_smooth_dt0_2_Geotherm30_Flux9_1e-6"
 #dirname = "ZASSy_Geneva_9_1e_6_reference"

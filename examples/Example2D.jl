@@ -1,12 +1,21 @@
-using MagmaThermoKinematics
 const USE_GPU=false;
 if USE_GPU
-    environment!(:gpu, Float64, 2)      # initialize in 2D on GPU
-else
-    environment!(:cpu, Float64, 2)      # initialize in 3D on CPU
+    using CUDA      # needs to be loaded before loading Parallkel=
 end
-using MagmaThermoKinematics.Diffusion2D
+using ParallelStencil, ParallelStencil.FiniteDifferences2D
+
+using MagmaThermoKinematics
+@static if USE_GPU
+    environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
+    CUDA.device!(1)                     # select the GPU you use (starts @ zero)
+    @init_parallel_stencil(CUDA, Float64, 2)
+else
+    environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
+    @init_parallel_stencil(Threads, Float64, 2)
+end
+using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
 using MagmaThermoKinematics.Fields2D
+
 using Plots
 
 #------------------------------------------------------------------------------------------
@@ -69,7 +78,7 @@ using Plots
                 Angle_rand = rand(-10.0:0.1:10.0);
             end                                  # Orientation: near-vertical @ shallower depth
             dike      =     Dike(dike, Center=cen[:],Angle=[Angle_rand]);                               # Specify dike with random location/angle but fixed size/T
-            Tnew_cpu .=     Data.Array(Arrays.T)
+            Tnew_cpu .=     Array(Arrays.T)
             Tracers, Tnew_cpu, Vol   =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, nTr_dike);   # Add dike, move hostrocks
             Arrays.T .=     Data.Array(Tnew_cpu)
             InjectVol +=    Vol                                                                 # Keep track of injected volume

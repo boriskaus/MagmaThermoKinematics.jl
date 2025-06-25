@@ -1,16 +1,27 @@
 # Unzen setup
 const USE_GPU=false;
-using MagmaThermoKinematics
 if USE_GPU
+    using CUDA      # needs to be loaded before loading Parallkel=
+end
+using ParallelStencil, ParallelStencil.FiniteDifferences2D
+
+using MagmaThermoKinematics
+@static if USE_GPU
     environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
+    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
+    @init_parallel_stencil(CUDA, Float64, 2)
 else
     environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
+    @init_parallel_stencil(Threads, Float64, 2)
 end
-using MagmaThermoKinematics.Diffusion2D
+using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
+using MagmaThermoKinematics.Fields2D
+using MagmaThermoKinematics.MTK_GMG_2D
+using MagmaThermoKinematics.GeophysicalModelGenerator
+using GeoParams, Random
+using Plots                             # plots
 using MagmaThermoKinematics.MTK_GMG     # Allow overwriting user routines
-using Plots
-using Random
-using GeophysicalModelGenerator
+
 
 # Model setup
 println(" --- Generating Setup --- ")
@@ -28,7 +39,7 @@ if false
 
     save_GMG("Topo_cart", Topo_cart)
 end
-Topo_cart = load_GMG("examples/Topo_cart")
+Topo_cart = load_GMG("Topo_cart")
 
 # Create 3D grid of the region
 X,Y,Z       =   xyz_grid(-23:.1:23,-19:.1:19,-20:.1:5)
