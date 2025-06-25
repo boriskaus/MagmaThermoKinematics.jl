@@ -1,4 +1,4 @@
-const USE_GPU=trfalseue;
+const USE_GPU=false;
 if USE_GPU
     using CUDA      # needs to be loaded before loading Parallkel=
 end
