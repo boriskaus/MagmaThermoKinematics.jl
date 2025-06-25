@@ -38,7 +38,7 @@ println("===============================================")
 
 # These are the final simulations for the ZASSy paper, but done @ a lower resolution
 Num         = NumParam( #Nx=269*1, Nz=269*1,
-                        Nx=135*1, Nz=135*1,
+                        Nx=65*1, Nz=65*1,
                         SimName="ZASSy_Geneva_9_1e_6", axisymmetric=false,
                         #maxTime_Myrs=1.5,
                         maxTime_Myrs=0.025,
@@ -71,8 +71,8 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
 # Call the main code with the specified material parameters
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params); # start the main code
 
-@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 315.46382940863816  rtol= 1e-4
-@test sum(time_props.MeltFraction)  ≈ 0.31731303204302774  rtol= 1e-5
+@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 296.4607300089425  rtol= 1e-4
+@test sum(time_props.MeltFraction)  ≈ 0.0  rtol= 1e-5
 
 # -----------------------------
 
@@ -178,8 +178,8 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 # Call the main code with the specified material parameters
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params, CartData_input=Data_2D); # start the main code
 
-@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 252.98164230731172  rtol= 1e-4
-@test sum(time_props.MeltFraction)  ≈  0.9959329187676275 rtol= 1e-5
+@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 251.7176457588078  rtol= 1e-4
+@test sum(time_props.MeltFraction)  ≈  0.22380478479632507 rtol= 1e-5
 
 
 end

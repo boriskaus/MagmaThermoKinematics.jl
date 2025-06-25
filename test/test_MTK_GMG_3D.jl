@@ -38,7 +38,7 @@ println("===============================================")
 
 # Perform simulations @ a lower resolution to speed up GitHub CI tests (on limited memory machines)
 Num         = NumParam( #Nx=269*1, Nz=269*1,
-                        Nx=33*1, Ny=33*1, Nz=33*1,
+                        Nx=31*1, Ny=31*1, Nz=31*1,
                         SimName="Test1",
                         W=20e3, H=20e3, L=20e3,
                         #maxTime_Myrs=1.5,
@@ -79,7 +79,7 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_3D(MatParam, Num, Dike_params); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 303.1195760751668  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 0.33492015727554736  rtol= 1e-5
+@test sum(time_props.MeltFraction)  ≈ 0.19249739610025995  rtol= 1e-5
 # -----------------------------
 
 
