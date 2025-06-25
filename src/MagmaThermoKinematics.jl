@@ -124,13 +124,13 @@ function environment!(model_device, precision, dimension)
     module_names = Symbol("Diffusion$(dimension)D")
     if model_device == :gpu
         Base.@eval begin
-            include(joinpath(@__DIR__, "DiffusionCUDA.jl"))
+            include(joinpath(@__DIR__, "CUDA/DiffusionCUDA.jl"))
             @reexport import .$module_names
             # export Data
         end
     else
         Base.@eval begin
-            include(joinpath(@__DIR__, "Diffusion.jl"))
+            include(joinpath(@__DIR__, "Threads/Diffusion.jl"))
             @reexport import .$module_names
             # export Data
         end
@@ -141,14 +141,14 @@ function environment!(model_device, precision, dimension)
     if model_device == :gpu
         module_names = Symbol("Fields$(dimension)D")
         Base.@eval begin
-            include(joinpath(@__DIR__, "FieldsCUDA.jl"))
+            include(joinpath(@__DIR__, "CUDA/FieldsCUDA.jl"))
             @reexport import .$module_names
             # export CreateArrays
         end
     else
         module_names = Symbol("Fields$(dimension)D") 
         Base.@eval begin
-            include(joinpath(@__DIR__, "Fields.jl"))
+            include(joinpath(@__DIR__, "Threads/Fields.jl"))
             @reexport import .$module_names
             # export CreateArrays
         end
@@ -169,11 +169,11 @@ function environment!(model_device, precision, dimension)
 
             include(joinpath(@__DIR__, "MTK_GMG.jl"))
 
-            include(joinpath(@__DIR__, "MTK_GMG_2D_CUDA.jl"))
+            include(joinpath(@__DIR__, "CUDA/MTK_GMG_2D_CUDA.jl"))
             using .MTK_GMG_2D
             export MTK_GeoParams_2D
 
-            include(joinpath(@__DIR__, "MTK_GMG_3D_CUDA.jl"))
+            include(joinpath(@__DIR__, "CUDA/MTK_GMG_3D_CUDA.jl"))
             using .MTK_GMG_3D
             export MTK_GeoParams_3D
         end
@@ -184,11 +184,11 @@ function environment!(model_device, precision, dimension)
 
             include(joinpath(@__DIR__, "MTK_GMG.jl"))
 
-            include(joinpath(@__DIR__, "MTK_GMG_2D.jl"))
+            include(joinpath(@__DIR__, "Threads/MTK_GMG_2D.jl"))
             using .MTK_GMG_2D
             export MTK_GeoParams_2D
 
-            include(joinpath(@__DIR__, "MTK_GMG_3D.jl"))
+            include(joinpath(@__DIR__, "Threads/MTK_GMG_3D.jl"))
             using .MTK_GMG_3D
             export MTK_GeoParams_3D
         end
