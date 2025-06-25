@@ -347,7 +347,7 @@ Yet, as far as we are aware, the source code of these other packages is currentl
 
 If you use MagmaThermoKinematics, please cite:
 
-1) The exact version of the software that you used to produce results. We automatically create a permanent [Zenodo](https://zenodo.org/badge/latestdoi/337510164) of every release version of the code (see the right bottom part of the Zenodo page for the correct citation). 
+1) The exact version of the software that you used to produce results. We automatically create a permanent [Zenodo](https://zenodo.org/badge/latestdoi/337510164) of every release version of the code (see the right bottom part of the Zenodo page for the correct citation). You can list this citation in the publication list
 
 2) Schmitt, A.K., Sliwinski, J., Caricchi, L., Bachmann, O., Riel, N., Kaus, B.J.P., de Léon, A.C., Cornet, J., Friedrichs, B., Lovera, O., Sheldrake, T., Weber, G., 2023. Zircon age spectra to quantify magma evolution. Geosphere 19. https://doi.org/10.1130/GES02563.1
 
@@ -355,4 +355,4 @@ The Schmitt et al. (2023) paper shows benchmarks of how `MagmaThermoKinematics` 
 
 > **Warning**
 >
-> Code users are fully responsible for the results they publish. There are many things that can go wrong with numerical modelling even if you use a well-benchmarked code (too low resolution, don't check timestep convergence, poor nonlinear convergence, used beyond what the software was developed for, etc. etc. - we have seen many epic failures over the years). If you want us to double-check, you can send is your manuscript before you submit.  
+> Code users are fully responsible for the results they publish. There are many things that can go wrong with numerical modelling, even if you use a well-benchmarked code (too low resolution, don't check timestep convergence, poor nonlinear convergence, used beyond what the software was developed for, etc. etc. - we have seen many epic failures over the years). If you want us to double-check, you can send is your manuscript before you submit.  
