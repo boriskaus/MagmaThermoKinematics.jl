@@ -1,6 +1,7 @@
 {
   "title": "MagmaThermoKinematics.jl",
   "description": "MagmaThermoKinematics.jl allows simulating the thermal evolution of magmatic systems following the intrusion of dikes and sills. It works in 2D and 3D on both CPU's and GPU's and is easy to use from Julia.",
+  "notes": "Additional funding: (1) PASC GPU4GEO - Frontier GPU multi-physics solvers (c23), funded by ETH Zurich. Project page: https://www.pasc-ch.org/projects/2021-2024/gpu4geo/ and (2) )",
   "creators": [
     {
       "name": "Kaus, Boris J.P.",
@@ -27,9 +28,8 @@
     "GPU"
   ],
   "grants": [
-    {
-      "id": "10.13039/501100000780::771143"
-    }
+    {"id": "10.13039/501100000780::771143"},
+    {"id": "05a28rw58::c23"},
   ],
   "funding": [
     {
