@@ -31,26 +31,6 @@
     {"id": "10.13039/501100000780::771143"},
     {"id": "05a28rw58::c23"}
   ],
-  "funding": [
-    {
-      "award": {
-        "identifiers": [
-          {
-            "identifier": "https://www.pasc-ch.org/projects/2021-2024/gpu4geo/",
-            "scheme": "url"
-          }
-        ],
-        "number": "c23",
-        "title": {
-          "en": "GPU4GEO - Frontier GPU multi-physics solvers"
-        }
-      },
-      "funder": {
-        "id": "05a28rw58",
-        "name": "ETH Zurich"
-      }
-    }
-  ],
   "license": {
     "id": "MIT"
   },
