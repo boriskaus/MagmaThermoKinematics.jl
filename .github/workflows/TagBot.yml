@@ -27,7 +27,5 @@ jobs:
           release_name: Release ${{ github.ref_name }}
           body: |
             Automatic release for ${{ github.ref_name }}
-            
-            See the [changelog](https://github.com/boriskaus/MagmaThermoKinematics.jl/blob/main/CHANGELOG.md) for details.
           draft: false
           prerelease: false
