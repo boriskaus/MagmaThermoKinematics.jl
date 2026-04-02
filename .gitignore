@@ -1,0 +1,24 @@
+# Docs
+docs/build/*
+docs/node_modules/*
+docs/Manifest.toml
+docs/src/man/license.md
+docs/src/man/contributing.md
+docs/src/man/authors.md
+docs/src/man/security.md
+docs/src/man/code_of_conduct.md
+
+#JSON
+package.json
+package-lock.json
+
+# VSCODE
+.vscode/*
+
+# Files
+*/*.mat
+*/*.csv
+*.vtk
+*.h5
+*.jld2
+*.txt

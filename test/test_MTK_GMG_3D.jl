@@ -169,5 +169,7 @@ Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_3D(MatParam, Num, Dike_
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 244.14916470514495  rtol= 1e-2
 @test sum(time_props.MeltFraction)  ≈ 0.8377621121586017 rtol= 1e-5
 
+rm("Test1", recursive=true, force=true) # remove directory created by this test
+rm("Unzen2", recursive=true, force=true) # remove directory created by this test
 
 end
