@@ -477,6 +477,9 @@ if 1==1
 
  end
 
+rm("ZASSy_Geneva_9_1e_6", force=true, recursive =true)
+rm("ZASSy_UCLA_10_7e_6_v2", force=true, recursive =true)
+
 end
 
 

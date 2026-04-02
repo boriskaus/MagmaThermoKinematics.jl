@@ -1,31 +1,9 @@
-# NOTE: This file contains many parts that are copied from the file runtests.jl from the Package MPI.jl.
-push!(LOAD_PATH, "../src")
+using MagmaThermoKinematics, ParallelTestRunner
 
-import MagmaThermoKinematics # Precompile it.
+testsuite = find_tests(@__DIR__)
 
-excludedfiles = [ "test_excluded.jl"];
-
-function runtests()
-    exename   = joinpath(Sys.BINDIR, Base.julia_exename())
-    testdir   = pwd()
-    istest(f) = endswith(f, ".jl") && startswith(basename(f), "test_")
-    testfiles = sort(filter(istest, vcat([joinpath.(root, files) for (root, dirs, files) in walkdir(testdir)]...)))
-
-    nfail = 0
-    printstyled("Testing package MagmaThermoKinematics.jl\n"; bold=true, color=:white)
-    for f in testfiles
-        println("")
-        if f ∈ excludedfiles
-            println("Test Skip:")
-            println("$f")
-            continue
-        end
-        try
-            run(`$exename -O3 --startup-file=no --check-bounds=no $(joinpath(testdir, f))`)
-        catch ex
-            nfail += 1
-        end
-    end
-    return nfail
+try
+    ParallelTestRunner.runtests(MagmaThermoKinematics, ARGS; testsuite)
+finally
+    foreach(f -> rm(joinpath(@__DIR__, f)), filter(endswith(".png"), readdir(@__DIR__)))
 end
-exit(runtests())
