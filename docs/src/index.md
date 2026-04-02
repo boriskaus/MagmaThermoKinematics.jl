@@ -16,6 +16,9 @@ hero:
     - theme: alt
       text: View on GitHub
       link: https://github.com/boriskaus/MagmaThermoKinematics.jl
+  image:
+    src: /logo.png
+    alt: MagmaThermoKinematics.jl
 
 features:
   - icon: "🔥"
