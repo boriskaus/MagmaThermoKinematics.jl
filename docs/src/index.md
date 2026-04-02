@@ -31,6 +31,10 @@ features:
     details: Kinematic intrusion workflows in 2D and 3D, including randomized emplacement scenarios.
     link: /man/examples
 
+  - icon: "🔗"
+    title: Material Parameterizations
+    details: GeoParams-based material properties and melting parameterizations for flexible physics setups.
+
   - icon: "⚙️"
     title: CPU and GPU Backends
     details: Built on ParallelStencil with a backend selection workflow for threaded CPU and CUDA GPU runs.

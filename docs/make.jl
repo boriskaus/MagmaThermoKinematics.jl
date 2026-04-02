@@ -1,6 +1,7 @@
 using Documenter
 using DocumenterVitepress
 using MagmaThermoKinematics
+using GeoParams
 
 repo_root = dirname(@__DIR__)
 docs_src = joinpath(@__DIR__, "src")
@@ -113,6 +114,10 @@ makedocs(;
         ],
         "API" => Any[
             "Function Reference" => "man/listfunctions.md",
+            "GeoParams" => Any[
+                "Melting Parameterisations" => "man/MeltingParameterisations.md",
+                "Conductivity Parameterisations" => "man/ConductivityParameterisations.md",
+            ]
         ],
         "References" => Any[
             "Benchmarking" => "man/benchmarking.md",
