@@ -26,6 +26,7 @@ environment!(:gpu, Float64, 2)
 using MagmaThermoKinematics.Diffusion2D
 using MagmaThermoKinematics.Fields2D
 ```
+:::
 
 ## 3D GPU Workflow
 
@@ -51,6 +52,7 @@ environment!(:gpu, Float64, 3)
 using MagmaThermoKinematics.Diffusion3D
 using MagmaThermoKinematics.Fields3D
 ```
+:::
 
 ## Minimal Model Setup Pattern
 
