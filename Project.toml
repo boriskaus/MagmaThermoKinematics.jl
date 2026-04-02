@@ -1,7 +1,7 @@
 name = "MagmaThermoKinematics"
 uuid = "e7fe3d1a-f102-40b5-a66b-64b14986c4c8"
 authors = ["Boris Kaus <kaus@uni-mainz.de>"]
-version = "0.6.2"
+version = "0.6.3"
 
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
@@ -29,9 +29,9 @@ CairoMakie = "0.8 - 0.20"
 GeophysicalModelGenerator = "0.7"
 GeoParams = "0.5, 0.6, 0.7"
 Interpolations = "0.13 - 0.16"
-JLD2 = "0.4, 0.5"
-MAT = "0.10"
-ParallelStencil = "0.8 - 0.14"
+JLD2 = "0.4, 0.5, 0.6"
+MAT = "0.10, 0.11"
+ParallelStencil = "0.8 - 0.16"
 Parameters = "0.12"
 Plots = "1.0"
 Reexport = "1"

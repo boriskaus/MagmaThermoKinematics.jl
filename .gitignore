@@ -1,0 +1,12 @@
+# Docs
+docs/build/*
+docs/node_modules/*
+docs/Manifest.toml
+
+# Files
+*/*.mat
+*/*.csv
+*.vtk
+*.h5
+*.jld2
+*.txt
