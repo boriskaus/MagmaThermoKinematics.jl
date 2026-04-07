@@ -14,16 +14,16 @@ else
     environment!(:cpu, Float64, 3)      # initialize parallel stencil in 2D
     @init_parallel_stencil(Threads, Float64, 3)
 end
-using MagmaThermoKinematics.Diffusion3D
+import MagmaThermoKinematics.Diffusion3D
 using Random, GeoParams, GeophysicalModelGenerator
 
-using MagmaThermoKinematics.Fields3D
-using MagmaThermoKinematics.MTK_GMG_3D
+import MagmaThermoKinematics.Fields3D
+import MagmaThermoKinematics.MTK_GMG_3D
 
 const rng = Random.seed!(1234);     # same seed such that we can reproduce results
 
 # Allow overwriting user routines
-using MagmaThermoKinematics.MTK_GMG
+import MagmaThermoKinematics.MTK_GMG
 
 @testset "MTK_GMG_3D" begin
 

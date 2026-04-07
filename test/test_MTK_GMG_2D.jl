@@ -14,15 +14,15 @@ else
     environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
     @init_parallel_stencil(Threads, Float64, 2)
 end
-using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
+import MagmaThermoKinematics.Diffusion2D # load module AFTER calling environment!()
 using GeophysicalModelGenerator, GeoParams
-using MagmaThermoKinematics.Fields2D
-using MagmaThermoKinematics.MTK_GMG_2D
+import MagmaThermoKinematics.Fields2D
+import MagmaThermoKinematics.MTK_GMG_2D
 
 const rng = Random.seed!(1234);     # same seed such that we can reproduce results
 
 # Import a few routines, so we can overwrite them below
-using MagmaThermoKinematics.MTK_GMG
+import MagmaThermoKinematics.MTK_GMG
 
 @testset "MTK_GMG_2D" begin
 #=
