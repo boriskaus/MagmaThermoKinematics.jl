@@ -16,8 +16,6 @@ else
 end
 import MagmaThermoKinematics.Diffusion2D # load module AFTER calling environment!()
 using GeophysicalModelGenerator, GeoParams
-import MagmaThermoKinematics.Fields2D
-import MagmaThermoKinematics.MTK_GMG_2D
 
 const rng = Random.seed!(1234);     # same seed such that we can reproduce results
 

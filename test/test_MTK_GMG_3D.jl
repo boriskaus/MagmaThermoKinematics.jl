@@ -17,9 +17,6 @@ end
 import MagmaThermoKinematics.Diffusion3D
 using Random, GeoParams, GeophysicalModelGenerator
 
-import MagmaThermoKinematics.Fields3D
-import MagmaThermoKinematics.MTK_GMG_3D
-
 const rng = Random.seed!(1234);     # same seed such that we can reproduce results
 
 # Allow overwriting user routines
