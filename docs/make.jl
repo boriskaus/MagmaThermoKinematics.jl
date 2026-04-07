@@ -90,6 +90,7 @@ makedocs(;
     authors = "Boris Kaus, Pascal Aellig, Albert de Montserrat",
     modules = [MagmaThermoKinematics],
     checkdocs = :none,
+    warnonly = Documenter.except(:footnote),
     format = DocumenterVitepress.MarkdownVitepress(
         repo = "github.com/boriskaus/MagmaThermoKinematics.jl",
         devbranch = "main",
@@ -114,9 +115,9 @@ makedocs(;
         ],
         "API" => Any[
             "Function Reference" => "man/listfunctions.md",
-            "GeoParams" => Any[
-                "Melting Parameterisations" => "man/MeltingParameterisations.md",
-                "Conductivity Parameterisations" => "man/ConductivityParameterisations.md",
+            "GeoParams Parameterisations" => Any[
+                "Melting" => "man/MeltingParameterisations.md",
+                "Conductivity" => "man/ConductivityParameterisations.md",
             ]
         ],
         "References" => Any[

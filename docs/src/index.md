@@ -22,7 +22,7 @@ hero:
 
 features:
   - icon: "🔥"
-    title: Magma Thermal Modeling
+    title: Thermal Modeling
     details: Simulate cooling, crystallization, latent heat effects, and evolving melt fractions.
     link: /man/numerics
 
@@ -34,6 +34,7 @@ features:
   - icon: "🔗"
     title: Material Parameterizations
     details: GeoParams-based material properties and melting parameterizations for flexible physics setups.
+    link: /man/MeltingParameterisations
 
   - icon: "⚙️"
     title: CPU and GPU Backends

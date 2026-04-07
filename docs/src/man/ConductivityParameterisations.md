@@ -1,14 +1,3 @@
 # Conductivity
-```@meta
-CurrentModule = GeoParams
-```
 
-## Methods
-Thermal conductivity is defined as
-```@docs
-GeoParams.MaterialParameters.Conductivity.ConstantConductivity
-GeoParams.MaterialParameters.Conductivity.T_Conductivity_Whittington
-GeoParams.MaterialParameters.Conductivity.T_Conductivity_Whittington_parameterised
-GeoParams.MaterialParameters.Conductivity.TP_Conductivity
-GeoParams.MaterialParameters.Conductivity.Set_TP_Conductivity
-```
+A number of conductivity parameterisations are implemented through GeoParams which can be set in the `MatParams` struct. For a complete list see [here](https://juliageodynamics.github.io/GeoParams.jl/dev/man/conductivity):

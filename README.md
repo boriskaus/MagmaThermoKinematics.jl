@@ -3,6 +3,7 @@
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://boriskaus.github.io/MagmaThermoKinematics.jl/dev/)
 [![Build Status](https://github.com/boriskaus/MagmaThermoKinematics.jl/workflows/CI/badge.svg)](https://github.com/boriskaus/MagmaThermoKinematics.jl/actions)
 [![DOI](https://zenodo.org/badge/337510164.svg)](https://zenodo.org/badge/latestdoi/337510164)
+[![codecov](https://codecov.io/gh/boriskaus/MagmaThermoKinematics.jl/graph/badge.svg?token=RHOL3SU2YE)](https://codecov.io/gh/boriskaus/MagmaThermoKinematics.jl)
 
 Understanding how magmatic systems work is of interest to a wide range of Earth Scientists.
 
