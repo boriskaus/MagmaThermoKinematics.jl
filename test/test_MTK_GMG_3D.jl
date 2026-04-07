@@ -79,7 +79,7 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
                 )
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_3D(MatParam, Num, Dike_params); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MagmaThermoKinematics.MTK_GeoParams_3D(MatParam, Num, Dike_params); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 299.981239425671  rtol= 1e-2
 @test sum(time_props.MeltFraction)  ≈ 0.0  rtol= 1e-5
@@ -167,7 +167,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_3D(MatParam, Num, Dike_params, CartData_input=Data_3D); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MagmaThermoKinematics.MTK_GeoParams_3D(MatParam, Num, Dike_params, CartData_input=Data_3D); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 244.14916470514495  rtol= 1e-2
 @test sum(time_props.MeltFraction)  ≈ 0.8377621121586017 rtol= 1e-5
