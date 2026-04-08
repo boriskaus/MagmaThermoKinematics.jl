@@ -32,7 +32,17 @@ export SecYear, kyr, Myr, km³
 
 export NumericalParameters, DikeParameters, TimeDependentProperties
 
+const _environment_config = Ref{Union{Nothing, NamedTuple{(:model_device, :precision, :dimension), Tuple{Symbol, DataType, Int}}}}(nothing)
+
 function environment!(model_device, precision, dimension)
+    config = (model_device = model_device, precision = precision, dimension = dimension)
+    if _environment_config[] == config
+        return nothing
+    end
+    if !isnothing(_environment_config[]) && isinteractive()
+        @warn "Reinitializing ParallelStencil from $(_environment_config[]) to $config."
+    end
+
     gpu = model_device == :gpu ? true : false
 
     # environment variable for XPU
@@ -193,6 +203,8 @@ function environment!(model_device, precision, dimension)
             export MTK_GeoParams_3D
         end
     end
+
+    _environment_config[] = config
 
 
 

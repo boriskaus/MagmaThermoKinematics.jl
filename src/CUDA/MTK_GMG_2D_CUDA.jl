@@ -10,7 +10,7 @@ using GeophysicalModelGenerator
 using CUDA
 
 
-__init__() = @init_parallel_stencil(CUDA, Float64, 2)
+@init_parallel_stencil(CUDA, Float64, 2)
 
 using MagmaThermoKinematics.Diffusion2D
 using MagmaThermoKinematics.MTK_GMG

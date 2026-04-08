@@ -8,7 +8,7 @@ using Parameters
 using StructArrays
 using GeophysicalModelGenerator
 
-__init__() = @init_parallel_stencil(Threads, Float64, 2)
+@init_parallel_stencil(Threads, Float64, 2)
 
 using MagmaThermoKinematics.Diffusion2D
 using MagmaThermoKinematics.MTK_GMG

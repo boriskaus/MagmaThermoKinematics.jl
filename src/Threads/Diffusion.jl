@@ -18,7 +18,7 @@ import ..compute_meltfraction_ps!, ..compute_dϕdT_ps!, ..compute_density_ps!, .
        ..compute_conductivity_ps!, ..compute_radioactive_heat_ps!, ..compute_latent_heat_ps!
 
 
-__init__() = @init_parallel_stencil(Threads, Float64, 2)
+@init_parallel_stencil(Threads, Float64, 2)
 
 #include("Diffusion_combined2D.jl")
 
@@ -369,7 +369,7 @@ export  diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_
 import ..compute_meltfraction_ps_3D!, ..compute_dϕdT_ps_3D!, ..compute_density_ps_3D!, ..compute_heatcapacity_ps_3D!,
         ..compute_conductivity_ps_3D!, ..compute_radioactive_heat_ps_3D!, ..compute_latent_heat_ps_3D!
 
-__init__() = @init_parallel_stencil(Threads, Float64, 3)
+@init_parallel_stencil(Threads, Float64, 3)
 
 #include("Diffusion_combined3D.jl")
 

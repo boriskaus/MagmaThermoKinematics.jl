@@ -5,7 +5,7 @@ using MagmaThermoKinematics
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
 
-__init__() = @init_parallel_stencil(Threads, Float64, 2)
+@init_parallel_stencil(Threads, Float64, 2)
 
 # Some helping routines that simplifies creating fields and work arrays
 export CreateArrays
@@ -70,7 +70,7 @@ using MagmaThermoKinematics
 using ParallelStencil
 using ParallelStencil.FiniteDifferences3D
 
-__init__() = @init_parallel_stencil(Threads, Float64, 3)
+@init_parallel_stencil(Threads, Float64, 3)
 
 # Some helping routines that simplifies creating fields and work arrays
 export CreateArrays

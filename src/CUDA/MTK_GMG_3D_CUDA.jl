@@ -10,7 +10,7 @@ using StructArrays
 using GeophysicalModelGenerator
 using CUDA
 
-__init__() = @init_parallel_stencil(CUDA, Float64, 3)
+@init_parallel_stencil(CUDA, Float64, 3)
 
 using MagmaThermoKinematics.Diffusion3D
 using MagmaThermoKinematics.MTK_GMG
