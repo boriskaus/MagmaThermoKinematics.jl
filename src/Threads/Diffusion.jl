@@ -23,7 +23,7 @@ __init__() = @init_parallel_stencil(Threads, Float64, 2)
 #include("Diffusion_combined2D.jl")
 
 """
-Diffusion2D provides GPU/CPU functions 
+Diffusion2D provides GPU/CPU functions
 """
 
 """
@@ -211,7 +211,7 @@ end
 end
 
 @parallel function diffusion2D_conductivity!(Kx, Kz, K)
-    @all(Kx)    =  @av_xa(K);                            
+    @all(Kx)    =  @av_xa(K);
     @all(Kz)    =  @av_ya(K);                            # heatflux in z
     return
 end
@@ -372,14 +372,6 @@ import ..compute_meltfraction_ps_3D!, ..compute_dϕdT_ps_3D!, ..compute_density_
 __init__() = @init_parallel_stencil(Threads, Float64, 3)
 
 #include("Diffusion_combined3D.jl")
-
-export  diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_flux!, assign!, GridArray!,
-        Numeric_params, Nonlinear_Diffusion_step_3D!, bc3D_T!
-
-import ..compute_meltfraction_ps_3D!, ..compute_dϕdT_ps_3D!, ..compute_density_ps_3D!, ..compute_heatcapacity_ps_3D!,
-        ..compute_conductivity_ps_3D!, ..compute_radioactive_heat_ps_3D!, ..compute_latent_heat_ps_3D!
-
-__init__() = @init_parallel_stencil(Threads, Float64, 3)
 
 @parallel function assign!(A::AbstractArray, B::AbstractArray)
     @all(A) = @all(B)
@@ -545,7 +537,7 @@ function diffusion3D_step_varK!(Tnew, T, qx, qy, qz, K, Kx, Ky, Kz, Rho, Cp, H, 
     @parallel diffusion3D_conductivity!(Kx, Ky, Kz, K)
     @parallel diffusion3D_flux!(qx, qy, qz, T, Kx, Ky, Kz, dx, dy, dz)
     @parallel update_T!(Tnew, T, qx, qy, qz, Rho, Cp, H, Hl, dt, dx, dy, dz,  dϕdT)
-   
+
     return
 end
 
