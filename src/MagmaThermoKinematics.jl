@@ -41,16 +41,12 @@ end
 const _environment_config = Ref{Union{Nothing, EnvironmentConfig}}(nothing)
 
 @inline function _normalize_environment_config(model_device, precision, dimension)
-    model_device in (:cpu, :gpu, :metal) || throw(ArgumentError("Unsupported model_device=$model_device. Use :cpu, :gpu or :metal."))
+    model_device in (:cpu, :gpu) || throw(ArgumentError("Unsupported model_device=$model_device. Use :cpu, or :gpu."))
     precision isa DataType || throw(ArgumentError("precision must be a type (e.g. Float64), got $(typeof(precision))."))
     dimension isa Integer || throw(ArgumentError("dimension must be an integer, got $(typeof(dimension))."))
 
     dim = Int(dimension)
     dim in (2, 3) || throw(ArgumentError("Unsupported dimension=$dim. Use 2 or 3."))
-
-    if model_device == :metal && precision != Float32
-        throw(ArgumentError("Metal backend currently supports only Float32 precision. Got $precision."))
-    end
 
     return EnvironmentConfig(model_device, precision, dim)
 end
@@ -91,13 +87,6 @@ function environment!(model_device, precision, dimension)
         @eval begin
              ParallelStencil.@reset_parallel_stencil()
              @init_parallel_stencil(CUDA, $(config.precision), $(config.dimension))
-        end
-    elseif config.model_device == :metal
-        println("Using Metal for ParallelStencil")
-        Base.eval(@__MODULE__, :(using Metal))
-        @eval begin
-             ParallelStencil.@reset_parallel_stencil()
-             @init_parallel_stencil(Metal, $(config.precision), $(config.dimension))
         end
     else
         println("Using CPU for ParallelStencil")
@@ -167,10 +156,6 @@ function environment!(model_device, precision, dimension)
         Base.@eval begin
             include(joinpath(@__DIR__, "CUDA/DiffusionCUDA.jl"))
         end
-    elseif config.model_device == :metal
-        Base.@eval begin
-            include(joinpath(@__DIR__, "Metal/DiffusionMetal.jl"))
-        end
     else
         Base.@eval begin
             include(joinpath(@__DIR__, "Threads/Diffusion.jl"))
@@ -182,10 +167,6 @@ function environment!(model_device, precision, dimension)
     if config.model_device == :gpu
         Base.@eval begin
             include(joinpath(@__DIR__, "CUDA/FieldsCUDA.jl"))
-        end
-    elseif config.model_device == :metal
-        Base.@eval begin
-            include(joinpath(@__DIR__, "Metal/FieldsMetal.jl"))
         end
     else
         Base.@eval begin
@@ -199,12 +180,6 @@ function environment!(model_device, precision, dimension)
             include(joinpath(@__DIR__, "CUDA/MTK_GMG_2D_CUDA.jl"))
 
             include(joinpath(@__DIR__, "CUDA/MTK_GMG_3D_CUDA.jl"))
-        end
-    elseif config.model_device == :metal
-        Base.@eval begin
-            include(joinpath(@__DIR__, "Metal/MTK_GMG_2D_Metal.jl"))
-
-            include(joinpath(@__DIR__, "Metal/MTK_GMG_3D_Metal.jl"))
         end
     else
         Base.@eval begin

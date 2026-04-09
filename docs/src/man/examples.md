@@ -59,5 +59,4 @@ The full README-equivalent code snippets are available in dedicated tabs:
 
 - GPU execution typically requires loading CUDA before backend initialization.
 - `environment!(...)` initializes package internals; if an example script uses ParallelStencil macros directly (`@zeros`, `@parallel`, etc.), it should also call `@init_parallel_stencil(...)` in script scope.
-- Metal backend examples should use `environment!(:metal, Float32, dim)` and initialize ParallelStencil with `Float32`.
 - 3D output is commonly explored with ParaView using VTK and PVD files.

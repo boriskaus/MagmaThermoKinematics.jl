@@ -34,18 +34,6 @@ CUDA.device!(0)
 using MagmaThermoKinematics.Diffusion2D
 using MagmaThermoKinematics.Fields2D
 ```
-
-```julia [Apple GPUs (Metal)]
-using Metal
-using ParallelStencil
-using MagmaThermoKinematics
-
-environment!(:metal, Float32, 2)
-@init_parallel_stencil(Metal, Float32, 2)     # needed when this script uses @zeros/@parallel
-
-using MagmaThermoKinematics.Diffusion2D
-using MagmaThermoKinematics.Fields2D
-```
 :::
 
 ## 3D GPU Workflow
@@ -71,18 +59,6 @@ using MagmaThermoKinematics
 environment!(:gpu, Float64, 3)
 CUDA.device!(0)
 @init_parallel_stencil(CUDA, Float64, 3)      # needed when this script uses @zeros/@parallel
-
-using MagmaThermoKinematics.Diffusion3D
-using MagmaThermoKinematics.Fields3D
-```
-
-```julia [Apple GPUs (Metal)]
-using Metal
-using ParallelStencil
-using MagmaThermoKinematics
-
-environment!(:metal, Float32, 3)
-@init_parallel_stencil(Metal, Float32, 3)     # needed when this script uses @zeros/@parallel
 
 using MagmaThermoKinematics.Diffusion3D
 using MagmaThermoKinematics.Fields3D

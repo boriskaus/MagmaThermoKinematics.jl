@@ -7,10 +7,10 @@ This page follows the same script-oriented style as the 2D MTK_GMG examples, but
 These examples show that the same MTK_GMG solver pipeline can be reused across different volcanic systems by changing setup data and runtime choices instead of rewriting core numerics.
 
 - Unzen3D demonstrates a workflow where the model domain, phase structure, and thermal state are assembled from imported topography and project-specific initialization logic.
-- Lanin3D demonstrates a workflow where a dedicated setup builder script controls geometry and initial fields while still using the same MTK_GeoParams_3D solve path.
+- Lanin3D demonstrates a workflow where a custom topography is downloaded using GMT if the file doesn't exist, and a custom output hook is defined to print time and iteration diagnostics.
 - Both examples use the same core concepts: CartData construction, material tuples, dike parameterization, and hook-based customization for output and diagnostics.
 
-In practice, this means MTK can move from synthetic benchmark setups to real-world applications by swapping geological input data and user hooks while keeping the computational framework stable.
+In practice, this means MagmaThermoKinematics.jl can move from synthetic benchmark setups to real-world applications by swapping geological input data and user hooks while keeping the computational framework stable.
 
 ## Unzen3D
 
@@ -70,16 +70,27 @@ Grid, Arrays, Tracers, Dikes, time_props =
 This section documents the scripts:
 
 - [examples/MTK_GMG_3D_Lanin.jl](https://github.com/boriskaus/MagmaThermoKinematics.jl/blob/main/examples/MTK_GMG_3D_Lanin.jl)
-- [examples/Lanin/LaninSetup3D.jl](https://github.com/boriskaus/MagmaThermoKinematics.jl/blob/main/examples/Lanin/LaninSetup3D.jl)
-- [examples/Lanin/LaninSetup3D_MTK.jl](https://github.com/boriskaus/MagmaThermoKinematics.jl/blob/main/examples/Lanin/LaninSetup3D_MTK.jl)
 
 ![](../assets/movies/Lanin3D.gif)
 
 ### Custom Setup Builder
 
 ```julia
-include("LaninSetup3D.jl")
-Data_3D = create_setup(; Nx = Num.Nx, Ny = Num.Ny, Nz = Num.Nz)
+# Create 3D grid of the region
+if !isfile(joinpath(@__DIR__,"Topo_cart_Lanin3D.jld2"))
+    using GMT, Statistics
+    println("Creating topography grid from GMG for Lanin 3D example...")
+    Topo       =   import_topo(lon = [-71.9, -71.1], lat=[-39.95, -39.35], file="@earth_relief_01s.grd")
+    proj       =   ProjectionPoint(; Lat=mean(Topo.lat.val), Lon=mean(Topo.lon.val))
+    Topo_cart  =   convert2CartData(Topo, proj)
+
+    Xt,Yt,Zt   =   xyz_grid(-20:.025:20,-20:.025:20,0)
+    Topo_cart  =   project_CartData(CartData(Xt,Yt,Zt,(Zt=Zt,)), Topo, proj)
+    write_paraview(Topo_cart,joinpath(@__DIR__,"Topo_cart_Lanin3D"));
+
+    save_GMG(joinpath(@__DIR__,"Topo_cart_Lanin3D"), Topo_cart)
+end
+
 ```
 
 ### Hooks and Run

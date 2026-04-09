@@ -58,9 +58,8 @@ This design makes it straightforward to test sensitivity to melt models and ther
 
 ## Performance and Parallelism
 
-Backend selection through `environment!` configures CPU threads, CUDA, or Metal execution, and the package composes with ParallelStencil finite-difference modules.
+Backend selection through `environment!` configures CPU threads, or CUDA execution, and the package composes with ParallelStencil finite-difference modules.
 
 - CPU and CUDA workflows are typically run with `Float64` precision.
-- Metal workflows currently require `Float32` precision.
 
 When your own script uses ParallelStencil macros directly (for example `@zeros` or `@parallel`), call `@init_parallel_stencil(...)` in script scope after `environment!(...)`.
