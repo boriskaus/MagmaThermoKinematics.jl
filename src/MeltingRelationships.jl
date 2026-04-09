@@ -3,8 +3,8 @@
     SolidFraction computes the solid fraction (= (1-phi) as a function of T
 
 """
-function SolidFraction(T::Array, Phi_o::Array,dt::Float64; P_bar=[], MeltFrac=[], PhaseRat=[],PhaseDiagrams=[])
-    
+function SolidFraction(T::Array, Phi_o::Array,dt::AbstractFloat; P_bar=[], MeltFrac=[], PhaseRat=[],PhaseDiagrams=[])
+
     Phi_new =   Phi_o.*0.0;
     dPhi_dt =   Phi_o.*0.0;
     if isempty(P_bar)
@@ -14,28 +14,28 @@ function SolidFraction(T::Array, Phi_o::Array,dt::Float64; P_bar=[], MeltFrac=[]
     else
         # melt fraction is computed in a phase-wise manner
         #   which can be:
-        #               "none"              -   no melting 
+        #               "none"              -   no melting
         #               "parameterized"     -   parameterized mekting model (aka, our default)
         #               "PD"                -   we use a phase diagram to compute the melt fraction, as specified in PhaseDiagramData
-        numPhases   =   size(PhaseRat)[end];  
+        numPhases   =   size(PhaseRat)[end];
         dim         =   length(size(PhaseRat))-1;
         Phi_melt    =   Phi_o.*0.0;
-        for iPhase  =   1:numPhases 
+        for iPhase  =   1:numPhases
             Phi_melt_av = Phi_o.*0.0;
             if  MeltFrac[iPhase]=="parameterized"
                 Phi_melt_av_temp = Phi_o.*0.0;
-                
+
                 # Use parameterized melting diagram
                 SolidFraction_Parameterized!(T, Phi_o, Phi_melt_av_temp, dPhi_dt, dt);
                 Phi_melt_av .= 1.0 .- Phi_melt_av_temp;
-                
+
             elseif MeltFrac[iPhase]=="PD"
                 # Interpolate melt fraction from the phase diagram
                 interp_meltWt       =   PhaseDiagrams[iPhase].meltWt;
-                
+
                 for i=eachindex(P_bar)
                     meltWt          =   interp_meltWt(T[i],P_bar[i]);
-                    
+
                     Phi_melt_av[i]  =  meltWt;
                 end
 
@@ -45,7 +45,7 @@ function SolidFraction(T::Array, Phi_o::Array,dt::Float64; P_bar=[], MeltFrac=[]
             else
                 error("Unknown melt fraction type for phase $iPhase: namely $(MeltFrac[iPhase]). Choose from: [none, PD, parameterized] ")
             end
-            
+
             if dim==2
                 Phi_melt +=  Phi_melt_av.*PhaseRat[:,:,iPhase]
             elseif dim==3
@@ -56,27 +56,27 @@ function SolidFraction(T::Array, Phi_o::Array,dt::Float64; P_bar=[], MeltFrac=[]
 
         end
         Phi_new   .=   1.0 .- Phi_melt;    # Phi=solid fraction
-        dPhi_dt    =   (Phi_new .- Phi_o)./dt;  
-        
+        dPhi_dt    =   (Phi_new .- Phi_o)./dt;
+
     end
-    
+
     return Phi_new, dPhi_dt
 end
 
 
-function SolidFraction_Parameterized!(T::Array, Phi_o::Array, Phi::Array, dPhi_dt::Array, dt::Float64)
+function SolidFraction_Parameterized!(T::Array, Phi_o::Array, Phi::Array, dPhi_dt::Array, dt::AbstractFloat)
    # Compute the melt fraction of the domain, assuming T=Celcius
     # Taken from L.Caricchi (pers. comm.)
 
     # Also compute dPhi/dt, which is used to compute latent heat
 
     #Theta      =   (800.0 .- T)./23.0;
-    #Phi        =   1.0 .- 1.0./(1.0 .+ exp.(Theta)); 
+    #Phi        =   1.0 .- 1.0./(1.0 .+ exp.(Theta));
 
 
-    Phi       .=   1.0 .- 1.0./(1.0 .+ exp.((800.0 .- T)./23.0)); 
-   
-    dPhi_dt   .=   (Phi .- Phi_o)./dt;  
+    Phi       .=   1.0 .- 1.0./(1.0 .+ exp.((800.0 .- T)./23.0));
+
+    dPhi_dt   .=   (Phi .- Phi_o)./dt;
     Phi_o     .=   Phi;
 
 end
@@ -94,7 +94,7 @@ end
             Grid:   2D or 3D arrays that describe the 1D grid coordinates
                     2D - (x,z)
                     3D - (x,y,z)
-            
+
             Rho:    2D or 3D matrix with density distribution
 
         out:
@@ -105,15 +105,15 @@ function ComputeLithostaticPressure(Rho, Grid);
     g   =   9.81;                   # m/s2
     z   =   Grid[end]               # z coordinates
     dim =   length(size(Rho))
-    
+
     dz  =   z[2]-z[1];              # note that we assume a constant spacing in z
-    P   =   Rho*g*dz; 
-    
-    if dim==2; 
+    P   =   Rho*g*dz;
+
+    if dim==2;
         P[end,:]    .= 0.0;
     elseif dim==3
         P[end,:,:]  .= 0.0;
-    end    
+    end
     P   =   reverse(P,dims=dim);        # reverse array as we go from top->bottom
     P   =   cumsum( P/1e5, dims=dim);   # sum
     P   =   reverse(P,dims=dim);        # same
@@ -136,7 +136,7 @@ end
 
 
 """
-    This preloads phase diagram data from disk 
+    This preloads phase diagram data from disk
 
         General form:
 
@@ -151,20 +151,20 @@ end
 
 """
 function LoadPhaseDiagrams(PhaseDiagramNames, PlotDiagrams=false);
-    # This pre-loads phase diagram and creates the interpolation objects to 
+    # This pre-loads phase diagram and creates the interpolation objects to
     #   efficiently query them @ a later stage.
-    #   
-    #   The phase diagram input format is the LaMEM input format, which is 
-    #   to a large extend similar to what Perple_X gives as an output 
+    #
+    #   The phase diagram input format is the LaMEM input format, which is
+    #   to a large extend similar to what Perple_X gives as an output
     #   (with more comments @ the beginning)
 
     PhaseData   =   [PhaseDiagram([],[],[],  [], [], [], [], [], []) for i=1:length(PhaseDiagramNames)];    # initialize
     i           =   0;
     for PhaseDiagramName in PhaseDiagramNames
         i   +=   1;
- 
+
         if length(PhaseDiagramName)>0
-           
+
             # open diagram and read info about the size of the diagram
             fid             =   open(PhaseDiagramName,"r")
             line            =   readline(fid)
@@ -177,20 +177,20 @@ function LoadPhaseDiagrams(PhaseDiagramNames, PlotDiagrams=false);
             dP              =   parse(Float64,readline(fid))            # step-size in P [bar]
             numP            =   parse(Int64,readline(fid))              # number of P points
             close(fid)
-            
+
             # Read the full data from the file
             data_diagram    =   CSV.File(PhaseDiagramName, skipto=56, header=false);    # read all diagram data
-            
+
             Pvec            =   Pmin:dP:dP*(numP-1)+Pmin;
             Tvec            =   Tmin:dT:dT*(numT-1)+Tmin;
             meltRho         =   reshape(data_diagram.Column1, (numT,numP));              # density of melt
             meltWt          =   reshape(data_diagram.Column2, (numT,numP));              # melt fraction
             rockRho         =   reshape(data_diagram.Column3, (numT,numP));              # density of solid rock
-            
-        
-            intp_meltRho    =   LinearInterpolation((Tvec, Pvec), meltRho,  extrapolation_bc = Line()); 
-            intp_meltWt     =   LinearInterpolation((Tvec, Pvec), meltWt,   extrapolation_bc = Line()); 
-            intp_rockRho    =   LinearInterpolation((Tvec, Pvec), rockRho,  extrapolation_bc = Line()); 
+
+
+            intp_meltRho    =   LinearInterpolation((Tvec, Pvec), meltRho,  extrapolation_bc = Line());
+            intp_meltWt     =   LinearInterpolation((Tvec, Pvec), meltWt,   extrapolation_bc = Line());
+            intp_rockRho    =   LinearInterpolation((Tvec, Pvec), rockRho,  extrapolation_bc = Line());
             PhaseData[i]    =   PhaseDiagram(intp_meltRho,intp_meltWt,intp_rockRho, [], [], [], [], [], []);
 
             if numFields>5
@@ -198,11 +198,11 @@ function LoadPhaseDiagrams(PhaseDiagramNames, PlotDiagrams=false);
                 rockVp          =   reshape(data_diagram.Column6, (numT,numP));              # Vp velocity of rock [km/s]
                 rockVs          =   reshape(data_diagram.Column7, (numT,numP));              # Vs velocity of rock [km/s]
                 rockVpVs        =   reshape(data_diagram.Column8, (numT,numP));              # Vp/Vs velocity of rock [-]
-                
+
                 meltVp          =   reshape(data_diagram.Column9, (numT,numP));              # Vp velocity of melt [km/s]
                 meltVs          =   reshape(data_diagram.Column10,(numT,numP));              # Vs velocity of melt [km/s]
                 meltVpVs        =   reshape(data_diagram.Column11,(numT,numP));              # Vp/Vs velocity of melt [-]
-                
+
                 # add interpolation objects to PhaseDiagramData struct
                 intp_rockVp     =   LinearInterpolation((Tvec, Pvec), rockVp,       extrapolation_bc = Line());
                 intp_rockVs     =   LinearInterpolation((Tvec, Pvec), rockVs,       extrapolation_bc = Line());
@@ -217,7 +217,7 @@ function LoadPhaseDiagrams(PhaseDiagramNames, PlotDiagrams=false);
 
             elseif numFields==5
                 # nothing to be done
-            
+
             elseif numFields<5
                 error("The phase diagram should at least have the collumns: meltRho | meltWt | rockRho | T [K] | P [bar] ")
 
@@ -226,8 +226,8 @@ function LoadPhaseDiagrams(PhaseDiagramNames, PlotDiagrams=false);
             # plot phase diagram if requested
             if PlotDiagrams # note that this requires the Plots package to be installed - move this to a separate routine?
                 Rho = meltWt.*meltRho .+ (1.0 .- meltWt).*rockRho
-                
-                # density 
+
+                # density
                 p2 = heatmap(Tvec,Pvec/1e3,meltWt',  title=PhaseDiagramName,  c=:batlow,  xlabel="T [C]",   ylabel="P [kbar]", dpi=400, fontsize=6, colorbar_title="Melt fraction")
                 p3 = heatmap(Tvec,Pvec/1e3,meltRho',                          c=:lajolla, xlabel="T [C]",   ylabel="P [kbar]", dpi=400, fontsize=6, colorbar_title="ρ melt [kg/m3]")
                 p1 = heatmap(Tvec,Pvec/1e3,rockRho',                          c=:lajolla, xlabel="T [C]",   ylabel="P [kbar]", dpi=400, fontsize=6, colorbar_title="ρ rock [kg/m3]")
@@ -255,22 +255,22 @@ function LoadPhaseDiagrams(PhaseDiagramNames, PlotDiagrams=false);
                     p2 = heatmap(Tvec,Pvec/1e3,Vs',  title=PhaseDiagramName,c=:batlow,  xlabel="T [C]",   ylabel="P [kbar]", dpi=400, fontsize=6, colorbar_title="melt Vs [km/s]")
                     p3 = heatmap(Tvec,Pvec/1e3,VpVs',                       c=:batlow,  xlabel="T [C]",   ylabel="P [kbar]", dpi=400, fontsize=6, colorbar_title="melt Vp/Vs []")
                     plot(p1,p2,p3); png("PhaseDiagram_CombinedSeismicVelocities")
-        
-                end 
-                
+
+                end
+
             end
 
         else
             PhaseData[i]    =   PhaseDiagram([],[],[],  [], [], [], [], [], []);
         end
 
-            
-    
+
+
     end
 
     println("Preloaded phase diagram data from disk ...")
 
-    return PhaseData # Send back the interpolation objects 
+    return PhaseData # Send back the interpolation objects
 
 end
 
@@ -284,57 +284,57 @@ end
         Rho_new, P_bar = ComputeDensityAndPressure(Rho, T, FullGrid, Grid, Tracers, ρ, PhaseDiagramData);
 
         with:
-          
+
         out:
-          
+
 """
 function ComputeDensityAndPressure(Rho, T, FullGrid, Grid, Tracers, ρ, PhaseDiagramData);
-    # This computes density and pressure for the domain. 
+    # This computes density and pressure for the domain.
     # Nonlinear iterations are employed, as (lithostatic) pressure depends on density
 
     dim         =   length(Grid);
 
     # compute phase ratio @ every point
-    PhaseRatio  =   PhaseRatioFromTracers(FullGrid, Grid, Tracers, "DistanceWeighted");       
-    numPhases   =   size(PhaseRatio)[end];  
+    PhaseRatio  =   PhaseRatioFromTracers(FullGrid, Grid, Tracers, "DistanceWeighted");
+    numPhases   =   size(PhaseRatio)[end];
 
     if length(PhaseDiagramData) < numPhases
         error("The array PhaseDiagrams has less entries than the maximum detected phase")
     end
 
-    # Compute pressure 
+    # Compute pressure
     P_bar_new   =   ComputeLithostaticPressure(Rho, Grid);  #
     Error       =   1.0;
     P_bar       =   P_bar_new;
     Rho_new     =   P_bar .* 0.0;
     it          =   1;
     while (Error>1e-3)  & (it<20)           # density changes P, which changes density (if using phase diagrams), which is why we use iterations
-        it          +=  it;         
+        it          +=  it;
         P_bar       =   P_bar_new;
 
         Rho_new     =   P_bar .* 0.0;
         Rho_Phase   =   ones(size(Rho_new));
-        for iPhase  =   1:numPhases 
+        for iPhase  =   1:numPhases
 
             if isa(ρ[iPhase], Number)
                 # We have a constant density
                 Rho_Phase = Rho_Phase*0.0 .+ ρ[iPhase];
-                
+
             elseif ρ[iPhase]=="PD"
                 # we interpolate density from the phase diagram
-                interp_meltRho      =   PhaseDiagramData[iPhase].meltRho;       
-                interp_rockRho      =   PhaseDiagramData[iPhase].rockRho;       
+                interp_meltRho      =   PhaseDiagramData[iPhase].meltRho;
+                interp_rockRho      =   PhaseDiagramData[iPhase].rockRho;
                 interp_meltWt       =   PhaseDiagramData[iPhase].meltWt;
-                
+
                 for i=eachindex(P_bar)
                     rockRho         =   interp_rockRho(T[i],P_bar[i]);
                     meltRho         =   interp_meltRho(T[i],P_bar[i]);
                     meltWt          =   interp_meltWt(T[i],P_bar[i]);
-                    
+
                     Rho_Phase[i]    =   (1.0 - meltWt)*rockRho + meltRho*meltWt;
                 end
             end
-            
+
             if dim==2
                 Rho_new +=  Rho_Phase.*PhaseRatio[:,:,iPhase]
             elseif dim==3
@@ -362,22 +362,22 @@ end
             PhaseRatioAverage!(Average, prop_vec,  PhaseRatio)
 
         with:
-            PhaseRatio - PhaseRatio matrix for the current grid  
-          
+            PhaseRatio - PhaseRatio matrix for the current grid
+
 """
 function PhaseRatioAverage!(Average::Array, prop_vec,  PhaseRatio)
 
-    numPhases   =   size(PhaseRatio)[end];  
+    numPhases   =   size(PhaseRatio)[end];
     dim         =   length(size(PhaseRatio))-1;
-    
+
     # Catch errors
     if numPhases>length(prop_vec)
         error("you did not define sufficient properties.")
     end
 
     Average     =   Average.*0.0;
-    for iPhase  =   1:numPhases 
-        
+    for iPhase  =   1:numPhases
+
         if      dim==2
             Average +=  prop_vec[iPhase].*PhaseRatio[:,:,iPhase]
         elseif  dim==3
@@ -385,44 +385,44 @@ function PhaseRatioAverage!(Average::Array, prop_vec,  PhaseRatio)
         end
 
     end
-    
+
     return Average
 end
 
 
 """
-    This computes seismic velocities 
+    This computes seismic velocities
 
         General form:
 
             Vp,Vs,VpVs = ComputeSeismicVelocities(Grid, T, P_bar, PhaseRatio, PhaseDiagramData)
 
         with:
-            
+
 """
 function ComputeSeismicVelocities(Grid, T, P_bar, PhaseRatio, PhaseDiagramData)
     # This computes seismic velocities on the given grid, taking melt fraction into account
-    # This requires phase diagrams that list Vp,Vs etc. as a function of P and T 
-    
+    # This requires phase diagrams that list Vp,Vs etc. as a function of P and T
+
     dim         =   length(Grid);
     Vp          =   zeros(size(T));
     Vs          =   zeros(size(T));
     VpVs        =   zeros(size(T));
-    
-    numPhases   =   size(PhaseRatio)[end]; 
-    for iPhase  =   1:numPhases 
-    
+
+    numPhases   =   size(PhaseRatio)[end];
+    for iPhase  =   1:numPhases
+
             Vp_av               =   zeros(size(T));
             Vs_av               =   zeros(size(T));
             VpVs_av             =   zeros(size(T));
-            
-            interp_meltVp       =   PhaseDiagramData[iPhase].meltVp;       
-            interp_meltVs       =   PhaseDiagramData[iPhase].meltVs;       
-            interp_meltVpVs     =   PhaseDiagramData[iPhase].meltVpVs;       
-            
-            interp_rockVp       =   PhaseDiagramData[iPhase].rockVp;       
-            interp_rockVs       =   PhaseDiagramData[iPhase].rockVs;   
-            interp_rockVpVs     =   PhaseDiagramData[iPhase].rockVpVs;       
+
+            interp_meltVp       =   PhaseDiagramData[iPhase].meltVp;
+            interp_meltVs       =   PhaseDiagramData[iPhase].meltVs;
+            interp_meltVpVs     =   PhaseDiagramData[iPhase].meltVpVs;
+
+            interp_rockVp       =   PhaseDiagramData[iPhase].rockVp;
+            interp_rockVs       =   PhaseDiagramData[iPhase].rockVs;
+            interp_rockVpVs     =   PhaseDiagramData[iPhase].rockVpVs;
 
             interp_meltWt       =   PhaseDiagramData[iPhase].meltWt;
 
@@ -432,17 +432,17 @@ function ComputeSeismicVelocities(Grid, T, P_bar, PhaseRatio, PhaseDiagramData)
 
                     meltVp          =   interp_meltVp(  T[i],   P_bar[i]);
                     rockVp          =   interp_rockVp(  T[i],   P_bar[i]);
-                    
+
                     meltVs          =   interp_meltVs(  T[i],   P_bar[i]);
                     rockVs          =   interp_rockVs(  T[i],   P_bar[i]);
-                    
+
                     rockVpVs        =   interp_rockVpVs(T[i],   P_bar[i]);
                     meltVpVs        =   interp_meltVpVs(T[i],   P_bar[i]);
 
                     Vp_av[i]        =   rockVp*(1.0 - Phi_melt)     + meltVp*Phi_melt;
                     Vs_av[i]        =   rockVs*(1.0 - Phi_melt)     + meltVs*Phi_melt;
                     VpVs_av[i]      =   rockVpVs*(1.0 - Phi_melt)   + meltVpVs*Phi_melt;
-                    
+
                 end
 
             end

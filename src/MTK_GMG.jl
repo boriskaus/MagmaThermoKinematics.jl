@@ -12,13 +12,25 @@ using GeoParams
 using GeophysicalModelGenerator
 using StructArrays
 using MagmaThermoKinematics.Grid
-using MagmaThermoKinematics.Data
-import MagmaThermoKinematics.Fields2D: CreateArrays as CreateArrays2D
-import MagmaThermoKinematics.Fields3D: CreateArrays as CreateArrays3D
 import MagmaThermoKinematics: NumericalParameters, DikeParameters, TimeDependentProperties
 import MagmaThermoKinematics: update_Tvec!, Dike, InjectDike, km³, kyr, Myr, CreateDikePolygon
 import MagmaThermoKinematics: PhasesFromTracers!
 SecYear = 3600*24*365.25;
+
+@inline _root_module() = parentmodule(@__MODULE__)
+@inline DataArray(x) = getproperty(getproperty(_root_module(), :Data), :Array)(x)
+
+@inline function CreateArrays2D(args...)
+    fields2d = getproperty(_root_module(), :Fields2D)
+    f = getproperty(fields2d, :CreateArrays)
+    return f(args...)
+end
+
+@inline function CreateArrays3D(args...)
+    fields3d = getproperty(_root_module(), :Fields3D)
+    f = getproperty(fields3d, :CreateArrays)
+    return f(args...)
+end
 
 #using CUDA
 
@@ -58,7 +70,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
             end
         end
 
-        Arrays.T           .=   Data.Array(Tnew_cpu)
+        Arrays.T           .=   DataArray(Tnew_cpu)
         Dikes.InjectVol    +=   Vol                                                     # Keep track of injected volume
         Qrate               =   Dikes.InjectVol/Num.time
         Dikes.Qrate_km3_yr  =   Qrate*SecYear/km³
@@ -81,7 +93,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
                         Phases[i] = Phases_init[i]
                     end
                 end
-                Arrays.Phases .= Data.Array(Phases)          # move back to GPU
+                Arrays.Phases .= DataArray(Phases)          # move back to GPU
            end
         end
 
@@ -183,13 +195,13 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
 
     if Num.USE_GPU
         if Num.dim==2
-            Arrays.T_init       .= Data.Array(CartData_input.fields.Temp[:,:,1])
-            Arrays.Phases       .= Data.Array(CartData_input.fields.Phases[:,:,1]);
-            Arrays.Phases_init  .= Data.Array(CartData_input.fields.Phases[:,:,1]);
+            Arrays.T_init       .= DataArray(CartData_input.fields.Temp[:,:,1])
+            Arrays.Phases       .= DataArray(CartData_input.fields.Phases[:,:,1]);
+            Arrays.Phases_init  .= DataArray(CartData_input.fields.Phases[:,:,1]);
         else
-            Arrays.T_init       .= Data.Array(CartData_input.fields.Temp)
-            Arrays.Phases       .= Data.Array(CartData_input.fields.Phases);
-            Arrays.Phases_init  .= Data.Array(CartData_input.fields.Phases);
+            Arrays.T_init       .= DataArray(CartData_input.fields.Temp)
+            Arrays.Phases       .= DataArray(CartData_input.fields.Phases);
+            Arrays.Phases_init  .= DataArray(CartData_input.fields.Phases);
         end
     else
         if Num.dim==2

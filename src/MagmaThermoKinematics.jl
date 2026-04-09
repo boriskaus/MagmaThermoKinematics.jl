@@ -32,10 +32,47 @@ export SecYear, kyr, Myr, km³
 
 export NumericalParameters, DikeParameters, TimeDependentProperties
 
-const _environment_config = Ref{Union{Nothing, NamedTuple{(:model_device, :precision, :dimension), Tuple{Symbol, DataType, Int}}}}(nothing)
+struct EnvironmentConfig
+    model_device::Symbol
+    precision::DataType
+    dimension::Int
+end
+
+const _environment_config = Ref{Union{Nothing, EnvironmentConfig}}(nothing)
+
+@inline function _normalize_environment_config(model_device, precision, dimension)
+    model_device in (:cpu, :gpu, :metal) || throw(ArgumentError("Unsupported model_device=$model_device. Use :cpu, :gpu or :metal."))
+    precision isa DataType || throw(ArgumentError("precision must be a type (e.g. Float64), got $(typeof(precision))."))
+    dimension isa Integer || throw(ArgumentError("dimension must be an integer, got $(typeof(dimension))."))
+
+    dim = Int(dimension)
+    dim in (2, 3) || throw(ArgumentError("Unsupported dimension=$dim. Use 2 or 3."))
+
+    if model_device == :metal && precision != Float32
+        throw(ArgumentError("Metal backend currently supports only Float32 precision. Got $precision."))
+    end
+
+    return EnvironmentConfig(model_device, precision, dim)
+end
+
+@inline _compute_kernel_names() = (:meltfraction, :dϕdT, :density, :heatcapacity, :conductivity, :radioactive_heat, :latent_heat)
+
+@inline _compute_symbol(name::Symbol) = Symbol(:compute_, name)
+@inline _compute_symbol_ps(name::Symbol) = Symbol(:compute_, name, :_ps!)
+@inline _compute_symbol_ps_3D(name::Symbol) = Symbol(:compute_, name, :_ps_3D!)
+
+for kernel_name in _compute_kernel_names()
+    fn = _compute_symbol_ps(kernel_name)
+    fn_3D = _compute_symbol_ps_3D(kernel_name)
+    @eval begin
+        function $(fn) end
+        function $(fn_3D) end
+        export $(fn), $(fn_3D)
+    end
+end
 
 function environment!(model_device, precision, dimension)
-    config = (model_device = model_device, precision = precision, dimension = dimension)
+    config = _normalize_environment_config(model_device, precision, dimension)
     if _environment_config[] == config
         return nothing
     end
@@ -43,41 +80,38 @@ function environment!(model_device, precision, dimension)
         @warn "Reinitializing ParallelStencil from $(_environment_config[]) to $config."
     end
 
-    gpu = model_device == :gpu ? true : false
-
-    # environment variable for XPU
-    @eval begin
-        const USE_GPU = haskey(ENV, "USE_GPU") ? parse(Bool, ENV["USE_GPU"]) : $gpu
-    end
-
     # call appropriate FD module
-    Base.eval(@__MODULE__, Meta.parse("using ParallelStencil.FiniteDifferences$(dimension)D"))
-    eval(Meta.parse("using ParallelStencil.FiniteDifferences$(dimension)D"))
+    finite_differences_module = config.dimension == 2 ? :FiniteDifferences2D : :FiniteDifferences3D
+    Base.eval(@__MODULE__, Expr(:using, Expr(:., :ParallelStencil, finite_differences_module)))
 
     # start ParallelStencil
-    if model_device == :gpu
+    if config.model_device == :gpu
         println("Using GPU for ParallelStencil")
-        #eval(:(@init_parallel_stencil(CUDA, $(precision), $(dimensione))))
-        #Base.eval(@__MODULE__, :(@init_parallel_stencil(CUDA, $(precision), $(dimension))))
-        #Base.eval(Main, Meta.parse("using CUDA"))
+        Base.eval(@__MODULE__, :(using CUDA))
         @eval begin
              ParallelStencil.@reset_parallel_stencil()
-             @init_parallel_stencil(CUDA, $(precision), $(dimension))
+             @init_parallel_stencil(CUDA, $(config.precision), $(config.dimension))
+        end
+    elseif config.model_device == :metal
+        println("Using Metal for ParallelStencil")
+        Base.eval(@__MODULE__, :(using Metal))
+        @eval begin
+             ParallelStencil.@reset_parallel_stencil()
+             @init_parallel_stencil(Metal, $(config.precision), $(config.dimension))
         end
     else
         println("Using CPU for ParallelStencil")
-        #Base.eval(@__MODULE__, :(@init_parallel_stencil(Threads, $(precision), $(dimension))))
         @eval begin
              ParallelStencil.@reset_parallel_stencil()
-             @init_parallel_stencil(Threads, $(precision), $(dimension))
+             @init_parallel_stencil(Threads, $(config.precision), $(config.dimension))
         end
     end
 
-    # GeoParams routines we want to work on GPU:
-    for fni in ("meltfraction","dϕdT","density","heatcapacity","conductivity","radioactive_heat","latent_heat")
-      fn = Symbol(string("compute_$(fni)_ps!"))
-      _fn = Symbol(string("compute_$(fni)"))
-      fn_3D = Symbol(string("compute_$(fni)_ps_3D!"))
+        # GeoParams routines we want to work on GPU:
+        for kernel_name in _compute_kernel_names()
+            fn = _compute_symbol_ps(kernel_name)
+            _fn = _compute_symbol(kernel_name)
+            fn_3D = _compute_symbol_ps_3D(kernel_name)
       @eval begin
         # 2D version
         @parallel_indices (i, j) function $(fn)(A,MatParam, Phases, args)
@@ -125,86 +159,64 @@ function environment!(model_device, precision, dimension)
             return
         end
 
-        export $fn
-        export $fn_3D
       end
     end
 
     # conditional submodule load
-    module_names = Symbol("Diffusion$(dimension)D")
-    if model_device == :gpu
+    if config.model_device == :gpu
         Base.@eval begin
             include(joinpath(@__DIR__, "CUDA/DiffusionCUDA.jl"))
-            @reexport import .$module_names
-            # export Data
+        end
+    elseif config.model_device == :metal
+        Base.@eval begin
+            include(joinpath(@__DIR__, "Metal/DiffusionMetal.jl"))
         end
     else
         Base.@eval begin
             include(joinpath(@__DIR__, "Threads/Diffusion.jl"))
-            @reexport import .$module_names
-            # export Data
         end
     end
 
 
     # Create arrays (depends on PS, so should be loaded after)
-    if model_device == :gpu
-        module_names = Symbol("Fields$(dimension)D")
+    if config.model_device == :gpu
         Base.@eval begin
             include(joinpath(@__DIR__, "CUDA/FieldsCUDA.jl"))
-            @reexport import .$module_names
-            # export CreateArrays
+        end
+    elseif config.model_device == :metal
+        Base.@eval begin
+            include(joinpath(@__DIR__, "Metal/FieldsMetal.jl"))
         end
     else
-        module_names = Symbol("Fields$(dimension)D") 
         Base.@eval begin
-            include(joinpath(@__DIR__, "Threads/Fields.jl"))
-            @reexport import .$module_names
-            # export CreateArrays
+            include(joinpath(@__DIR__, "Threads/FieldsThreads.jl"))
         end
-    end
-
-
-    # Various helpful routines
-    Base.@eval begin
-        include(joinpath(@__DIR__, "Utils.jl"))
-        export Process_ZirconAges, copy_arrays_GPU2CPU!, copy_arrays_CPU2GPU!
     end
 
     # GMG integration
-      if model_device == :gpu
+    if config.model_device == :gpu
         Base.@eval begin
-            include(joinpath(@__DIR__, "MTK_GMG_structs.jl"))
-            export NumParam, DikeParam, TimeDepProps
-
-            include(joinpath(@__DIR__, "MTK_GMG.jl"))
-
             include(joinpath(@__DIR__, "CUDA/MTK_GMG_2D_CUDA.jl"))
-            using .MTK_GMG_2D
-            export MTK_GeoParams_2D
 
             include(joinpath(@__DIR__, "CUDA/MTK_GMG_3D_CUDA.jl"))
-            using .MTK_GMG_3D
-            export MTK_GeoParams_3D
+        end
+    elseif config.model_device == :metal
+        Base.@eval begin
+            include(joinpath(@__DIR__, "Metal/MTK_GMG_2D_Metal.jl"))
+
+            include(joinpath(@__DIR__, "Metal/MTK_GMG_3D_Metal.jl"))
         end
     else
         Base.@eval begin
-            include(joinpath(@__DIR__, "MTK_GMG_structs.jl"))
-            export NumParam, DikeParam, TimeDepProps
-
-            include(joinpath(@__DIR__, "MTK_GMG.jl"))
-
             include(joinpath(@__DIR__, "Threads/MTK_GMG_2D.jl"))
-            using .MTK_GMG_2D
-            export MTK_GeoParams_2D
 
             include(joinpath(@__DIR__, "Threads/MTK_GMG_3D.jl"))
-            using .MTK_GMG_3D
-            export MTK_GeoParams_3D
         end
     end
 
     _environment_config[] = config
+
+    return nothing
 
 
 
@@ -239,6 +251,16 @@ export Tracer, AddDike, HostRockVelocityFromDike, CreateDikePolygon, advect_dike
 # routines related to advection & interpolation
 include("Advection.jl")
 export AdvectTemperature, Interpolate!, CorrectBounds, evaluate_interp_2D, evaluate_interp_3D
+
+# Shared utility routines and MTK/GMG structs are loaded at module initialization
+# to avoid defining new global bindings inside environment!.
+include("Utils.jl")
+export Process_ZirconAges, copy_arrays_GPU2CPU!, copy_arrays_CPU2GPU!
+
+include("MTK_GMG_structs.jl")
+export NumParam, DikeParam, TimeDepProps
+
+include("MTK_GMG.jl")
 
 # Routines related to Parameters.jl, which come in handy in the main routine
 export @unpack, @with_kw

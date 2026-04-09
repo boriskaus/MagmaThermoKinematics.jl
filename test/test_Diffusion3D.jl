@@ -8,7 +8,7 @@ using ParallelStencil, ParallelStencil.FiniteDifferences3D
 using MagmaThermoKinematics
 @static if USE_GPU
     environment!(:gpu, Float64, 3)      # initialize parallel stencil in 2D
-    CUDA.device!(1)                     # select the GPU you use (starts @ zero)
+    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
     @init_parallel_stencil(CUDA, Float64, 3)
 else
     environment!(:cpu, Float64, 3)      # initialize parallel stencil in 2D
@@ -69,7 +69,7 @@ function Diffusion_Gaussian3D(Setup="3D")
     Tnew                   .=   T;
 
 
- 
+
     #ENV["GKSwstype"]="nul"; if isdir("viz2D_out")==false mkdir("viz2D_out") end; loadpath = "./viz2D_out/"; anim = Animation(loadpath,String[])
     #println("Animation directory: $(anim.dir)")
 

@@ -12,7 +12,7 @@ mkpath(man_dir)
 mkpath(assets_movies)
 
 # Copy media used by README so links render in docs.
-for movie in ("Example2D.gif", "Example3D.gif")
+for movie in ("Example2D.gif", "Example3D.gif", "Unzen3D.gif", "Lanin3D.gif")
     src = joinpath(repo_root, "examples", "movies", movie)
     dst = joinpath(assets_movies, movie)
     isfile(src) && cp(src, dst; force = true)
@@ -109,6 +109,7 @@ makedocs(;
                 "MTK_GMG Style" => "man/example_mtk_gmg.md",
                 "MTK_GMG Example 1" => "man/example_mtk_gmg1.md",
                 "MTK_GMG Example 2 (Unzen)" => "man/example_mtk_gmg2.md",
+                "MTK_GMG 3D Examples" => "man/example_mtk_gmg_3d.md"
             ],
             "Numerics and Physics" => "man/numerics.md",
             "Ongoing Development" => "man/development.md",

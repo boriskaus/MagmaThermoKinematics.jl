@@ -13,26 +13,26 @@
             coord: coordinates of the tracer
                     2D - [x; z]
                     3D - [x; y; z]
-            
-            T:          Temperature of the tracer [Celcius]    
+
+            T:          Temperature of the tracer [Celcius]
             Phase:      Phase of tracer
-            Phi:        Melt fraction of tracer 
+            Phi:        Melt fraction of tracer
             time_vec:   Vector with time
-            T_vec :     Vector with temperature values                         
+            T_vec :     Vector with temperature values
 """
 @with_kw mutable struct Tracer
-    num         ::  Int64     =  0           # number
-    coord       ::  Vector{Float64}          # holds coordinates [2D or 3D]
-    T           ::  Float64   =  900         # temperature
-    Phase       ::  Int64     =  1           # Phase (aka rock type) of the Tracer      
-    Phi         ::  Float64   =  0           # Melt fraction on Tracers
-    time_vec    ::  Vector{Float64} = []     # Time vector
-    T_vec       ::  Vector{Float64} = []     # Temperature vector
+    num         ::  Int64       =  0           # number
+    coord       ::  Vector{AbstractFloat}          # holds coordinates [2D or 3D]
+    T           ::AbstractFloat =  900         # temperature
+    Phase       ::  Int64       =  1           # Phase (aka rock type) of the Tracer
+    Phi         ::AbstractFloat =  0           # Melt fraction on Tracers
+    time_vec    ::  Vector{AbstractFloat} = []     # Time vector
+    T_vec       ::  Vector{AbstractFloat} = []     # Temperature vector
 end
-#    Chemistry   ::  Vector{Float64} = []    # Could @ some stage hold the evolving chemistry of the magma
+#    Chemistry   ::  Vector{AbstractFloat} = []    # Could @ some stage hold the evolving chemistry of the magma
 
 """
-    
+
     Function that updates properties on tracers
 
         General form:
@@ -41,60 +41,60 @@ end
 
 
         with:
-            Tracers:   StructArray that contains tracers 
+            Tracers:   StructArray that contains tracers
 
             Grid:   regular grid on which the parameters to be interpolated are defined
                     2D - (X,Z)
                     3D - (X,Y,Z)
-            
-            T:      Temperature that is defined on the grid. 
 
-            Phi:    Solid fraction defined on grid   
+            T:      Temperature that is defined on the grid.
+
+            Phi:    Solid fraction defined on grid
 
             InterpolationMethod:    Interpolation method from grid->Tracers
-                    "Cubic"     -   Cubic interpolation 
+                    "Cubic"     -   Cubic interpolation
                     "Quadratic" -   Quadratic interpolation (default)
                     "Linear"    -   Linear interpolation
 
         out:
             Tracers:    Tracers structure with updated T and melt fraction fields
-      
+
 """
 function UpdateTracers(Tracers, Grid, T, Phi, InterpolationMethod="Quadratic");
     # NOTE: this function allocates. If linear interpolation is sufficient, it's better to use UpdateTracers_T_ϕ! or UpdateTracers_Field!
-    dim = length(Grid)    
+    dim = length(Grid)
     if isassigned(Tracers,1)        # only if the Tracers StructArray is non-empty
-        
+
         # extract coordinates
         coord = Tracers.coord; coord = hcat(coord...)';       # extract array with coordinates of tracers
-    
+
         x   = coord[:,1];
         z   = coord[:,end];
-        if dim==2;                      
+        if dim==2;
             Points_irregular = (x,z);
-        else       
-            y   = coord[:,2];   
-            Points_irregular = (x,y,z);  
+        else
+            y   = coord[:,2];
+            Points_irregular = (x,y,z);
         end
 
         # Correct coordinates (to stay within bounds of models)
         CorrectBounds!(Points_irregular, Grid);
- 
+
         # Interpolate temperature from grid to tracers
         T_tracers           = tuple(zeros(size(x)));
         Interpolate!(T_tracers,         Grid, tuple(T), Points_irregular, InterpolationMethod);
-        
+
         Phi_melt_tracers    = tuple(zeros(size(x)));
         Interpolate!(Phi_melt_tracers,  Grid, tuple(1.0 .- Phi), Points_irregular, InterpolationMethod);    # 1-Phi, as Phi=solid fraction
-      
+
         # Update info on tracers
         for iT = 1:length(Tracers)
             LazyRow(Tracers, iT).T     = T_tracers[1][iT];             # Temperature
             LazyRow(Tracers, iT).Phi   = Phi_melt_tracers[1][iT];      # Melt fraction
         end
-      
+
     end
-    
+
     return Tracers
 
 end
@@ -102,27 +102,27 @@ end
 
 """
     UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T, Phi);
-    
+
 In-place function that interpolates `T` & `Phi`, defined on the `Grid`, to `Tracers`.
 
-- Tracers:  StructArray that contains tracers, where we want to update  
+- Tracers:  StructArray that contains tracers, where we want to update
 - Grid:     Regular grid on which the parameters to be interpolated are defined
                 2D - (X,Z)
                 3D - (X,Y,Z)
-- T:  `T` field that is defined on the grid, to be interpolated to tracers 
-- Phi:  `Phi` field that is defined on the grid, to be interpolated to tracers 
+- T:  `T` field that is defined on the grid, to be interpolated to tracers
+- Phi:  `Phi` field that is defined on the grid, to be interpolated to tracers
 
 Note that we employ linear interpolation using custom functions
 """
 function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T,dim}, Phi::AbstractArray{_T,dim}) where {_T, dim}
 
     if isassigned(Tracers,1)        # only if the Tracers StructArray is non-empty
-        
+
         # Boundaries of the grid
         Bound_min = minimum.(Grid)
         Bound_max = maximum.(Grid)
         N         = length.(Grid)
-        
+
         if dim==2
             Δx = Grid[1][2]-Grid[1][1]
             Δz = Grid[2][2]-Grid[2][1]
@@ -131,7 +131,7 @@ function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T,dim}, Phi
             Δy = Grid[2][2]-Grid[2][1]
             Δz = Grid[3][2]-Grid[3][1]
         end
-        for iT = 1:length(Tracers)  
+        for iT = 1:length(Tracers)
             Trac = Tracers[iT];
             pt   = Trac.coord
 
@@ -139,8 +139,8 @@ function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T,dim}, Phi
             for i=1:dim
                 if pt[i]<Bound_min[i]; pt[i] = Bound_min[i]; end
                 if pt[i]>Bound_max[i]; pt[i] = Bound_max[i]; end
-            end                
-            
+            end
+
             # Linear interpolation:
             if dim==2
                 Trac_T = interpolate_linear_2D(pt[1], pt[2], Bound_min, N, Δx, Δz, T   )
@@ -155,7 +155,7 @@ function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T,dim}, Phi
             LazyRow(Tracers, iT).Phi = Trac_ϕ;
 
         end
-        
+
     end
 
     return nothing
@@ -164,11 +164,11 @@ end
 
 """
     UpdateTracers_Field!(Tracers::StructVector{TRACERS}, Grid::GridData{_T,dim}, Field::AbstractArray{_T,dim}, FieldName::Symbol);
-    
+
 In-place, non-allocating, function that interpolates `Field`, defined on the `Grid`, to the field `FieldName` on `Tracers`.
 
-- `Tracers`:    StructVector that contains tracers, where we want to update the properties. Each tracer should at least contain the fields `coord` (coordinates) and `FieldName`.  
-- `Grid``:      Grid structure that describes the coordinates  
+- `Tracers`:    StructVector that contains tracers, where we want to update the properties. Each tracer should at least contain the fields `coord` (coordinates) and `FieldName`.
+- `Grid``:      Grid structure that describes the coordinates
 - `Field`:      The 2D or 3D field
 - `FieldName``: Symbol of the name of the field on each of the Tracers
 
@@ -177,14 +177,14 @@ Note that we employ linear interpolation using custom functions
 function UpdateTracers_Field!(Tracers::StructVector{TRACERS}, Grid::GridData{_T,dim}, Field::AbstractArray{_T,dim}, FieldName::Symbol) where {TRACERS, _T, dim}
 
     if isassigned(Tracers,1)        # only if the Tracers StructArray is non-empty
-        
+
         if !(Grid.ConstantΔ)
             error("Routine currently only works for constant spacing in every direction")
         end
 
         field_number = find_index_in_struct(fieldnames(TRACERS), FieldName)
 
-        for iT = 1:length(Tracers)  
+        for iT = 1:length(Tracers)
             Trac = Tracers[iT];
             pt   = Trac.coord
 
@@ -193,8 +193,8 @@ function UpdateTracers_Field!(Tracers::StructVector{TRACERS}, Grid::GridData{_T,
             for i=1:dim
                 if (pt[i]<Grid.min[i]);  pt[i] = Grid.min[i]; end
                 if (pt[i]>Grid.max[i]) ; pt[i] = Grid.max[i]; end
-            end                
-            
+            end
+
             # Linear interpolation from grid -> point (assumes constant spacing in each dimension)
             if dim==2
                 Trac_val = interpolate_linear_2D(pt[1], pt[2], Grid.min, Grid.N, Grid.Δ[1], Grid.Δ[2], Field )
@@ -204,14 +204,14 @@ function UpdateTracers_Field!(Tracers::StructVector{TRACERS}, Grid::GridData{_T,
 
             # Update values on tracers
             setproperty!(LazyRow(Tracers, iT), field_number, Trac_val)
-        
+
         end
     end
 
     return nothing
 end
 
-# Helper function, 
+# Helper function,
 function find_index_in_struct(list::NTuple{N,Symbol}, FieldName::Symbol) where N
     ind = 0
     for i=1:N
@@ -221,36 +221,36 @@ function find_index_in_struct(list::NTuple{N,Symbol}, FieldName::Symbol) where N
     end
 end
 
-""" 
+"""
 
-Implements 2D bilinear interpolation 
+Implements 2D bilinear interpolation
 """
 function interpolate_linear_2D(pt_x, pt_z, Bound_min, N, Δx, Δz, Field )
     ix      = floor(Int64, (pt_x - Bound_min[1])/Δx)
     iz      = floor(Int64, (pt_z - Bound_min[2])/Δz)
-    
+
     # deal with boundaries
     ix      = min(ix,N[1]-2)
     iz      = min(iz,N[2]-2)
     ix      = max(ix,1)
     iz      = max(iz,1)
-   
+
     fac_x   = (pt_x - ix*Δx - Bound_min[1])/Δx     # distance to lower left point
     fac_z   = (pt_z - iz*Δz - Bound_min[2])/Δz     # distance to lower left point
-   
-    # interpolate in x    
+
+    # interpolate in x
     val_x_bot =  (1.0-fac_x)*Field[ix+1,iz+1] +  ( fac_x)*Field[ix+2,iz+1]
     val_x_top =  (1.0-fac_x)*Field[ix+1,iz+2] +  ( fac_x)*Field[ix+2,iz+2]
-    
+
     # Interpolate value in z
     val    = (1.0-fac_z)*val_x_bot + fac_z*val_x_top
 
-    return val 
+    return val
 end
 
-""" 
+"""
 
-Implements 3D trilinear interpolation 
+Implements 3D trilinear interpolation
 """
 function interpolate_linear_3D(pt_x, pt_y, pt_z, Bound_min, N, Δx, Δy, Δz, Field )
 
@@ -265,25 +265,25 @@ function interpolate_linear_3D(pt_x, pt_y, pt_z, Bound_min, N, Δx, Δy, Δz, Fi
     ix      = max(ix,1)
     iy      = max(iy,1)
     iz      = max(iz,1)
-    
+
     fac_x = (pt_x - ix*Δx - Bound_min[1])/Δx     # distance to lower left point
     fac_y = (pt_y - iy*Δy - Bound_min[2])/Δy     # distance to lower left point
     fac_z = (pt_z - iz*Δz - Bound_min[3])/Δz     # distance to lower left point
 
-    # Interpolate in x    
+    # Interpolate in x
     val_x_bot_left  =  (1.0-fac_x)*Field[ix+1,iy+1,iz+1] +  ( fac_x)*Field[ix+2,iy+1,iz+1]
     val_x_top_left  =  (1.0-fac_x)*Field[ix+1,iy+1,iz+2] +  ( fac_x)*Field[ix+2,iy+1,iz+2]
     val_x_bot_right =  (1.0-fac_x)*Field[ix+1,iy+2,iz+1] +  ( fac_x)*Field[ix+2,iy+2,iz+1]
     val_x_top_right =  (1.0-fac_x)*Field[ix+1,iy+2,iz+2] +  ( fac_x)*Field[ix+2,iy+2,iz+2]
-    
-    # Interpolate in y    
+
+    # Interpolate in y
     val_y_bot       =  (1.0-fac_y)*val_x_bot_left + fac_y*val_x_bot_right
     val_y_top       =  (1.0-fac_y)*val_x_top_left + fac_y*val_x_top_right
-    
+
     # Interpolate value in z
     val             = (1.0-fac_z)*val_y_bot + fac_z*val_y_top
 
-    return val 
+    return val
 end
 
 """
@@ -297,17 +297,17 @@ end
             Grid:   2D or 3D arrays that describe the grid coordinates
                     2D - (X,Z)
                     3D - (X,Y,Z)
-            
-            NumTracersDir:    The number of tracers per direction 
+
+            NumTracersDir:    The number of tracers per direction
 
             RandomPertur:     Add slight random noise on tracer location?
 
         out:
-            Tracers:    Tracers structure 
+            Tracers:    Tracers structure
 """
 function InitializeTracers(Grid, NumTracersDir=3, RandomPertur=true);
 
-    dim             =   length(Grid)  
+    dim             =   length(Grid)
     R               =   CartesianIndices(Grid[1])
     Ifirst, Ilast   =   first(R), last(R)
     I1              =   oneunit(Ifirst)
@@ -322,13 +322,13 @@ function InitializeTracers(Grid, NumTracersDir=3, RandomPertur=true);
     for i=1:NumTracersDir^dim-1
         append!(Tracers0,[t])
     end
-    
-    # The main assumption is that the grid coordinates specified in GRID are the corner points 
+
+    # The main assumption is that the grid coordinates specified in GRID are the corner points
     # of the cells. The control is given between the cells, as illustrated in the sketch below
     #
     #  X(ix,iz+1)
     #       | o  o  o  |
-    #       x----------x  
+    #       x----------x
     #       |  o   o   |
     #       |   o    o |
     #  X(ix,iz)       X(ix+1,iz)
@@ -336,12 +336,12 @@ function InitializeTracers(Grid, NumTracersDir=3, RandomPertur=true);
     #
     #
     # Note that the CartesianIndices in julia allow writing quite general code that works in any dimension
-    
+
     # Determine center coordinate of current cell & width in every direction
     for idim=1:dim
-        d[idim]    = (Grid[idim][Ifirst+I1] -   Grid[idim][Ifirst]);         # spacing of grid cells 
+        d[idim]    = (Grid[idim][Ifirst+I1] -   Grid[idim][Ifirst]);         # spacing of grid cells
     end
-    d1      =   d/(NumTracersDir); 
+    d1      =   d/(NumTracersDir);
     xl      =   (-d[  1]/2. + d1[  1]/2.)
     zl      =   (-d[end]/2. + d1[end]/2.)
     xs      =   xl:d1[  1]: (xl+(NumTracersDir-1)*d1[  1]);
@@ -350,7 +350,7 @@ function InitializeTracers(Grid, NumTracersDir=3, RandomPertur=true);
         yl  =   (-d[2]/2. + d1[2]/2.)
         ys  =   yl:d1[2]: (yl+(NumTracersDir-1)*d1[2]);
     end
-    
+
     # Generate local, regular, coordinate arrays for the new tracers
     if dim==2
         coord_loc0 = [ [x,z]     for x=xs for z=zs];             # Creates a tuple with coords
@@ -359,42 +359,42 @@ function InitializeTracers(Grid, NumTracersDir=3, RandomPertur=true);
     end
     coord_loc = coord_loc0;
 
-    for I = Ifirst:Ilast-I1         
-       
-      
+    for I = Ifirst:Ilast-I1
+
+
         for idim=1:dim
             cen[idim]  = (Grid[idim][I+I1] +   Grid[idim][I])/2.0;     # center of control volume
-            d[idim]    = (Grid[idim][I+I1] -   Grid[idim][I]);         # spacing of grid cells 
+            d[idim]    = (Grid[idim][I+I1] -   Grid[idim][I]);         # spacing of grid cells
         end
 
-       
+
         ## THIS SECTION ALLOCATES A LOT EVEN WHEN WE HAVE IT FALSE  ---
         # add random perturbation if requested
         if RandomPertur
 
             if dim==2
-                randm       = [(map(rand,(Float64,Float64)) .- 0.5).*2.0 .* (d1[1],d1[2]) for i=eachindex(coord_loc)];        #
-                coord_loc   = [ coord_loc0[i] .+ randm[i] for i=eachindex(coord_loc0)];       # This can potentially be done in-place?   
+                randm       = [((rand(2) .- 0.5).*2.0) .* (d1[1],d1[2]) for i=eachindex(coord_loc)];        #
+                coord_loc   = [ coord_loc0[i] .+ randm[i] for i=eachindex(coord_loc0)];       # This can potentially be done in-place?
             elseif dim==3
-                randm       = [(map(rand,(Float64,Float64, Float64)) .- 0.5).*2.0 .* (d1[1],d1[2],d1[3]) for i=eachindex(coord_loc)];        #
+                randm       = [((rand(3) .- 0.5).*2.0) .* (d1[1],d1[2],d1[3]) for i=eachindex(coord_loc)];        #
                 coord_loc   = [ coord_loc0[i] .+ randm[i] for i=eachindex(coord_loc0)];       # This can potentially be done in-place?
             end
         end
-     
+
         #if 1==0
-        
+
         # Add new tracers with perturbed coords to struct
-        
+
         ## THIS LINE ALLOCATES EVEN MORE, BECAUSE IT IS CALLED MANY TIMES
         ReplaceTracerFields!(Tracers0, coord_loc,cen,size(Tracers,1));     # Replace coord & num and add cen to coordinate
-        
+
         ## THIS LINE IS SLOW BUT DOESN'T ALLOCATE ALL THAT MUCH:
         append!(Tracers, Tracers0);                                             # Extend the Tracers structure and add new fields to it
        # end
     end
 
-    # delete first field, which was empty   
-    StructArrays.foreachfield(v -> deleteat!(v, 1), Tracers);    
+    # delete first field, which was empty
+    StructArrays.foreachfield(v -> deleteat!(v, 1), Tracers);
 
 
     return Tracers
@@ -404,7 +404,7 @@ end
 function ReplaceTracerFields!(Tracers0, coord_loc::Array, cen::Array, num_start::Int)
     for i=1:length(coord_loc)
         Tracers0.coord[i]  = coord_loc[i] + cen;
-        Tracers0.num[i]    = i+num_start-1; 
+        Tracers0.num[i]    = i+num_start-1;
     end
 end
 
@@ -420,17 +420,17 @@ end
             Grid:   2D or 3D arrays that describe the grid coordinates
                     2D - (X,Z)
                     3D - (X,Y,Z)
-            
-            Tracers:    Tracers structure 
+
+            Tracers:    Tracers structure
 
             InterpolationMethod:    Interpolation method used to go from Tracers ->  Grid
-                    "Constant"          -   All particles within a distance [dx,dy,dz] around the grid point 
+                    "Constant"          -   All particles within a distance [dx,dy,dz] around the grid point
                     "DistanceWeighted"  -   Particles closer to the grid point have a stronger weight.
                                             This follows what is described in:
-                                                Duretz, T., May, D.A., Gerya, T.V., Tackley, P.J., 2011. Discretization errors and 
-                                                free surface stabilization in the finite difference and marker-in-cell method for applied geodynamics: 
+                                                Duretz, T., May, D.A., Gerya, T.V., Tackley, P.J., 2011. Discretization errors and
+                                                free surface stabilization in the finite difference and marker-in-cell method for applied geodynamics:
                                                 A numerical study: Geochem. Geophys. Geosyst. 12, https://doi.org/10.1029/2011GC00356
-                                                
+
             BackgroundPhase:        The background phase (used for places that don't have cells, nor surrounding cells )
 
             RequestNumTracers:      Return the number of tracers on every grid cell (default=false)
@@ -438,13 +438,13 @@ end
         optional parameters:
 
             BackgroundPhase:        if this is defined, points where no tracers are present, will get the number BackgroundPhase.
-                                    You need to define this with a keywords as: (, BackgroundPhase=2) 
+                                    You need to define this with a keywords as: (, BackgroundPhase=2)
 
         out:
             PhaseRatio:    Phase ratio on the gridpoints defined by Grid
 
             NumTracers:    The number of tracers per grid point
-            
+
 """
 function PhaseRatioFromTracers(FullGrid, Grid, Tracers; InterpolationMethod="Constant", RequestNumTracers=false, BackgroundPhase=nothing);
 
@@ -452,7 +452,7 @@ function PhaseRatioFromTracers(FullGrid, Grid, Tracers; InterpolationMethod="Con
     if !isnothing(BackgroundPhase)
         if numPhases<BackgroundPhase; numPhases=BackgroundPhase; end
     end
-    dim             =   length(FullGrid)  
+    dim             =   length(FullGrid)
     Nx              =   size(FullGrid[1],1);
     if dim==2
         Nz          =   size(FullGrid[1],2);
@@ -461,24 +461,24 @@ function PhaseRatioFromTracers(FullGrid, Grid, Tracers; InterpolationMethod="Con
         Ny, Nz      =   size(FullGrid[1],2), size(FullGrid[1],3);
         siz         =   [Nx,Ny,Nz,numPhases];
     end
-    PhaseRatio      =   zeros(Tuple(siz));                  # will hold phase ratio @ the end for every phase 
-    
+    PhaseRatio      =   zeros(Tuple(siz));                  # will hold phase ratio @ the end for every phase
+
     R               =   CartesianIndices(FullGrid[1])
     Ifirst, Ilast   =   first(R), last(R)
     I1              =   oneunit(Ifirst)
 
-    # We assume that spacing is constant in all directions; 
+    # We assume that spacing is constant in all directions;
     #   If that is not the case the algorithm becomes a bit more complicated (not implemented)
     d               =   zeros(dim)
     for idim=1:dim
-        d[idim]     =   (FullGrid[idim][Ifirst+I1] -   FullGrid[idim][Ifirst]);         # spacing of grid cells 
+        d[idim]     =   (FullGrid[idim][Ifirst+I1] -   FullGrid[idim][Ifirst]);         # spacing of grid cells
     end
     coord           =   Tracers.coord; coord = hcat(coord...)';                         # extract array with coordinates of all tracers
 
     # Correct coordinates of tracers (to stay within bounds of grid), to not mess up the interpolation below
     CorrectBounds_Array!(coord, Grid);
-  
-    iPhase          =   Tracers.Phase;  
+
+    iPhase          =   Tracers.Phase;
     indX            =   CartesianIndices( FullGrid[  1]);
 
     IndPoints       =   zeros(Int,length(Tracers),1);
@@ -494,25 +494,25 @@ function PhaseRatioFromTracers(FullGrid, Grid, Tracers; InterpolationMethod="Con
 
     NumTracers  =   zeros(Int64,Tuple(siz[1:end-1]));   # Keep track of # of tracers around every point
     indNum      =   CartesianIndices(NumTracers);
-    
+
     if InterpolationMethod=="DistanceWeighted"
         # In case we use a distance based weighting, compute the weight factor here
-        X_g             =   FullGrid[1  ][IndPoints];  # Gridpoint to which the particle belongs 
-        Z_g             =   FullGrid[end][IndPoints];  # Gridpoint to which the particle belongs 
+        X_g             =   FullGrid[1  ][IndPoints];  # Gridpoint to which the particle belongs
+        Z_g             =   FullGrid[end][IndPoints];  # Gridpoint to which the particle belongs
         Weight      =   zeros(size(coord,1),1)
         if dim==2
             evaluate_weight_2D(Weight, coord, X_g, Z_g, d[1], d[end]);
         elseif dim==3
-            Y_g         =   FullGrid[2  ][IndPoints];   
+            Y_g         =   FullGrid[2  ][IndPoints];
             evaluate_weight_3D(Weight, coord, X_g, Y_g, Z_g, d[1], d[2], d[end]);
         end
-    
+
     elseif InterpolationMethod=="Constant"
-        Weight          =   ones(length(Tracers),1); 
+        Weight          =   ones(length(Tracers),1);
     else
         error("Unknown InterpolationMethod=$InterpolationMethod. Choose: [Constant] or [DistanceWeighted]. ")
     end
-    
+
     indPhase             =   CartesianIndices(PhaseRatio);
     if dim==2
         Add_Phase_2D(PhaseRatio, NumTracers, length(Tracers), IndPoints, indPhase, indX, iPhase, indNum, Weight)
@@ -525,26 +525,26 @@ function PhaseRatioFromTracers(FullGrid, Grid, Tracers; InterpolationMethod="Con
         # All "empty" cells will be set to the background phase
         #
         # This is particularly useful in case we have models where Tracers do not 'fill'
-        # the full model space 
+        # the full model space
 
         ind_empty       = findall(x->x==0, NumTracers);
         for I in ind_empty
             # Use phase ratios from nearby point with most tracers
-            if dim==2;  PhaseRatio[:,:  ,BackgroundPhase]    .=   1.0;     
+            if dim==2;  PhaseRatio[:,:  ,BackgroundPhase]    .=   1.0;
             else        PhaseRatio[:,:,:,BackgroundPhase]    .=   1.0;
             end
 
             NumTracers[I] = 1;
         end
 
-    else 
-        # This is for cases where we do cover the full model domain     
-        # 
-        # Deal with points that have zero tracers @ this stage 
+    else
+        # This is for cases where we do cover the full model domain
+        #
+        # Deal with points that have zero tracers @ this stage
         #  We do this by a query of the surrounding (9/27 in 2D/3D) points and use the properties of the closest point
         #
-        # TODO: Deal with cases in which tracers are not defined in the full domain, but only used to track dikes 
-        #       and their properties, while otherwise having a fixed background 
+        # TODO: Deal with cases in which tracers are not defined in the full domain, but only used to track dikes
+        #       and their properties, while otherwise having a fixed background
         ind_empty       = findall(x->x==0, NumTracers);
         R               = CartesianIndices(NumTracers)
         Ifirst, Ilast   = first(R), last(R)
@@ -560,10 +560,10 @@ function PhaseRatioFromTracers(FullGrid, Grid, Tracers; InterpolationMethod="Con
                     smax = NumTracers[J];
                 end
             end
-            
+
             # Use phase ratios from nearby point with most tracers
             for iPhase=1:numPhases
-                if dim==2;  PhaseRatio[I[1],I[2],     iPhase]   =   PhaseRatio[Imax[1],Imax[2],iPhase];     
+                if dim==2;  PhaseRatio[I[1],I[2],     iPhase]   =   PhaseRatio[Imax[1],Imax[2],iPhase];
                 else        PhaseRatio[I[1],I[2],I[3],iPhase]   =   PhaseRatio[Imax[1],Imax[2],Imax[3],iPhase];
                 end
             end
@@ -582,7 +582,7 @@ function PhaseRatioFromTracers(FullGrid, Grid, Tracers; InterpolationMethod="Con
     # Normalize phase ratio, such that sum=1
     for iPhase=1:numPhases
         if dim==2;  PhaseRatio[:,:  ,iPhase]    =   PhaseRatio[:,:  ,iPhase]./sumPhaseRatio;
-        else        PhaseRatio[:,:,:,iPhase]    =   PhaseRatio[:,:,:,iPhase]./sumPhaseRatio; 
+        else        PhaseRatio[:,:,:,iPhase]    =   PhaseRatio[:,:,:,iPhase]./sumPhaseRatio;
         end
     end
 
@@ -605,11 +605,11 @@ and, after calling this function, at every point we will have the fraction of th
 optional Parameters:
 
 - InterpolationMethod:    Interpolation method used to go from Tracers ->  Grid
-    "Constant"          -   All particles within a distance [dx,dy,dz] around the grid point 
+    "Constant"          -   All particles within a distance [dx,dy,dz] around the grid point
     "DistanceWeighted"  -   Particles closer to the grid point have a stronger weight.
                                             This follows what is described in:
-                                                Duretz, T., May, D.A., Gerya, T.V., Tackley, P.J., 2011. Discretization errors and 
-                                                free surface stabilization in the finite difference and marker-in-cell method for applied geodynamics: 
+                                                Duretz, T., May, D.A., Gerya, T.V., Tackley, P.J., 2011. Discretization errors and
+                                                free surface stabilization in the finite difference and marker-in-cell method for applied geodynamics:
                                                 A numerical study: Geochem. Geophys. Geosyst. 12, https://doi.org/10.1029/2011GC00356
 
 - BackgroundPhase:       The background phase (used for places that don't have cells, nor surrounding cells )
@@ -621,7 +621,7 @@ function PhaseRatioFromTracers!(PhaseRatio::AbstractArray, Grid::GridData{_T,dim
     if !isnothing(BackgroundPhase)
      #   if numPhases<BackgroundPhase; numPhases=BackgroundPhase; end
     end
-    
+
     if size(PhaseRatio)[1:dim] != (Grid.N...,)
         error("Size of PhaseRatio array inconsistent with input grid")
     end
@@ -635,8 +635,8 @@ function PhaseRatioFromTracers!(PhaseRatio::AbstractArray, Grid::GridData{_T,dim
     if dim==3
         z = Grid.coord1D[3]
     end
-    
-    # Initialize Phase Ratio 
+
+    # Initialize Phase Ratio
     PhaseRatio .= 0.0;
     if !isnothing(BackgroundPhase)
         if dim==1
@@ -649,17 +649,17 @@ function PhaseRatioFromTracers!(PhaseRatio::AbstractArray, Grid::GridData{_T,dim
     end
 
     NumTracers = zeros(Int64, Grid.N...);   # Tracks # of tracers around every point
-    idx        = zeros(Int64, dim)          # pre-allocate index 
+    idx        = zeros(Int64, dim)          # pre-allocate index
     pt_near    = zeros(_T, dim)             # coordinate of nearest point
     dist       = zeros(_T, dim)             # normalize distance point -> nearest grid point
 
     if isassigned(Tracers,1)                # only if the Tracers StructArray is non-empty
-        
+
         if !(Grid.ConstantΔ)
             error("Routine currently only works for constant spacing in every direction")
         end
 
-        for iT = 1:length(Tracers)  
+        for iT = 1:length(Tracers)
             Trac = Tracers[iT];
             pt   = Trac.coord
             phase= Trac.Phase
@@ -668,8 +668,8 @@ function PhaseRatioFromTracers!(PhaseRatio::AbstractArray, Grid::GridData{_T,dim
             for i=1:dim
                 if pt[i]<Grid.min[i]; pt[i] = Grid.min[i]; end
                 if pt[i]>Grid.max[i]; pt[i] = Grid.max[i]; end
-            end                
-            
+            end
+
             # find Cartesian index of nearest point on grid
             idx .=  round.(Int64, (pt .- Grid.min)./Grid.Δ) .+ 1
             if dim==1
@@ -683,7 +683,7 @@ function PhaseRatioFromTracers!(PhaseRatio::AbstractArray, Grid::GridData{_T,dim
                 Iphase  = CartesianIndex(idx[1], idx[2], idx[3], phase);
             end
             pt_near  =  Tuple(I).*Grid.Δ .- Grid.Δ.+ Grid.min;     # coordinates of nearest point
-            
+
             if InterpolationMethod=="DistanceWeighted"
                 dist  .=  abs.((pt .- pt_near)./Grid.Δ)      # distance of tracers to regular grid point (normalized over Δ)
                 Weight =  prod(dist)                         # weight of point
@@ -691,19 +691,19 @@ function PhaseRatioFromTracers!(PhaseRatio::AbstractArray, Grid::GridData{_T,dim
                 Weight = 1.0;
             end
 
-            
+
             NumTracers[I]       += 1            # Keep track of number of phases
             PhaseRatio[Iphase]  += Weight       # Weight @ every point
-        
+
         end
     end
 
-    # If we have a BG phase set, remove what we set @ the beginning 
+    # If we have a BG phase set, remove what we set @ the beginning
     if !isnothing(BackgroundPhase)
         for I in CartesianIndices(NumTracers)
             if NumTracers[I]>0
                 Iph =  CartesianIndex((Tuple(I)...,BackgroundPhase))
-                PhaseRatio[Iph] = PhaseRatio[Iph] - 1.0;        # subtract the value we added @ the beginning 
+                PhaseRatio[Iph] = PhaseRatio[Iph] - 1.0;        # subtract the value we added @ the beginning
             end
         end
     end
@@ -712,7 +712,7 @@ function PhaseRatioFromTracers!(PhaseRatio::AbstractArray, Grid::GridData{_T,dim
     PhaseRatioSum = sum(PhaseRatio, dims=dim+1);
     for I in CartesianIndices(PhaseRatio)
         Isum = (Tuple(I)[1:dim]...,1)
-        PhaseRatio[I] =   PhaseRatio[I]/PhaseRatioSum[Isum...]   
+        PhaseRatio[I] =   PhaseRatio[I]/PhaseRatioSum[Isum...]
     end
 
     if  !isnothing(ReturnNumTracers)
@@ -726,17 +726,17 @@ end
 """
     PhaseFromTracers!(Phases::AbstractArray, Grid::GridData, Tracers; InterpolationMethod="Constant", BackgroundPhase=nothing)
 
-This computes the `Phases` from the `Tracers` on the gridpoints described by `Grid`. The `Phases` is a matrix with integers that indicates the dominant phase at that point 
+This computes the `Phases` from the `Tracers` on the gridpoints described by `Grid`. The `Phases` is a matrix with integers that indicates the dominant phase at that point
 
 
 optional Parameters:
 
 - InterpolationMethod:    Interpolation method used to go from Tracers ->  Grid
-    "Constant"          -   All particles within a distance [dx,dy,dz] around the grid point 
+    "Constant"          -   All particles within a distance [dx,dy,dz] around the grid point
     "DistanceWeighted"  -   Particles closer to the grid point have a stronger weight.
                                             This follows what is described in:
-                                                Duretz, T., May, D.A., Gerya, T.V., Tackley, P.J., 2011. Discretization errors and 
-                                                free surface stabilization in the finite difference and marker-in-cell method for applied geodynamics: 
+                                                Duretz, T., May, D.A., Gerya, T.V., Tackley, P.J., 2011. Discretization errors and
+                                                free surface stabilization in the finite difference and marker-in-cell method for applied geodynamics:
                                                 A numerical study: Geochem. Geophys. Geosyst. 12, https://doi.org/10.1029/2011GC00356
 
 - BackgroundPhase:       The background phase (used for places that don't have cells, nor surrounding cells )
@@ -746,7 +746,7 @@ function PhasesFromTracers!(Phases::AbstractArray, Grid::GridData{_T,dim}, Trace
 
     maxPhase    = maximum(Tracers.Phase)
     PhaseRatio  = zeros((Grid.N..., maxPhase)...);
-    
+
     # Compute tracers
     NumTracers = PhaseRatioFromTracers!(PhaseRatio, Grid, Tracers, InterpolationMethod=InterpolationMethod, BackgroundPhase=BackgroundPhase,ReturnNumTracers=ReturnNumTracers)
 
@@ -756,7 +756,7 @@ function PhasesFromTracers!(Phases::AbstractArray, Grid::GridData{_T,dim}, Trace
         Phases[I] = maxPhase;
     end
 
-    return NumTracers 
+    return NumTracers
 end
 
 
@@ -764,30 +764,30 @@ end
     This averages a certain property from tracers -> grid. The data will ONLY be set on the grid if we have at least x tracers!
         if not, the origibal data will be kept
 
-        General form:   
+        General form:
 
             TracersToGrid!(Data, FullGrid, Grid, Tracers, Property="T", InterpolationMethod="Constant", RequestNumTracers=false);
 
         with:
             Data:       2D or 3D arrays that have the grid coordinates
-            
+
             FullGrid:   2D or 3D arrays that describe the grid coordinates
                         2D - (X,Z)
                         3D - (X,Y,Z)
-            
-            Grid:       1D vectors describing the cartesian grid            
-            
-            Tracers:    Tracers structure 
 
-            Property:   Property to be interpolated from Tracers2Grid 
+            Grid:       1D vectors describing the cartesian grid
+
+            Tracers:    Tracers structure
+
+            Property:   Property to be interpolated from Tracers2Grid
                         "T" - temperature
 
             InterpolationMethod:    Interpolation method used to go from Tracers ->  Grid
-                    "Constant"          -   All particles within a distance [dx,dy,dz] around the grid point 
+                    "Constant"          -   All particles within a distance [dx,dy,dz] around the grid point
                     "DistanceWeighted"  -   Particles closer to the grid point have a stronger weight.
                                             This follows what is described in:
-                                                Duretz, T., May, D.A., Gerya, T.V., Tackley, P.J., 2011. Discretization errors and 
-                                                free surface stabilization in the finite difference and marker-in-cell method for applied geodynamics: 
+                                                Duretz, T., May, D.A., Gerya, T.V., Tackley, P.J., 2011. Discretization errors and
+                                                free surface stabilization in the finite difference and marker-in-cell method for applied geodynamics:
                                                 A numerical study: Geochem. Geophys. Geosyst. 12, https://doi.org/10.1029/2011GC003567
 
             RequestNumTracers:    Return the number of tracers on every grid cell (default=false)
@@ -796,12 +796,12 @@ end
             PhaseRatio:    Phase ratio on the gridpoints defined by Grid
 
             NumTracers:    The number of tracers per grid point
-            
+
 """
 function TracersToGrid!(Data, FullGrid, Grid, Tracers, Property="T", InterpolationMethod="Constant", RequestNumTracers=false);
 
     numPhases       =   maximum(Tracers.Phase);
-    dim             =   length(FullGrid)  
+    dim             =   length(FullGrid)
     Nx              =   size(FullGrid[1],1);
     if dim==2
         Nz          =   size(FullGrid[1],2);
@@ -809,22 +809,22 @@ function TracersToGrid!(Data, FullGrid, Grid, Tracers, Property="T", Interpolati
         Ny, Nz      =   size(FullGrid[1],2), size(FullGrid[1],3);
     end
     Data_local      =   copy(Data) .* 0.0;                  # will hold the data @ the end
-    
+
     R               =   CartesianIndices(FullGrid[1])
     Ifirst, Ilast   =   first(R), last(R)
     I1              =   oneunit(Ifirst)
 
-    # We assume that spacing is constant in all directions; 
+    # We assume that spacing is constant in all directions;
     #   If that is not the case the algorithm becomes a bit more complicated (not implemented)
     d               =   zeros(dim)
     for idim=1:dim
-        d[idim]     =   (FullGrid[idim][Ifirst+I1] -   FullGrid[idim][Ifirst]);         # spacing of grid cells 
+        d[idim]     =   (FullGrid[idim][Ifirst+I1] -   FullGrid[idim][Ifirst]);         # spacing of grid cells
     end
     coord           =   Tracers.coord; coord = hcat(coord...)';                         # extract array with coordinates of all tracers
 
     # Correct coordinates of tracers (to stay within bounds of grid), to not mess up the interpolation below
     CorrectBounds_Array!(coord, Grid);
-  
+
     indX            =   CartesianIndices( FullGrid[  1]);
     IndPoints       =   zeros(Int,length(Tracers),1);
     if dim==2
@@ -838,23 +838,23 @@ function TracersToGrid!(Data, FullGrid, Grid, Tracers, Property="T", Interpolati
     end
 
     NumTracers  =   zeros(Int64,  size(Data));   # Keep track of # of tracers around every point
-    TotalWeight =   zeros(Float64,size(Data)) 
+    TotalWeight =   zeros(eltype(Data),size(Data))
     indNum      =   CartesianIndices(NumTracers);
-    
+
     if InterpolationMethod=="DistanceWeighted"
         # In case we use a distance based weighting, compute the weight factor here
-        X_g             =   FullGrid[1  ][IndPoints];   # Gridpoint to which the particle belongs 
-        Z_g             =   FullGrid[end][IndPoints];   # Gridpoint to which the particle belongs 
+        X_g             =   FullGrid[1  ][IndPoints];   # Gridpoint to which the particle belongs
+        Z_g             =   FullGrid[end][IndPoints];   # Gridpoint to which the particle belongs
         Weight      =   zeros(size(coord,1),1)
         if dim==2
             evaluate_weight_2D(Weight, coord, X_g, Z_g, d[1], d[end]);
         elseif dim==3
-            Y_g         =   FullGrid[2  ][IndPoints];   
+            Y_g         =   FullGrid[2  ][IndPoints];
             evaluate_weight_3D(Weight, coord, X_g, Y_g, Z_g, d[1], d[2], d[end]);
         end
-    
+
     elseif InterpolationMethod=="Constant"
-        Weight          =   ones(length(Tracers),1); 
+        Weight          =   ones(length(Tracers),1);
     else
         error("Unknown InterpolationMethod=$InterpolationMethod. Choose: [Constant] or [DistanceWeighted]. ")
     end
@@ -866,7 +866,7 @@ function TracersToGrid!(Data, FullGrid, Grid, Tracers, Property="T", Interpolati
     else
         error("Property $(Property) not yet implemented")
     end
-    
+
     SumData(Data_local, NumTracers, TotalWeight, length(Tracers), IndPoints, DataTracers, Weight);   # sum data from ever point
 
     # normalize based on weight & set non-empty data pounts
@@ -894,9 +894,9 @@ end
 function SumData(DataLocal, NumTracers, TotalWeight, nT, IndPoints, DataTracers, Weight)
     Threads.@threads    for iT=1:nT
                                 ind = IndPoints[iT];
-@inbounds                       DataLocal[ind]      +=  Weight[iT]*DataTracers[iT];  
-@inbounds                       TotalWeight[ind]    +=  Weight[iT];  
-@inbounds                       NumTracers[ind]     +=  1;               
+@inbounds                       DataLocal[ind]      +=  Weight[iT]*DataTracers[iT];
+@inbounds                       TotalWeight[ind]    +=  Weight[iT];
+@inbounds                       NumTracers[ind]     +=  1;
                         end
     end
 
@@ -905,8 +905,8 @@ function Add_Phase_2D(PhaseRatio, NumTracers, nT, IndPoints, indPhase, indX, iPh
     Threads.@threads    for iT=1:nT
                                 iX = indX[IndPoints[iT]][1]
                                 iZ = indX[IndPoints[iT]][2]
-@inbounds                       PhaseRatio[   indPhase[iX,iZ,iPhase[iT]]]    +=  Weight[iT];  
-@inbounds                       NumTracers[indNum[iX,iZ             ]]       +=  1;               
+@inbounds                       PhaseRatio[   indPhase[iX,iZ,iPhase[iT]]]    +=  Weight[iT];
+@inbounds                       NumTracers[indNum[iX,iZ             ]]       +=  1;
                         end
     end
 
@@ -915,8 +915,8 @@ function Add_Phase_3D(PhaseRatio, NumTracers, nT, IndPoints, indPhase, indX, iPh
                                     iX = indX[IndPoints[iT]][1]
                                     iY = indX[IndPoints[iT]][2]
                                     iZ = indX[IndPoints[iT]][3]
-    @inbounds                       PhaseRatio[   indPhase[iX,iY,iZ,iPhase[iT]]]    +=  Weight[iT];  
-    @inbounds                       NumTracers[indNum[iX,iY,iZ             ]]       +=  1;               
+    @inbounds                       PhaseRatio[   indPhase[iX,iY,iZ,iPhase[iT]]]    +=  Weight[iT];
+    @inbounds                       NumTracers[indNum[iX,iY,iZ             ]]       +=  1;
                             end
         end
 
@@ -941,7 +941,7 @@ function evaluate_interp_Int_2D(s, itp, Points_irregular)
                             s[i]    = Int(itp(Points_irregular[i,1],Points_irregular[i,2]));
                         end
     end
-    
+
 function evaluate_interp_Int_3D(s, itp, Points_irregular)
     Threads.@threads    for i=1:size(Points_irregular,1)
                             s[i]    = Int(itp(Points_irregular[i,1],Points_irregular[i,2],Points_irregular[i,3]));
@@ -952,23 +952,23 @@ function evaluate_interp_Int_3D(s, itp, Points_irregular)
 
 """
     CorrectBounds_Array!(Points, Grid);
-    
+
 Ensures that the coordinates of Points stay within the bounds
 of the regular grid Grid. Points is an array of size [nPoints, dim]
 
  """
 function CorrectBounds_Array!(Points, Grid);
-    
+
     minC = [minimum(Grid[i]) for i=1:length(Grid)];
     maxC = [maximum(Grid[i]) for i=1:length(Grid)];
-    
+
     Threads.@threads   for iT=1:size(Points,1)
         for i=1:length(Grid);
             if Points[iT,i] < minC[i]
-                Points[iT, i ]  =   minC[i]; 
+                Points[iT, i ]  =   minC[i];
             end
             if Points[iT,i] > maxC[i]
-                Points[iT, i ]  =   maxC[i]; 
+                Points[iT, i ]  =   maxC[i];
             end
         end
     end
@@ -977,11 +977,11 @@ end
 """
         RockType = RockAssemblage(PhaseRatio)
 
-        Computes the most abundant rock assemblage @ every point 
- 
+        Computes the most abundant rock assemblage @ every point
+
 """
 function RockAssemblage(PhaseRatio);
-    # Most abundant rock-type @ every point 
+    # Most abundant rock-type @ every point
     dim         =   length(size(PhaseRatio))-1
     dummy       =   findmax(PhaseRatio,dims=dim+1);
     RockType    =   getindex.(dummy[2], dim+1)          # extract last of Cartesian index, which is the phase
@@ -999,16 +999,16 @@ end
 
         Input:
             Tracers     -       Tracers structure
-            
-            Topo        -       
+
+            Topo        -
                                 (Topo_x, Topo_y, Topo_z)  : topography in 3D
                                 (Topo_x, Topo_z)  :         topography in 2D
             PhaseAir    -       Phase of air
             PhaseRock   -       Phase of rock
- 
+
 """
 function CorrectTracersForTopography!(Tracers, Topo, PhaseAir=1, PhaseRock=2)
-    # Correct Tracers for topography: 
+    # Correct Tracers for topography:
     #       all Tracers with rock phase>1 are set to "air",
     #       all Tracesr with phase==1 is set to phase=2 ("rock")
 
@@ -1020,7 +1020,7 @@ function CorrectTracersForTopography!(Tracers, Topo, PhaseAir=1, PhaseRock=2)
     end
 
     minT,maxT     = minimum(Topo[end]), maximum(Topo[end])
-    
+
     for iT=1:length(Tracers)
         if      (Tracers[iT].coord[end]>maxT) & (Tracers.Phase[iT]>PhaseAir)
             Tracers.Phase[iT] = PhaseAir;               # air
@@ -1029,7 +1029,7 @@ function CorrectTracersForTopography!(Tracers, Topo, PhaseAir=1, PhaseRock=2)
         else
             # need to do interpolation
             pt      = Tracers[iT].coord;
-            
+
             if dim==2
                 z_topo  = interp_linear(pt[1]);
             elseif dim==3
@@ -1039,12 +1039,12 @@ function CorrectTracersForTopography!(Tracers, Topo, PhaseAir=1, PhaseRock=2)
             if      (pt[end]>z_topo) & (Tracers[iT].Phase>PhaseAir)
                 Tracers.Phase[iT] = PhaseAir;          #
             elseif  (pt[end]<z_topo) & (Tracers[iT].Phase==PhaseAir)
-                Tracers.Phase[iT] = PhaseRock; 
+                Tracers.Phase[iT] = PhaseRock;
             end
- 
+
         end
     end
-  
+
 end
 
 """
@@ -1052,14 +1052,14 @@ end
 
         Advects [Tracers] for one timestep (dt) using the [Velocity] defined on the points [Grid].
 
-        Method: can be "Euler","RK2" or "RK4", for 1th, 2nd or 4th order explicit advection scheme, respectively. 
+        Method: can be "Euler","RK2" or "RK4", for 1th, 2nd or 4th order explicit advection scheme, respectively.
 """
 function AdvectTracers!(Tracers, Grid, Velocity, dt, Method="RK2");
-    # Advect tracers forward in time & interpolate T on them 
-    
+    # Advect tracers forward in time & interpolate T on them
+
     dim             =   length(Grid);
     coord     =   hcat(Tracers.coord...)';    # extract array with coordinates of tracers
-    
+
     x   = coord[:,1];
     z   = coord[:,end];
     if dim==2
@@ -1068,7 +1068,7 @@ function AdvectTracers!(Tracers, Grid, Velocity, dt, Method="RK2");
         y                   =   coord[:,2];
         Points_irregular    =   (x,y,z);
     end
-    
+
     # Correct coordinates (to stay withoin bounds of models)
     CorrectBounds!(Points_irregular, Grid);
 
@@ -1099,14 +1099,14 @@ end
 """
     update_Tvec!(Tracers::StructArray, time)
 
-Updates temperature & time vector on every tracer  
+Updates temperature & time vector on every tracer
 """
-function update_Tvec!(Tracers::StructArray, time_val::Float64)
+function update_Tvec!(Tracers::StructArray, time_val::AbstractFloat)
 
-    if isassigned(Tracers,1) 
+    if isassigned(Tracers,1)
         for iT = 1:length(Tracers)
-            LazyRow(Tracers, iT).time_vec = push!(LazyRow(Tracers, iT).time_vec, time_val);             
-            LazyRow(Tracers, iT).T_vec    = push!(LazyRow(Tracers, iT).T_vec,     LazyRow(Tracers, iT).T);     
+            LazyRow(Tracers, iT).time_vec = push!(LazyRow(Tracers, iT).time_vec, time_val);
+            LazyRow(Tracers, iT).T_vec    = push!(LazyRow(Tracers, iT).T_vec,     LazyRow(Tracers, iT).T);
         end
     end
 

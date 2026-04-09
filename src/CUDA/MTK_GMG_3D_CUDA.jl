@@ -12,9 +12,10 @@ using CUDA
 
 @init_parallel_stencil(CUDA, Float64, 3)
 
-using MagmaThermoKinematics.Diffusion3D
-using MagmaThermoKinematics.MTK_GMG
-using MagmaThermoKinematics
+import ..Diffusion3D: GridArray!, Nonlinear_Diffusion_step_3D!, assign!
+using ..MTK_GMG
+import ..NumericalParameters, ..DikeParameters, ..TimeDependentProperties, ..TimeDepProps
+import ..CreateGrid, ..Tracer, ..Dike, ..CreateDikePolygon, ..UpdateTracers_T_ϕ!
 
 
 const SecYear = 3600*24*365.25;

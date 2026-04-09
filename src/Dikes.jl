@@ -53,22 +53,22 @@ with
     #
     # We can also define only a few parameters here (like Q and ΔP) and compute Width/Thickness from that
     # Or we can define thickness 
-    Angle       ::  Vector{Float64} =   [0.]                                  # Strike/Dip angle of dike
+    Angle       ::  Vector{AbstractFloat} =   [0.]                                  # Strike/Dip angle of dike
     Type        ::  String          =   "SquareDike"                          # Type of dike
-    T           ::  Float64         =   950.0                                 # Temperature of dike
-    E           ::  Float64         =   1.5e10                                # Youngs modulus (only required for elastic dikes)
-    ν           ::  Float64         =   0.3                                   # Poison ratio of host rocks
-    ΔP          ::  Float64         =   1e6;                                  # Overpressure of elastic dike
-    Q           ::  Float64         =   1000;                                 # Volume of elastic dike
-    W           ::  Float64         =   (3*E*Q/(16*(1-ν^2)*ΔP))^(1.0/3.0);    # Width of dike/sill   
-    H           ::  Float64         =   8*(1-ν^2)*ΔP*W/(π*E);                 # (maximum) Thickness of dike/sill
-    Center      ::  Vector{Float64} =   [20e3 ; -10e3]                        # Center
+    T           ::AbstractFloat         =   950.0                                 # Temperature of dike
+    E           ::AbstractFloat         =   1.5e10                                # Youngs modulus (only required for elastic dikes)
+    ν           ::AbstractFloat         =   0.3                                   # Poison ratio of host rocks
+    ΔP          ::AbstractFloat         =   1e6;                                  # Overpressure of elastic dike
+    Q           ::AbstractFloat         =   1000;                                 # Volume of elastic dike
+    W           ::AbstractFloat         =   (3*E*Q/(16*(1-ν^2)*ΔP))^(1.0/3.0);    # Width of dike/sill   
+    H           ::AbstractFloat         =   8*(1-ν^2)*ΔP*W/(π*E);                 # (maximum) Thickness of dike/sill
+    Center      ::  Vector{AbstractFloat} =   [20e3 ; -10e3]                        # Center
     Phase       ::  Int64           =   2;                                    # Phase of newly injected magma
 end
 
 struct DikePoly    # polygon that describes the geometry of the dike (only in 2D)
-    x::Float64          # x-coordinates
-    z::Float64          # z-coordinates
+    x::AbstractFloat          # x-coordinates
+    z::AbstractFloat          # z-coordinates
 end
 
 """
@@ -124,7 +124,7 @@ function InjectDike(Tracers, T::Array, Grid, dike::Dike, nTr_dike::Int64; Advect
     
     @unpack H   =   dike
     dim         =   length(Grid);
-    Spacing     =   Vector{Float64}(undef, dim);
+    Spacing     =   Vector{AbstractFloat}(undef, dim);
     
     if dim==2
         coords      =   collect(Iterators.product(Grid[1],Grid[2]))                             # generate coordinates from 1D coordinate vectors   
@@ -730,7 +730,7 @@ function DisplacementAroundPennyShapedDike(dike::Dike, CartesianPoint::SVector, 
     # extract required info from dike structure
     @unpack ν,E,W, H = dike;
 
-    Displacement = Vector{Float64}(undef, dim);
+    Displacement = Vector{AbstractFloat}(undef, dim);
 
     # Compute r & z; note that the Sun solution is defined for z>=0 (vertical)
     if      dim==2; r = sqrt(CartesianPoint[1]^2);                       z = abs(CartesianPoint[2]); 
@@ -738,8 +738,8 @@ function DisplacementAroundPennyShapedDike(dike::Dike, CartesianPoint::SVector, 
 
     if r==0; r=1e-3; end
 
-    B::Float64   =  H;                          # maximum thickness of dike
-    a::Float64   =  W/2.0;                      # radius
+    B::AbstractFloat   =  H;                          # maximum thickness of dike
+    a::AbstractFloat   =  W/2.0;                      # radius
 
     # note, we can either specify B and a, and compute pressure p and injected volume Q
     # Alternatively, it is also possible to:

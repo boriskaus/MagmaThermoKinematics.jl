@@ -8,8 +8,9 @@ using ParallelStencil.FiniteDifferences3D
 using Parameters
 using StructArrays
 using GeophysicalModelGenerator
+using Metal
 
-@init_parallel_stencil(Threads, Float64, 3)
+@init_parallel_stencil(Metal, Float32, 3)
 
 import ..Diffusion3D: GridArray!, Nonlinear_Diffusion_step_3D!, assign!
 using ..MTK_GMG
@@ -75,10 +76,10 @@ There are a few functions that you can overwrite in your user code to customize 
     # Update buffer & phases arrays --------------
     if Num.USE_GPU
         # CPU buffers for advection
-        Tnew_cpu        =   zeros(Float64, Num.Nx, Num.Ny, Num.Nz)
+        Tnew_cpu        =   zeros(Float32, Num.Nx, Num.Ny, Num.Nz)
         Phi_melt_cpu    =   similar(Tnew_cpu)
-        Phases          =   CUDA.ones(Int64,Num.Nx,Num.Ny,Num.Nz)
-        Phases_init     =   CUDA.ones(Int64,Num.Nx,Num.Ny,Num.Nz)
+        Phases          =   Metal.ones(Int64,Num.Nx,Num.Ny,Num.Nz)
+        Phases_init     =   Metal.ones(Int64,Num.Nx,Num.Ny,Num.Nz)
     else
         Tnew_cpu        =   similar(Arrays.T)
         Phi_melt_cpu    =   similar(Arrays.ϕ)
@@ -148,8 +149,8 @@ There are a few functions that you can overwrite in your user code to customize 
         UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);     # Update info on tracers
 
         # copy back to gpu
-        Arrays.Tnew   .= Array(Tnew_cpu)
-        Arrays.ϕ      .= Array(Phi_melt_cpu)
+        Arrays.Tnew   .= Data.Array(Tnew_cpu)
+        Arrays.ϕ      .= Data.Array(Phi_melt_cpu)
 
         @parallel assign!(Arrays.T, Arrays.Tnew)
         @parallel assign!(Arrays.Tnew, Arrays.T)

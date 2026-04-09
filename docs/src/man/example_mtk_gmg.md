@@ -2,6 +2,8 @@
 
 This set of examples demonstrates the MTK_GMG coding style: integrating MagmaThermoKinematics with [GeophysicalModelGenerator](https://github.com/JuliaGeodynamics/GeophysicalModelGenerator.jl) inputs and user-overridden runtime hooks.
 
+The same pattern is designed to scale from synthetic tests to real-world volcano-focused models. The Unzen and Lanin 3D examples show how different geological datasets and initialization workflows can be plugged into one consistent MTK_GMG simulation pipeline.
+
 ## Core Pattern
 
 1. Initialize backend and MTK modules.
@@ -24,3 +26,4 @@ The MTK_GMG style commonly overrides these functions:
 
 - [MTK_GMG Example 1](example_mtk_gmg1.md)
 - [MTK_GMG Example 2 (Unzen)](example_mtk_gmg2.md)
+- [MTK_GMG 3D Examples (Unzen3D, Lanin3D)](example_mtk_gmg_3d.md)

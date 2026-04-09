@@ -8,6 +8,7 @@ export diffusion2D_AxiSymm_step!, diffusion2D_step!, bc2D_x!, bc2D_z!, bc2D_z_bo
         update_relaxed_picard!, Nonlinear_Diffusion_step_2D!, Numeric_params, bc2D_T!, GridArray!
 
 using LinearAlgebra: norm
+using Metal
 using ParallelStencil
 using ParallelStencil.FiniteDifferences2D
 using Parameters
@@ -17,10 +18,7 @@ using MagmaThermoKinematics.Grid
 import ..compute_meltfraction_ps!, ..compute_dϕdT_ps!, ..compute_density_ps!, ..compute_heatcapacity_ps!,
        ..compute_conductivity_ps!, ..compute_radioactive_heat_ps!, ..compute_latent_heat_ps!
 
-
-@init_parallel_stencil(Threads, Float64, 2)
-
-#include("Diffusion_combined2D.jl")
+@init_parallel_stencil(Metal, Float32, 2)
 
 """
 Diffusion2D provides GPU/CPU functions
@@ -95,13 +93,13 @@ end
 Various parameters that control the nonlinear solver
 """
 @with_kw struct Numeric_params
-    ω::AbstractFloat            =   0.8;            # relaxation parameter for nonlinear iterations
+    ω::AbstractFloat                    =   0.8;            # relaxation parameter for nonlinear iterations
     max_iter::Int64             =   1500;           # max. number of nonlinear iterations
     verbose::Bool               =   false;          # print info?
-    convergence::AbstractFloat  =   1e-4;           # nonlinear convergence criteria
+    convergence::AbstractFloat          =   1e-4;           # nonlinear convergence criteria
     axisymmetric::Bool          =   false;          # Axisymmetric or 2D?
     flux_bottom_BC::Bool        =   false;          # Flux bottom BC?
-    flux_bottom::AbstractFloat  =   0.0;            # flux @ bottom, in case flux_bottom_BC=true
+    flux_bottom::AbstractFloat          =   0.0;            # flux @ bottom, in case flux_bottom_BC=true
     deactivate_La_at_depth::Bool=   false;
 end
 
@@ -124,7 +122,6 @@ function Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
     args2  = (;z=-Arrays.Z)
     Tupdate = similar(Arrays.Tnew)                 # relaxed picard update
     Tbuffer = similar(Arrays.T)
-
     while err>Num.convergence && iter<Num.max_iter
 
         @parallel (1:Nx, 1:Nz) compute_meltfraction_ps!(Arrays.ϕ, Mat_tup, Phases, args1)
@@ -349,7 +346,6 @@ end
 end
 
 
-
 """
 Diffusion3D provides 3D diffusion routines
 """
@@ -357,21 +353,26 @@ module Diffusion3D
 
 # load required julia packages
 using LinearAlgebra: norm
+using Metal
 using ParallelStencil
 using ParallelStencil.FiniteDifferences3D
 using Parameters
 
-using MagmaThermoKinematics.Grid
 
+using MagmaThermoKinematics.Grid
 import ..compute_meltfraction_ps_3D!, ..compute_dϕdT_ps_3D!, ..compute_density_ps_3D!, ..compute_heatcapacity_ps_3D!,
-    ..compute_conductivity_ps_3D!, ..compute_radioactive_heat_ps_3D!, ..compute_latent_heat_ps_3D!
+       ..compute_conductivity_ps_3D!, ..compute_radioactive_heat_ps_3D!, ..compute_latent_heat_ps_3D!
 
 export  diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_flux!, assign!, GridArray!,
         Numeric_params, Nonlinear_Diffusion_step_3D!, bc3D_T!
 
-@init_parallel_stencil(Threads, Float64, 3)
+@init_parallel_stencil(Metal, Float32, 3)
 
-#include("Diffusion_combined3D.jl")
+
+export  diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_flux!, assign!, GridArray!,
+        Numeric_params, Nonlinear_Diffusion_step_3D!, bc3D_T!
+
+#__init__() = @init_parallel_stencil(Threads, Float64, 3)
 
 @parallel function assign!(A::AbstractArray, B::AbstractArray)
     @all(A) = @all(B)
@@ -424,13 +425,13 @@ end
 Various parameters that control the nonlinear solver
 """
 @with_kw struct Numeric_params
-    ω::AbstractFloat                  =   0.8;            # relaxation parameter for nonlinear iterations
+    ω::AbstractFloat                    =   0.8;            # relaxation parameter for nonlinear iterations
     max_iter::Int64             =   1500;           # max. number of nonlinear iterations
     verbose::Bool               =   false;          # print info?
-    convergence::AbstractFloat        =   1e-4;           # nonlinear convergence criteria
+    convergence::AbstractFloat          =   1e-4;           # nonlinear convergence criteria
     axisymmetric::Bool          =   false;          # Axisymmetric or 2D?
     flux_bottom_BC::Bool        =   false;          # Flux bottom BC?
-    flux_bottom::AbstractFloat        =   0.0;            # flux @ bottom, in case flux_bottom_BC=true
+    flux_bottom::AbstractFloat          =   0.0;            # flux @ bottom, in case flux_bottom_BC=true
     deactivate_La_at_depth::Bool=   false;
 end
 
@@ -452,7 +453,6 @@ function Nonlinear_Diffusion_step_3D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
     args2 = (;z=-Arrays.Z)
     Tupdate = similar(Arrays.Tnew)                 # relaxed picard update
     Tbuffer = similar(Arrays.T)
-
     while err>Num.convergence && iter<Num.max_iter
 
         @parallel (1:Nx, 1:Ny, 1:Nz) compute_meltfraction_ps_3D!(Arrays.ϕ, Mat_tup, Phases, args1)

@@ -38,7 +38,7 @@ features:
 
   - icon: "⚙️"
     title: CPU and GPU Backends
-    details: Built on ParallelStencil with a backend selection workflow for threaded CPU and CUDA GPU runs.
+    details: Built on ParallelStencil with a backend selection workflow for threaded CPU and CUDA/Metal GPU runs.
     link: /man/quickstart
 
   - icon: "📚"
