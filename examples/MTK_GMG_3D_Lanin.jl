@@ -1,5 +1,5 @@
 using  Random
-const USE_GPU=false;
+const USE_GPU=true;
 if USE_GPU
     using CUDA      # needs to be loaded before loading Parallkel=
 end
@@ -7,7 +7,7 @@ end
 using MagmaThermoKinematics
 @static if USE_GPU
     environment!(:gpu, Float64, 3)      # initialize parallel stencil in 2D
-    CUDA.device!(1)                     # select the GPU you use (starts @ zero)
+    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
 else
     environment!(:cpu, Float64, 3)      # initialize parallel stencil in 2D
 end
@@ -55,6 +55,9 @@ Topo_cart = load_GMG(joinpath(@__DIR__,"Topo_cart_Lanin3D"))
 write_paraview(Topo_cart,joinpath(@__DIR__,"Topo_cart_Lanin3D"));
 x_range     =   (-20,20)
 z_range     =   (-40,5)
+Nx          =   64
+Ny          =   64
+Nz          =   64
 X,Y,Z       =   xyz_grid(range(x_range[1],x_range[2], length=Nx),range(x_range[1],x_range[2], length=Ny),range(z_range[1],z_range[2], length=Nz))
 Data_3D     =   CartData(X,Y,Z,(Phases=zeros(Int64,size(X)),Temp=zeros(size(X))));       # 3D dataset
 
@@ -84,6 +87,7 @@ write_paraview(Data_3D, "Initial_Setup_Lanin3D")
 # Define numerical parameters
 Num         = NumParam( SimName="Lanin3D_new", axisymmetric=false,
                         maxTime_Myrs=0.025,
+                        Nx = Nx, Ny = Ny, Nz = Nz,
                         fac_dt=0.2,
                         SaveOutput_steps=5, CreateFig_steps=1000, plot_tracers=false, advect_polygon=false,
                         USE_GPU=USE_GPU,
