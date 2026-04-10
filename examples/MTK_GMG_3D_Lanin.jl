@@ -21,14 +21,14 @@ using Random, GeoParams, GeophysicalModelGenerator
 const rng = Random.seed!(1234);     # same seed such that we can reproduce results
 
 
-
-function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
-    if mod(Num.it,10) == 0
-        println("$(Num.it), $(Num.time/SecYear/1e3) kyrs; max(T)=$(maximum(Arrays.Tnew))")
+@static if USE_GPU
+    function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+        if mod(Num.it,10) == 0
+            println("$(Num.it), $(Num.time/SecYear/1e3) kyrs; max(T)=$(maximum(Arrays.Tnew))")
+        end
+        return nothing
     end
-    return nothing
 end
-
 # Test setup
 println("===============================================")
 println("            Performing MTK model               ")
@@ -52,12 +52,12 @@ if !isfile(joinpath(@__DIR__,"Topo_cart_Lanin3D.jld2"))
 end
 
 Topo_cart = load_GMG(joinpath(@__DIR__,"Topo_cart_Lanin3D"))
-write_paraview(Topo_cart,joinpath(@__DIR__,"Topo_cart_Lanin3D"));
+!isfile(joinpath(@__DIR__,"Topo_cart_Lanin3D.vts")) ? write_paraview(Topo_cart,joinpath(@__DIR__,"Topo_cart_Lanin3D")) : nothing
 x_range     =   (-20,20)
 z_range     =   (-40,5)
-Nx          =   64
-Ny          =   64
-Nz          =   64
+Nx          =   128
+Ny          =   128
+Nz          =   128
 X,Y,Z       =   xyz_grid(range(x_range[1],x_range[2], length=Nx),range(x_range[1],x_range[2], length=Ny),range(z_range[1],z_range[2], length=Nz))
 Data_3D     =   CartData(X,Y,Z,(Phases=zeros(Int64,size(X)),Temp=zeros(size(X))));       # 3D dataset
 
@@ -81,15 +81,15 @@ Volume  = 4/3*pi*r^3 # equivalent 3D volume of the anomaly [km^3]
 ind = findall((Data_3D.x.val .- x_c).^2 .+ (Data_3D.y.val .- y_c).^2 .+ (Data_3D.z.val .- z_c).^2 .< r^2)
 Data_3D.fields.Temp[ind] .= 800.0
 
-write_paraview(Data_3D, "Initial_Setup_Lanin3D")
+!isfile(joinpath(@__DIR__,"Initial_Setup_Lanin3D.vts")) ? write_paraview(Data_3D, joinpath(@__DIR__,"Initial_Setup_Lanin3D")) : nothing
 
 
 # Define numerical parameters
-Num         = NumParam( SimName="Lanin3D_new", axisymmetric=false,
+Num         = NumParam( SimName="Lanin3D_$(Nx)^3", axisymmetric=false,
                         maxTime_Myrs=0.025,
                         Nx = Nx, Ny = Ny, Nz = Nz,
                         fac_dt=0.2,
-                        SaveOutput_steps=5, CreateFig_steps=1000, plot_tracers=false, advect_polygon=false,
+                        SaveOutput_steps=20, CreateFig_steps=1000, plot_tracers=false, advect_polygon=false,
                         USE_GPU=USE_GPU,
                         AddRandomSills = true, RandomSills_timestep=5);
 

@@ -52,12 +52,12 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
     if floor(Num.time/Dikes.InjectionInterval)> Dikes.dike_inj
         Dikes.dike_inj      =   floor(Num.time/Dikes.InjectionInterval)                 # Keeps track on what was injected already
         if Num.dim==2
-            T_bottom  =   Tnew_cpu[:,1]
+            T_bottom  =   Array(@view Arrays.T[:,1])
         else
-            T_bottom  =   Tnew_cpu[:,:,1]
+            T_bottom  =   Array(@view Arrays.T[:,:,1])
         end
         dike      =   Dike(W=Dikes.W_in, H=Dikes.H_in, Type=Dikes.Type, T=Dikes.T_in_Celsius, Center=Dikes.Center[:],  Angle=Dikes.Angle, Phase=Dikes.DikePhase);               # "Reference" dike with given thickness,radius and T
-        Tnew_cpu .=   Array(Arrays.T)
+        copyto!(Tnew_cpu, Arrays.T)
 
         Tracers, Tnew_cpu,Vol,Dikes.dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, Dikes.nTr_dike, dike_poly=Dikes.dike_poly);     # Add dike, move hostrocks
 
@@ -131,9 +131,9 @@ function MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::Gri
     push!(time_props.Time_vec,      Num.time);   # time
     push!(time_props.MeltFraction,  sum( Arrays.ϕ)/(Num.Nx*Num.Nz));    # melt fraction
 
-    ind = findall(Arrays.T.>700);
-    if ~isempty(ind)
-        Tav_magma_Time = sum(Arrays.T[ind])/length(ind)     # average T of part with magma
+    n_hot = sum(Arrays.T .> 700)
+    if n_hot > 0
+        Tav_magma_Time = mapreduce(t -> t > 700 ? t : zero(t), +, Arrays.T) / n_hot     # average T of part with magma
     else
         Tav_magma_Time = NaN;
     end
@@ -169,12 +169,12 @@ Initialize arrays used in the computations
 function MTK_initialize_arrays(Num::NumericalParameters)
 
     if Num.dim==2
-        Arrays = CreateArrays2D(Dict( (Num.Nx,  Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0),
+        Arrays = CreateArrays2D(Dict( (Num.Nx,  Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Tupdate=0, Tbuffer=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0),
                                     (Num.Nx-1,Num.Nz  )=>(qx=0,Kx=0, Rc=0),
                                     (Num.Nx  ,Num.Nz-1)=>(qz=0,Kz=0 )
                                     ))
     else
-        Arrays = CreateArrays3D(Dict( (Num.Nx,  Num.Ny  , Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, X=0, Y=0, Z=0, P=0),
+        Arrays = CreateArrays3D(Dict( (Num.Nx,  Num.Ny  , Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Tupdate=0, Tbuffer=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, X=0, Y=0, Z=0, P=0),
                                     (Num.Nx-1,Num.Ny  , Num.Nz  )=>(qx=0,Kx=0),
                                     (Num.Nx  ,Num.Ny-1, Num.Nz  )=>(qy=0,Ky=0),
                                     (Num.Nx  ,Num.Ny  , Num.Nz-1)=>(qz=0,Kz=0 )

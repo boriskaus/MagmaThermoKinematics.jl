@@ -94,13 +94,13 @@ end
 Various parameters that control the nonlinear solver
 """
 @with_kw struct Numeric_params
-    ω::AbstractFloat            =   0.8;            # relaxation parameter for nonlinear iterations
+    ω::Float64            =   0.8;            # relaxation parameter for nonlinear iterations
     max_iter::Int64             =   1500;           # max. number of nonlinear iterations
     verbose::Bool               =   false;          # print info?
-    convergence::AbstractFloat        =   1e-4;           # nonlinear convergence criteria
+    convergence::Float64        =   1e-4;           # nonlinear convergence criteria
     axisymmetric::Bool          =   false;          # Axisymmetric or 2D?
     flux_bottom_BC::Bool        =   false;          # Flux bottom BC?
-    flux_bottom::AbstractFloat  =   0.0;            # flux @ bottom, in case flux_bottom_BC=true
+    flux_bottom::Float64  =   0.0;            # flux @ bottom, in case flux_bottom_BC=true
     deactivate_La_at_depth::Bool=   false;
 end
 
@@ -121,8 +121,6 @@ function Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
         args1  = (;T=Arrays.T_K, P=Arrays.P)
     end
     args2  = (;z=-Arrays.Z)
-    Tupdate = similar(Arrays.Tnew)                 # relaxed picard update
-    Tbuffer = similar(Arrays.T)
     while err>Num.convergence && iter<Num.max_iter
 
         @parallel (1:Nx, 1:Nz) compute_meltfraction_ps!(Arrays.ϕ, Mat_tup, Phases, args1)
@@ -155,19 +153,19 @@ function Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
         end
 
         # Use a relaxed Picard iteration to update T used for (nonlinear) material properties:
-        @parallel update_relaxed_picard!(Tupdate, Arrays.Tnew, Arrays.T_it_old, Num.ω)
+        @parallel update_relaxed_picard!(Arrays.Tupdate, Arrays.Tnew, Arrays.T_it_old, Num.ω)
 
         # Update T_K (used above to compute material properties)
-        @parallel assign!(args1.T, Tupdate,  273.15)   # all GeoParams routines expect T in K
-        @parallel update_Tbuffer!(Tbuffer, Arrays.Tnew, Arrays.T_it_old)
+        @parallel assign!(args1.T, Arrays.Tupdate,  273.15)   # all GeoParams routines expect T in K
+        @parallel update_Tbuffer!(Arrays.Tbuffer, Arrays.Tnew, Arrays.T_it_old)
 
         # Compute error
-        err     = norm(Tbuffer)/maximum(Arrays.Tnew)
+        err     = norm(Arrays.Tbuffer)/maximum(Arrays.Tnew)
         if Num.verbose==true
             println("  Nonlinear iteration $(iter), error=$(err)")
         end
 
-        @parallel assign!(Arrays.T_it_old, Tupdate)                   # Store Tnew of last iteration step
+        @parallel assign!(Arrays.T_it_old, Arrays.Tupdate)                   # Store Tnew of last iteration step
         iter   += 1
 
     end
@@ -425,13 +423,13 @@ end
 Various parameters that control the nonlinear solver
 """
 @with_kw struct Numeric_params
-    ω::AbstractFloat            =   0.8;            # relaxation parameter for nonlinear iterations
+    ω::Float64            =   0.8;            # relaxation parameter for nonlinear iterations
     max_iter::Int64             =   1500;           # max. number of nonlinear iterations
     verbose::Bool               =   false;          # print info?
-    convergence::AbstractFloat  =   1e-4;           # nonlinear convergence criteria
+    convergence::Float64  =   1e-4;           # nonlinear convergence criteria
     axisymmetric::Bool          =   false;          # Axisymmetric or 2D?
     flux_bottom_BC::Bool        =   false;          # Flux bottom BC?
-    flux_bottom::AbstractFloat  =   0.0;            # flux @ bottom, in case flux_bottom_BC=true
+    flux_bottom::Float64  =   0.0;            # flux @ bottom, in case flux_bottom_BC=true
     deactivate_La_at_depth::Bool=   false;
 end
 
@@ -451,8 +449,6 @@ function Nonlinear_Diffusion_step_3D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
         args1  = (;T=Arrays.T_K, P=Arrays.P)
     end
     args2 = (;z=-Arrays.Z)
-    Tupdate = similar(Arrays.Tnew)                 # relaxed picard update
-    Tbuffer = similar(Arrays.T)
 
     while err>Num.convergence && iter<Num.max_iter
 
@@ -482,19 +478,19 @@ function Nonlinear_Diffusion_step_3D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
         end
 
         # Use a relaxed Picard iteration to update T used for (nonlinear) material properties:
-        @parallel update_relaxed_picard!(Tupdate, Arrays.Tnew, Arrays.T_it_old, Num.ω)
+        @parallel update_relaxed_picard!(Arrays.Tupdate, Arrays.Tnew, Arrays.T_it_old, Num.ω)
 
         # Update T_K (used above to compute material properties)
-        @parallel assign!(args1.T, Tupdate,  273.15)   # all GeoParams routines expect T in K
-        @parallel update_Tbuffer!(Tbuffer, Arrays.Tnew, Arrays.T_it_old)
+        @parallel assign!(args1.T, Arrays.Tupdate,  273.15)   # all GeoParams routines expect T in K
+        @parallel update_Tbuffer!(Arrays.Tbuffer, Arrays.Tnew, Arrays.T_it_old)
 
         # Compute error
-        err     = norm(Tbuffer)/maximum(Arrays.Tnew)
+        err     = norm(Arrays.Tbuffer)/maximum(Arrays.Tnew)
         if Num.verbose==true
             println("  Nonlinear iteration $(iter), error=$(err)")
         end
 
-        @parallel assign!(Arrays.T_it_old, Tupdate)                   # Store Tnew of last iteration step
+        @parallel assign!(Arrays.T_it_old, Arrays.Tupdate)                   # Store Tnew of last iteration step
         iter   += 1
 
     end

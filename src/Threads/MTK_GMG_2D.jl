@@ -79,7 +79,7 @@ There are a few functions that you can overwrite in your user code to customize 
     # Update buffer & phases arrays --------------
     if Num.USE_GPU
         # CPU buffers for advection
-        Tnew_cpu        =   Matrix{AbstractFloat}(undef, Num.Nx, Num.Nz)
+        Tnew_cpu        =   Matrix{Float64}(undef, Num.Nx, Num.Nz)
         Phi_melt_cpu    =   similar(Tnew_cpu)
         Phases          =   CUDA.ones(Int64,Num.Nx,Num.Nz)
         Phases_init     =   CUDA.ones(Int64,Num.Nx,Num.Nz)
@@ -147,18 +147,15 @@ There are a few functions that you can overwrite in your user code to customize 
         # --------------------------------------------
 
         # Update variables ---------------------------
-        # copy to cpu
-        Tnew_cpu      .= Data.Array(Arrays.Tnew)
-        Phi_melt_cpu  .= Data.Array(Arrays.ϕ)
+        # Copy fields only when tracers are active.
+        if isassigned(Tracers,1)
+            copyto!(Tnew_cpu, Arrays.Tnew)
+            copyto!(Phi_melt_cpu, Arrays.ϕ)
 
-        UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);     # Update info on tracers
-
-        # copy back to gpu
-        Arrays.Tnew   .= Data.Array(Tnew_cpu)
-        Arrays.ϕ      .= Data.Array(Phi_melt_cpu)
+            UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);     # Update info on tracers
+        end
 
         @parallel assign!(Arrays.T, Arrays.Tnew)
-        @parallel assign!(Arrays.Tnew, Arrays.T)
         # --------------------------------------------
 
         # Update info on tracers ---------------------

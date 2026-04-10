@@ -22,14 +22,14 @@
 """
 @with_kw mutable struct Tracer
     num         ::  Int64       =  0           # number
-    coord       ::  Vector{AbstractFloat}          # holds coordinates [2D or 3D]
-    T           ::AbstractFloat =  900         # temperature
+    coord       ::  Vector{Float64}          # holds coordinates [2D or 3D]
+    T           ::Float64 =  900         # temperature
     Phase       ::  Int64       =  1           # Phase (aka rock type) of the Tracer
-    Phi         ::AbstractFloat =  0           # Melt fraction on Tracers
-    time_vec    ::  Vector{AbstractFloat} = []     # Time vector
-    T_vec       ::  Vector{AbstractFloat} = []     # Temperature vector
+    Phi         ::Float64 =  0           # Melt fraction on Tracers
+    time_vec    ::  Vector{Float64} = []     # Time vector
+    T_vec       ::  Vector{Float64} = []     # Temperature vector
 end
-#    Chemistry   ::  Vector{AbstractFloat} = []    # Could @ some stage hold the evolving chemistry of the magma
+#    Chemistry   ::  Vector{Float64} = []    # Could @ some stage hold the evolving chemistry of the magma
 
 """
 
@@ -60,7 +60,7 @@ end
             Tracers:    Tracers structure with updated T and melt fraction fields
 
 """
-function UpdateTracers(Tracers, Grid, T, Phi, InterpolationMethod="Quadratic");
+function UpdateTracers(Tracers, Grid, T, Phi, InterpolationMethod="Quadratic")
     # NOTE: this function allocates. If linear interpolation is sufficient, it's better to use UpdateTracers_T_ϕ! or UpdateTracers_Field!
     dim = length(Grid)
     if isassigned(Tracers,1)        # only if the Tracers StructArray is non-empty
@@ -305,7 +305,7 @@ end
         out:
             Tracers:    Tracers structure
 """
-function InitializeTracers(Grid, NumTracersDir=3, RandomPertur=true);
+function InitializeTracers(Grid, NumTracersDir=3, RandomPertur=true)
 
     dim             =   length(Grid)
     R               =   CartesianIndices(Grid[1])
@@ -446,7 +446,7 @@ end
             NumTracers:    The number of tracers per grid point
 
 """
-function PhaseRatioFromTracers(FullGrid, Grid, Tracers; InterpolationMethod="Constant", RequestNumTracers=false, BackgroundPhase=nothing);
+function PhaseRatioFromTracers(FullGrid, Grid, Tracers; InterpolationMethod="Constant", RequestNumTracers=false, BackgroundPhase=nothing)
 
     numPhases       =   maximum(Tracers.Phase);
     if !isnothing(BackgroundPhase)
@@ -798,7 +798,7 @@ end
             NumTracers:    The number of tracers per grid point
 
 """
-function TracersToGrid!(Data, FullGrid, Grid, Tracers, Property="T", InterpolationMethod="Constant", RequestNumTracers=false);
+function TracersToGrid!(Data, FullGrid, Grid, Tracers, Property="T", InterpolationMethod="Constant", RequestNumTracers=false)
 
     numPhases       =   maximum(Tracers.Phase);
     dim             =   length(FullGrid)
@@ -957,7 +957,7 @@ Ensures that the coordinates of Points stay within the bounds
 of the regular grid Grid. Points is an array of size [nPoints, dim]
 
  """
-function CorrectBounds_Array!(Points, Grid);
+function CorrectBounds_Array!(Points, Grid)
 
     minC = [minimum(Grid[i]) for i=1:length(Grid)];
     maxC = [maximum(Grid[i]) for i=1:length(Grid)];
@@ -980,7 +980,7 @@ end
         Computes the most abundant rock assemblage @ every point
 
 """
-function RockAssemblage(PhaseRatio);
+function RockAssemblage(PhaseRatio)
     # Most abundant rock-type @ every point
     dim         =   length(size(PhaseRatio))-1
     dummy       =   findmax(PhaseRatio,dims=dim+1);
@@ -1054,7 +1054,7 @@ end
 
         Method: can be "Euler","RK2" or "RK4", for 1th, 2nd or 4th order explicit advection scheme, respectively.
 """
-function AdvectTracers!(Tracers, Grid, Velocity, dt, Method="RK2");
+function AdvectTracers!(Tracers, Grid, Velocity, dt, Method="RK2")
     # Advect tracers forward in time & interpolate T on them
 
     dim             =   length(Grid);
@@ -1101,7 +1101,7 @@ end
 
 Updates temperature & time vector on every tracer
 """
-function update_Tvec!(Tracers::StructArray, time_val::AbstractFloat)
+function update_Tvec!(Tracers::StructArray, time_val::Float64)
 
     if isassigned(Tracers,1)
         for iT = 1:length(Tracers)
