@@ -100,7 +100,7 @@ end
 @views function MainCode_2D(Mat_tup, Num, Dikes);
 
     # Array & grid initializations ---------------
-    Arrays = CreateArrays(Dict( (Num.Nx,  Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0),
+    Arrays = CreateArrays(Dict( (Num.Nx,  Num.Nz  )=>(T=0,T_K=0,  Tupdate=0, Tbuffer=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0),
                                 (Num.Nx-1,Num.Nz  )=>(qx=0,Kx=0, Rc=0),
                                 (Num.Nx  ,Num.Nz-1)=>(qz=0,Kz=0 )
                                 ))
