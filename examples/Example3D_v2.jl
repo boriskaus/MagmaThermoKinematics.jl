@@ -1,11 +1,16 @@
-using MagmaThermoKinematics
-using ParallelStencil, ParallelStencil.FiniteDifferences3D
-@init_parallel_stencil(Threads, Float64, 3)
 const USE_GPU=false;
 if USE_GPU
-    environment!(:gpu, Float64, 3)      # initialize parallel stencil in 2D
+    using CUDA
+end
+using ParallelStencil, ParallelStencil.FiniteDifferences3D
+
+using MagmaThermoKinematics
+@static if USE_GPU
+    environment!(:gpu, Float64, 3)
+    @init_parallel_stencil(CUDA, Float64, 3)
 else
-    environment!(:cpu, Float64, 3)      # initialize parallel stencil in 2D
+    environment!(:cpu, Float64, 3)
+    @init_parallel_stencil(Threads, Float64, 3)
 end
 using MagmaThermoKinematics.Diffusion3D
 using MagmaThermoKinematics.Fields3D
@@ -41,7 +46,7 @@ using WriteVTK
     nTr_dike                =   300;                        # number of tracers inserted per dike
 
     # Array initializations
-    Arrays = CreateArrays(Dict( (Nx,  Ny, Nz)=>(T=0,T_K=0, T_it_old=0, K=1.5, Rho=2800, Cp=1050, Tnew=0,  Hr=0, Hl=0, Kc=1, P=0, X=0, Y=0, Z=0, ϕₒ=0, ϕ=0, dϕdT=0),
+    Arrays = CreateArrays(Dict( (Nx,  Ny, Nz)=>(T=0,T_K=0, T_it_old=0, Tupdate=0, Tbuffer=0, K=1.5, Rho=2800, Cp=1050, Tnew=0,  Hr=0, Hl=0, Kc=1, P=0, X=0, Y=0, Z=0, ϕₒ=0, ϕ=0, dϕdT=0),
                                 (Nx-1,Ny,Nz)=>(qx=0,Kx=0), (Nx, Ny-1, Nz)=>(qy=0,Ky=0 ) , (Nx, Ny, Nz-1)=>(qz=0,Kz=0 ) ))
     # CPU buffers
     Tnew_cpu                =   zeros(Float64, Grid.N...)

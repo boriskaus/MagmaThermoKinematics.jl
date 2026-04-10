@@ -19,7 +19,7 @@ end
 using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
 using MagmaThermoKinematics.Fields2D
 using MagmaThermoKinematics.MTK_GMG_2D
-using MagmaThermoKinematics.GeophysicalModelGenerator
+using GeophysicalModelGenerator
 using GeoParams, Random
 using Plots                             # plots
 using MagmaThermoKinematics.MTK_GMG     # Allow overwriting user routines

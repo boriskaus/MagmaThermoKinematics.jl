@@ -1,5 +1,5 @@
 using  Random
-const USE_GPU=true;
+const USE_GPU=false;
 if USE_GPU
     using CUDA      # needs to be loaded before loading Parallkel=
 end
@@ -15,7 +15,6 @@ using MagmaThermoKinematics.Diffusion3D # to load AFTER calling environment!()
 using MagmaThermoKinematics.Fields3D
 using MagmaThermoKinematics.MTK_GMG
 using MagmaThermoKinematics.MTK_GMG_3D
-using MagmaThermoKinematics.GeophysicalModelGenerator
 using Random, GeoParams, GeophysicalModelGenerator
 
 const rng = Random.seed!(1234);     # same seed such that we can reproduce results
@@ -124,4 +123,4 @@ Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Temperature[C]",  Ar
 Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Temp",         Array(Arrays.Tnew));
 Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Phases",       Array(Arrays.Phases));
 Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "MeltFraction", Array(Arrays.ϕ));
-save_GMG(joinpath($(Num.SimName),"Unzen3D_MTK_final"), Data_set3D_out)
+save_GMG(joinpath(Num.SimName,"Unzen3D_MTK_final"), Data_set3D_out)
