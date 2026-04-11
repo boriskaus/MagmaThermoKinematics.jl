@@ -1,7 +1,9 @@
-# MagmaThermoKinematics.jl
+<h1> <img src="docs/src/assets/logo.png" alt="MagmaThermoKinematics.jl" width="50"> MagmaThermoKinematics.jl </h1>
 
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://boriskaus.github.io/MagmaThermoKinematics.jl/dev/)
 [![Build Status](https://github.com/boriskaus/MagmaThermoKinematics.jl/workflows/CI/badge.svg)](https://github.com/boriskaus/MagmaThermoKinematics.jl/actions)
 [![DOI](https://zenodo.org/badge/337510164.svg)](https://zenodo.org/badge/latestdoi/337510164)
+[![codecov](https://codecov.io/gh/boriskaus/MagmaThermoKinematics.jl/graph/badge.svg?token=RHOL3SU2YE)](https://codecov.io/gh/boriskaus/MagmaThermoKinematics.jl)
 
 Understanding how magmatic systems work is of interest to a wide range of Earth Scientists.
 
@@ -22,7 +24,7 @@ Below we give a number of example scripts that show how it can be used to simula
   - [Citing](#citing-magmathermokinematics.jl)
 
 ## 100-lines 2D example
-A simple example that simulates the emplacement of dikes within the crust over a period of 10'000 years is shown below. 
+A simple example that simulates the emplacement of dikes within the crust over a period of 10'000 years is shown below.
 
 ![2-D dike intrusion](examples/movies/Example2D.gif)
 
@@ -34,7 +36,7 @@ using ParallelStencil, ParallelStencil.FiniteDifferences2D
 using MagmaThermoKinematics
 @static if USE_GPU
     environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    CUDA.device!(1)                     # select the GPU you use (starts @ zero)
+    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
     @init_parallel_stencil(CUDA, Float64, 2)
 else
     environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
@@ -138,7 +140,7 @@ Time_vec, Melt_Time, Tracers, Grid, Arrays = MainCode_2D(); # start the main cod
 plot(Time_vec/kyr, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example2D") # Create plot
 
 ```
-The main routines are thus ``InjectDike(..)``, which inserts a new dike (of given dimensions and orientation) into the domain, and ``Nonlinear_Diffusion_step_2D!(...)``, which computes thermal diffusion. Variable thermal conductivity, and latent heat are all taken into account. 
+The main routines are thus ``InjectDike(..)``, which inserts a new dike (of given dimensions and orientation) into the domain, and ``Nonlinear_Diffusion_step_2D!(...)``, which computes thermal diffusion. Variable thermal conductivity, and latent heat are all taken into account.
 
 If you have a multicore processor (chances are very high that you do), the code can also take advantage of that. The only thing that you have to do is start julia with multiple threads, which on linux or macOS is done with:
 ```
@@ -193,24 +195,24 @@ using WriteVTK
     Grid                    =   CreateGrid(size=(Nx,Ny,Nz), extent=(30e3, 30e3, 30e3)) # grid points & domain size
     Num                     =   Numeric_params(verbose=false)                   # Nonlinear solver options
 
-    # Set material parameters                                       
+    # Set material parameters
     MatParam                =   (
-            SetMaterialParams(Name="Rock", Phase=1, 
-                 Density    = ConstantDensity(ρ=2800kg/m^3),               
+            SetMaterialParams(Name="Rock", Phase=1,
+                 Density    = ConstantDensity(ρ=2800kg/m^3),
                HeatCapacity = ConstantHeatCapacity(Cp=1050J/kg/K),
-               Conductivity = ConstantConductivity(k=1.5Watt/K/m),       
+               Conductivity = ConstantConductivity(k=1.5Watt/K/m),
                  LatentHeat = ConstantLatentHeat(Q_L=350e3J/kg),
                     Melting = MeltingParam_Caricchi()),
-                                )      
+                                )
 
     GeoT                    =   20.0/1e3;                   # Geothermal gradient [K/km]
     W_in, H_in              =   5e3,    0.5e3;              # Width and thickness of dike
     T_in                    =   900;                        # Intrusion temperature
     InjectionInterval       =   0.1kyr;                     # Inject a new dike every X kyrs
     maxTime                 =   15kyr;                      # Maximum simulation time in kyrs
-    H_ran, W_ran            =   Grid.L[1]*0.3,Grid.L[3]*0.4;# Size of domain in which we randomly place dikes and range of angles   
+    H_ran, W_ran            =   Grid.L[1]*0.3,Grid.L[3]*0.4;# Size of domain in which we randomly place dikes and range of angles
     DikeType                =   "ElasticDike"               # Type to be injected ("ElasticDike","SquareDike")
-    κ                       =   1.2/(2800*1050);            # thermal diffusivity   
+    κ                       =   1.2/(2800*1050);            # thermal diffusivity
     dt                      =   minimum(Grid.Δ.^2)/κ/10;    # stable timestep (required for explicit FD)
     nt                      =   floor(Int64,maxTime/dt);    # number of required timesteps
     nTr_dike                =   300;                        # number of tracers inserted per dike
@@ -218,18 +220,18 @@ using WriteVTK
     # Array initializations
     Arrays = CreateArrays(Dict( (Nx,  Ny, Nz)=>(T=0,T_K=0, T_it_old=0, K=1.5, Rho=2800, Cp=1050, Tnew=0,  Hr=0, Hl=0, Kc=1, P=0, X=0, Y=0, Z=0, ϕₒ=0, ϕ=0, dϕdT=0),
                                 (Nx-1,Ny,Nz)=>(qx=0,Kx=0), (Nx, Ny-1, Nz)=>(qy=0,Ky=0 ) , (Nx, Ny, Nz-1)=>(qz=0,Kz=0 ) ))
-    # CPU buffers 
+    # CPU buffers
     Tnew_cpu                =   zeros(Float64, Grid.N...)
     Phi_melt_cpu            =   similar(Tnew_cpu)
     if USE_GPU; Phases      =   CUDA.ones(Int64,Grid.N...)
     else        Phases      =   ones(Int64,Grid.N...)   end
 
-    @parallel (1:Nx,1:Ny,1:Nz) GridArray!(Arrays.X,Arrays.Y,Arrays.Z, Grid.coord1D[1], Grid.coord1D[2], Grid.coord1D[3])   
-    Tracers                 =   StructArray{Tracer}(undef, 1)                           # Initialize tracers   
+    @parallel (1:Nx,1:Ny,1:Nz) GridArray!(Arrays.X,Arrays.Y,Arrays.Z, Grid.coord1D[1], Grid.coord1D[2], Grid.coord1D[3])
+    Tracers                 =   StructArray{Tracer}(undef, 1)                           # Initialize tracers
     dike                    =   Dike(W=W_in,H=H_in,Type=DikeType,T=T_in);               # "Reference" dike with given thickness,radius and T
     Arrays.T               .=   -Arrays.Z.*GeoT;                                        # Initial (linear) temperature profile
 
-    # Preparation of VTK/Paraview output 
+    # Preparation of VTK/Paraview output
     if isdir("viz3D_out")==false mkdir("viz3D_out") end; loadpath = "./viz3D_out/"; pvd = paraview_collection("Example3D");
 
     time, dike_inj, InjectVol, Time_vec,Melt_Time = 0.0, 0.0, 0.0,zeros(nt,1),zeros(nt,1);
@@ -237,10 +239,10 @@ using WriteVTK
 
         if floor(time/InjectionInterval)> dike_inj       # Add new dike every X years
             dike_inj  =     floor(time/InjectionInterval)                                               # Keeps track on what was injected already
-            cen       =     (Grid.max .+ Grid.min)./2 .+ rand(-0.5:1e-3:0.5, 3).*[W_ran;W_ran;H_ran];   # Randomly vary center of dike 
-            if cen[end]<-12e3;  Angle_rand = [rand(80.0:0.1:100.0); rand(0:360)]                        # Dikes at depth             
+            cen       =     (Grid.max .+ Grid.min)./2 .+ rand(-0.5:1e-3:0.5, 3).*[W_ran;W_ran;H_ran];   # Randomly vary center of dike
+            if cen[end]<-12e3;  Angle_rand = [rand(80.0:0.1:100.0); rand(0:360)]                        # Dikes at depth
             else                Angle_rand = [rand(-10.0:0.1:10.0); rand(0:360)] end                    # Sills at shallower depth
-            dike      =     Dike(dike, Center=cen[:],Angle=Angle_rand);                                 # Specify dike with random location/angle but fixed size/T 
+            dike      =     Dike(dike, Center=cen[:],Angle=Angle_rand);                                 # Specify dike with random location/angle but fixed size/T
             Tnew_cpu .=     Array(Arrays.T)
             Tracers, Tnew_cpu, Vol   =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, nTr_dike);   # Add dike, move hostrocks
             Arrays.T .=     Data.Array(Tnew_cpu)
@@ -251,12 +253,12 @@ using WriteVTK
         Nonlinear_Diffusion_step_3D!(Arrays, MatParam, Phases, Grid, dt, Num)   # Perform a nonlinear diffusion step
 
         copy_arrays_GPU2CPU!(Tnew_cpu, Phi_melt_cpu, Arrays.Tnew, Arrays.ϕ)     # Copy arrays to CPU to update properties
-        UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);      # Update info on tracers 
+        UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);      # Update info on tracers
 
         @parallel assign!(Arrays.T, Arrays.Tnew)
         @parallel assign!(Arrays.Tnew, Arrays.T)                                # Update temperature
         time                =   time + dt;                                      # Keep track of evolved time
-        Melt_Time[it]       =   sum(Arrays.ϕ)/prod(Grid.N)                      # Melt fraction in crust    
+        Melt_Time[it]       =   sum(Arrays.ϕ)/prod(Grid.N)                      # Melt fraction in crust
         Time_vec[it]        =   time;                                           # Vector with time
         println(" Timestep $it = $(round(time/kyr*100)/100) kyrs")
 
@@ -267,7 +269,7 @@ using WriteVTK
             outfiles = vtk_save(vtkfile); pvd[time/kyr] = vtkfile                                   # Save file & update pvd file
         end
     end
-    vtk_save(pvd) 
+    vtk_save(pvd)
     return Time_vec, Melt_Time, Tracers, Grid, Arrays;
 end # end of main function
 
@@ -283,14 +285,14 @@ We rely on [ParallelStencil.jl](https://github.com/omlins/ParallelStencil.jl) fo
 If you want to apply it to a real-world system, you can use the [GeophysicalModelGenerator](https://github.com/JuliaGeodynamics/GeophysicalModelGenerator.jl) package to create a setup. We have a few examples to demonstrate his package integrates with `MTK`.
 
 ## Installation
-After installing julia in the usual manner, you can add (and test) the package with 
+After installing julia in the usual manner, you can add (and test) the package with
 ```
 julia>]
   pkg> add MagmaThermoKinematics
   pkg> test MagmaThermoKinematics
 ```
 Dependencies such as `ParallelStencil.jl` are installed automatically.
-The testing suite run above performs a large number of tests and, among others, compares the results with analytical solutions for advection/diffusion. Let us know if you encounter problems. 
+The testing suite run above performs a large number of tests and, among others, compares the results with analytical solutions for advection/diffusion. Let us know if you encounter problems.
 
 If you want to run the examples and create plots, you may also want to install these packages:
 ```
@@ -316,7 +318,7 @@ julia> include("examples/Example2D_ZASSy.jl")
 
 ## Ongoing development
 
-We are working on a more general magmatic systems software as part of the [MAGMA](https://magma.uni-mainz.de) project funded by the European Research Council. That will not only include thermal diffusion solvers and kinematically emplaced dikes (as done here), but also mechanical multiphysics solvers (to compute stress and deformation rate in the system, for example). For that we follow a modular and reusable software approach, where various software componentys are are defined in external package and re-usable packages, will which ultimately make it easier to write new software and apply that to natural cases. An example is the [GeoParams.jl](https://github.com/JuliaGeodynamics/GeoParams.jl) package where material properties (e.g., density, heat capacity, thermal conductivity) are defined, that can be used by other packages (such as MagmaThermoKinematics.jl). The advantage of this approach is that such material properties only have to be defined once, and can subsequently be used in a whole range of software packages.  
+We are working on a more general magmatic systems software as part of the [MAGMA](https://magma.uni-mainz.de) project funded by the European Research Council. That will not only include thermal diffusion solvers and kinematically emplaced dikes (as done here), but also mechanical multiphysics solvers (to compute stress and deformation rate in the system, for example). For that we follow a modular and reusable software approach, where various software componentys are are defined in external package and re-usable packages, will which ultimately make it easier to write new software and apply that to natural cases. An example is the [GeoParams.jl](https://github.com/JuliaGeodynamics/GeoParams.jl) package where material properties (e.g., density, heat capacity, thermal conductivity) are defined, that can be used by other packages (such as MagmaThermoKinematics.jl). The advantage of this approach is that such material properties only have to be defined once, and can subsequently be used in a whole range of software packages.
 If you are interested in this, have a look at [https://github.com/JuliaGeodynamics/](https://github.com/JuliaGeodynamics/).
 
 ## Benchmarking
@@ -329,7 +331,7 @@ Note that quite large differences in the thermal structure can occur, even for t
 ## Related work
 Thermal-kinematic codes such as the ones presented here have been around for some time with various degrees of sophistication (e.g., [1],[2],[3],[4],[5]). A recent effort in Julia, similar to what we do here, is described in [6].
 
-Yet, as far as we are aware, the source code of these other packages is currently not openly available (at least not in a non-binary format), which makes it often non-straightforward to understand what is actually done under the hood. No existing code works in 3D and can take advantage of GPU's.  
+Yet, as far as we are aware, the source code of these other packages is currently not openly available (at least not in a non-binary format), which makes it often non-straightforward to understand what is actually done under the hood. No existing code works in 3D and can take advantage of GPU's.
 
 [1] Dufek, J., & Bergantz, G. W. (2005). Lower crustal magma genesis and preservation: A stochastic framework for the evaluation of basalt–crust interaction. *Journal of Petrology*, 46(11), 2167–2195. [https://doi.org/10.1093/petrology/egi049](https://doi.org/10.1093/petrology/egi049)
 
@@ -342,7 +344,7 @@ Yet, as far as we are aware, the source code of these other packages is currentl
 [6] Melnik, O.E., Utkin, I.S., Bindeman, I.N., 2021. Magma Chamber Formation by Dike Accretion and Crustal Melting: 2D Thermo‐Compositional Model With Emphasis on Eruptions and Implication for Zircon Records. *J Geophys Res Solid Earth* 126. [https://doi.org/10.1029/2021JB023008](https://doi.org/10.1029/2021JB023008). A preprint of their work is available [here](https://www.essoar.org/doi/10.1002/essoar.10505594.1).
 
 
-## Citing MagmaThermoKinematics.jl 
+## Citing MagmaThermoKinematics.jl
 
 If you use MagmaThermoKinematics, please cite:
 
@@ -354,4 +356,4 @@ The Schmitt et al. (2023) paper shows benchmarks of how `MagmaThermoKinematics` 
 
 > **Warning**
 >
-> Code users are fully responsible for the results they publish. There are many things that can go wrong with numerical modelling, even if you use a well-benchmarked code (too low resolution, don't check timestep convergence, poor nonlinear convergence, used beyond what the software was developed for, etc. etc. - we have seen many epic failures over the years). If you want us to double-check, you can send us your manuscript (and input file!) before you submit.  
+> Code users are fully responsible for the results they publish. There are many things that can go wrong with numerical modelling, even if you use a well-benchmarked code (too low resolution, don't check timestep convergence, poor nonlinear convergence, used beyond what the software was developed for, etc. etc. - we have seen many epic failures over the years). If you want us to double-check, you can send us your manuscript (and input file!) before you submit.

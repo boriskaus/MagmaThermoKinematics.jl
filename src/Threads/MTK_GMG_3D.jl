@@ -9,11 +9,12 @@ using Parameters
 using StructArrays
 using GeophysicalModelGenerator
 
-__init__() = @init_parallel_stencil(Threads, Float64, 3)
+@init_parallel_stencil(Threads, Float64, 3)
 
-using MagmaThermoKinematics.Diffusion3D
-using MagmaThermoKinematics.MTK_GMG
-using MagmaThermoKinematics
+import ..Diffusion3D: GridArray!, Nonlinear_Diffusion_step_3D!, assign!
+using ..MTK_GMG
+import ..NumericalParameters, ..DikeParameters, ..TimeDependentProperties, ..TimeDepProps
+import ..CreateGrid, ..Tracer, ..Dike, ..CreateDikePolygon, ..UpdateTracers_T_ϕ!
 
 
 const SecYear = 3600*24*365.25;
@@ -140,18 +141,15 @@ There are a few functions that you can overwrite in your user code to customize 
         # --------------------------------------------
 
         # Update variables ---------------------------
-        # copy to cpu
-        Tnew_cpu      .= Array(Arrays.Tnew)
-        Phi_melt_cpu  .= Array(Arrays.ϕ)
+        # Copy fields only when tracers are active.
+        if isassigned(Tracers,1)
+            copyto!(Tnew_cpu, Arrays.Tnew)
+            copyto!(Phi_melt_cpu, Arrays.ϕ)
 
-        UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);     # Update info on tracers
-
-        # copy back to gpu
-        Arrays.Tnew   .= Array(Tnew_cpu)
-        Arrays.ϕ      .= Array(Phi_melt_cpu)
+            UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);     # Update info on tracers
+        end
 
         @parallel assign!(Arrays.T, Arrays.Tnew)
-        @parallel assign!(Arrays.Tnew, Arrays.T)
         # --------------------------------------------
 
         # Update info on tracers ---------------------

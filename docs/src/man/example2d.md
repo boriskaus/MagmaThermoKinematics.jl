@@ -8,14 +8,18 @@ A simple example that simulates emplacement of dikes within the crust over a per
 
 The code to simulate this, including visualization, is <100 lines (if we remove empty ones) and the key parts are shown below.
 
+Note:
+- `environment!(...)` initializes MagmaThermoKinematics internals.
+- The additional `@init_parallel_stencil(...)` in this example is intentional because this script itself uses ParallelStencil macros such as `@parallel`.
+
 ```julia
 const USE_GPU=false;
-if USE_GPU; using CUDA; end      # needs to be loaded before loading Parallkel=
+if USE_GPU; using CUDA; end      # needs to be loaded before ParallelStencil macros are used in this script
 using ParallelStencil, ParallelStencil.FiniteDifferences2D
 using MagmaThermoKinematics
 @static if USE_GPU
     environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    CUDA.device!(1)                     # select the GPU you use (starts @ zero)
+    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
     @init_parallel_stencil(CUDA, Float64, 2)
 else
     environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
@@ -54,7 +58,7 @@ nt                      =   floor(Int64,maxTime/dt);    # number of required tim
 nTr_dike                =   300;                        # number of tracers inserted per dike
 
 # Array initializations
-Arrays = CreateArrays(Dict( (Nx,  Nz)=>(T=0,T_K=0, T_it_old=0, K=1.5, Rho=2800, Cp=1050, Tnew=0,  Hr=0, Hl=0, Kc=1, P=0, X=0, Z=0, ϕₒ=0, ϕ=0, dϕdT=0),
+Arrays = CreateArrays(Dict( (Nx,  Nz)=>(T=0,T_K=0, T_it_old=0, K=1.5, Rho=2800, Cp=1050, Tnew=0, Tupdate=0, Tbuffer=0,  Hr=0, Hl=0, Kc=1, P=0, X=0, Z=0, ϕₒ=0, ϕ=0, dϕdT=0),
                                 (Nx-1,Nz)=>(qx=0,Kx=0), (Nx, Nz-1)=>(qz=0,Kz=0 ) ))
 # CPU buffers
 Tnew_cpu                =   Matrix{Float64}(undef, Grid.N...)

@@ -22,7 +22,7 @@ hero:
 
 features:
   - icon: "🔥"
-    title: Magma Thermal Modeling
+    title: Thermal Modeling
     details: Simulate cooling, crystallization, latent heat effects, and evolving melt fractions.
     link: /man/numerics
 
@@ -30,6 +30,11 @@ features:
     title: Dike and Sill Emplacement
     details: Kinematic intrusion workflows in 2D and 3D, including randomized emplacement scenarios.
     link: /man/examples
+
+  - icon: "🔗"
+    title: Material Parameterizations
+    details: GeoParams-based material properties and melting parameterizations for flexible physics setups.
+    link: /man/MeltingParameterisations
 
   - icon: "⚙️"
     title: CPU and GPU Backends

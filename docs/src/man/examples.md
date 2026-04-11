@@ -9,6 +9,7 @@ For dedicated walkthrough pages, see:
 - [MTK_GMG Style](example_mtk_gmg.md)
 - [MTK_GMG Example 1](example_mtk_gmg1.md)
 - [MTK_GMG Example 2 (Unzen)](example_mtk_gmg2.md)
+- [MTK_GMG 3D Examples (Unzen and Lanin)](example_mtk_gmg_3d.md)
 
 ## Main Scripts
 
@@ -26,6 +27,12 @@ For dedicated walkthrough pages, see:
 3D example:
 
 ![](../assets/movies/Example3D.gif)
+
+MTK_GMG 3D examples:
+
+![](../assets/movies/Unzen3D.gif)
+
+![](../assets/movies/Lanin3D.gif)
 
 ## Running an Example
 
@@ -51,4 +58,5 @@ The full README-equivalent code snippets are available in dedicated tabs:
 ## Notes
 
 - GPU execution typically requires loading CUDA before backend initialization.
+- `environment!(...)` initializes package internals; if an example script uses ParallelStencil macros directly (`@zeros`, `@parallel`, etc.), it should also call `@init_parallel_stencil(...)` in script scope.
 - 3D output is commonly explored with ParaView using VTK and PVD files.

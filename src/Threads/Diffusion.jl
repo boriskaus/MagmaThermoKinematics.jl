@@ -18,12 +18,12 @@ import ..compute_meltfraction_ps!, ..compute_dϕdT_ps!, ..compute_density_ps!, .
        ..compute_conductivity_ps!, ..compute_radioactive_heat_ps!, ..compute_latent_heat_ps!
 
 
-__init__() = @init_parallel_stencil(Threads, Float64, 2)
+@init_parallel_stencil(Threads, Float64, 2)
 
 #include("Diffusion_combined2D.jl")
 
 """
-Diffusion2D provides GPU/CPU functions 
+Diffusion2D provides GPU/CPU functions
 """
 
 """
@@ -95,13 +95,13 @@ end
 Various parameters that control the nonlinear solver
 """
 @with_kw struct Numeric_params
-    ω::Float64                  =   0.8;            # relaxation parameter for nonlinear iterations
+    ω::Float64            =   0.8;            # relaxation parameter for nonlinear iterations
     max_iter::Int64             =   1500;           # max. number of nonlinear iterations
     verbose::Bool               =   false;          # print info?
-    convergence::Float64        =   1e-4;           # nonlinear convergence criteria
+    convergence::Float64  =   1e-4;           # nonlinear convergence criteria
     axisymmetric::Bool          =   false;          # Axisymmetric or 2D?
     flux_bottom_BC::Bool        =   false;          # Flux bottom BC?
-    flux_bottom::Float64        =   0.0;            # flux @ bottom, in case flux_bottom_BC=true
+    flux_bottom::Float64  =   0.0;            # flux @ bottom, in case flux_bottom_BC=true
     deactivate_La_at_depth::Bool=   false;
 end
 
@@ -122,8 +122,6 @@ function Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
         args1  = (;T=Arrays.T_K, P=Arrays.P)
     end
     args2  = (;z=-Arrays.Z)
-    Tupdate = similar(Arrays.Tnew)                 # relaxed picard update
-    Tbuffer = similar(Arrays.T)
     while err>Num.convergence && iter<Num.max_iter
 
         @parallel (1:Nx, 1:Nz) compute_meltfraction_ps!(Arrays.ϕ, Mat_tup, Phases, args1)
@@ -156,19 +154,19 @@ function Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
         end
 
         # Use a relaxed Picard iteration to update T used for (nonlinear) material properties:
-        @parallel update_relaxed_picard!(Tupdate, Arrays.Tnew, Arrays.T_it_old, Num.ω)
+        @parallel update_relaxed_picard!(Arrays.Tupdate, Arrays.Tnew, Arrays.T_it_old, Num.ω)
 
         # Update T_K (used above to compute material properties)
-        @parallel assign!(args1.T, Tupdate,  273.15)   # all GeoParams routines expect T in K
-        @parallel update_Tbuffer!(Tbuffer, Arrays.Tnew, Arrays.T_it_old)
+        @parallel assign!(args1.T, Arrays.Tupdate,  273.15)   # all GeoParams routines expect T in K
+        @parallel update_Tbuffer!(Arrays.Tbuffer, Arrays.Tnew, Arrays.T_it_old)
 
         # Compute error
-        err     = norm(Tbuffer)/maximum(Arrays.Tnew)
+        err     = norm(Arrays.Tbuffer)/maximum(Arrays.Tnew)
         if Num.verbose==true
             println("  Nonlinear iteration $(iter), error=$(err)")
         end
 
-        @parallel assign!(Arrays.T_it_old, Tupdate)                   # Store Tnew of last iteration step
+        @parallel assign!(Arrays.T_it_old, Arrays.Tupdate)                   # Store Tnew of last iteration step
         iter   += 1
 
     end
@@ -211,7 +209,7 @@ end
 end
 
 @parallel function diffusion2D_conductivity!(Kx, Kz, K)
-    @all(Kx)    =  @av_xa(K);                            
+    @all(Kx)    =  @av_xa(K);
     @all(Kz)    =  @av_ya(K);                            # heatflux in z
     return
 end
@@ -359,27 +357,18 @@ using LinearAlgebra: norm
 using ParallelStencil
 using ParallelStencil.FiniteDifferences3D
 using Parameters
-#using CUDA
 
 using MagmaThermoKinematics.Grid
 
+import ..compute_meltfraction_ps_3D!, ..compute_dϕdT_ps_3D!, ..compute_density_ps_3D!, ..compute_heatcapacity_ps_3D!,
+    ..compute_conductivity_ps_3D!, ..compute_radioactive_heat_ps_3D!, ..compute_latent_heat_ps_3D!
+
 export  diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_flux!, assign!, GridArray!,
         Numeric_params, Nonlinear_Diffusion_step_3D!, bc3D_T!
 
-import ..compute_meltfraction_ps_3D!, ..compute_dϕdT_ps_3D!, ..compute_density_ps_3D!, ..compute_heatcapacity_ps_3D!,
-        ..compute_conductivity_ps_3D!, ..compute_radioactive_heat_ps_3D!, ..compute_latent_heat_ps_3D!
-
-__init__() = @init_parallel_stencil(Threads, Float64, 3)
+@init_parallel_stencil(Threads, Float64, 3)
 
 #include("Diffusion_combined3D.jl")
-
-export  diffusion3D_step_varK!, bc3D_x!, bc3D_y!, bc3D_z_bottom!, bc3D_z_bottom_flux!, assign!, GridArray!,
-        Numeric_params, Nonlinear_Diffusion_step_3D!, bc3D_T!
-
-import ..compute_meltfraction_ps_3D!, ..compute_dϕdT_ps_3D!, ..compute_density_ps_3D!, ..compute_heatcapacity_ps_3D!,
-        ..compute_conductivity_ps_3D!, ..compute_radioactive_heat_ps_3D!, ..compute_latent_heat_ps_3D!
-
-__init__() = @init_parallel_stencil(Threads, Float64, 3)
 
 @parallel function assign!(A::AbstractArray, B::AbstractArray)
     @all(A) = @all(B)
@@ -458,8 +447,6 @@ function Nonlinear_Diffusion_step_3D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
         args1  = (;T=Arrays.T_K, P=Arrays.P)
     end
     args2 = (;z=-Arrays.Z)
-    Tupdate = similar(Arrays.Tnew)                 # relaxed picard update
-    Tbuffer = similar(Arrays.T)
     while err>Num.convergence && iter<Num.max_iter
 
         @parallel (1:Nx, 1:Ny, 1:Nz) compute_meltfraction_ps_3D!(Arrays.ϕ, Mat_tup, Phases, args1)
@@ -488,19 +475,19 @@ function Nonlinear_Diffusion_step_3D!(Arrays, Mat_tup, Phases, Grid, dt, Num = N
         end
 
         # Use a relaxed Picard iteration to update T used for (nonlinear) material properties:
-        @parallel update_relaxed_picard!(Tupdate, Arrays.Tnew, Arrays.T_it_old, Num.ω)
+        @parallel update_relaxed_picard!(Arrays.Tupdate, Arrays.Tnew, Arrays.T_it_old, Num.ω)
 
         # Update T_K (used above to compute material properties)
-        @parallel assign!(args1.T, Tupdate,  273.15)   # all GeoParams routines expect T in K
-        @parallel update_Tbuffer!(Tbuffer, Arrays.Tnew, Arrays.T_it_old)
+        @parallel assign!(args1.T, Arrays.Tupdate,  273.15)   # all GeoParams routines expect T in K
+        @parallel update_Tbuffer!(Arrays.Tbuffer, Arrays.Tnew, Arrays.T_it_old)
 
         # Compute error
-        err     = norm(Tbuffer)/maximum(Arrays.Tnew)
+        err     = norm(Arrays.Tbuffer)/maximum(Arrays.Tnew)
         if Num.verbose==true
             println("  Nonlinear iteration $(iter), error=$(err)")
         end
 
-        @parallel assign!(Arrays.T_it_old, Tupdate)                   # Store Tnew of last iteration step
+        @parallel assign!(Arrays.T_it_old, Arrays.Tupdate)                   # Store Tnew of last iteration step
         iter   += 1
 
     end
@@ -545,7 +532,7 @@ function diffusion3D_step_varK!(Tnew, T, qx, qy, qz, K, Kx, Ky, Kz, Rho, Cp, H, 
     @parallel diffusion3D_conductivity!(Kx, Ky, Kz, K)
     @parallel diffusion3D_flux!(qx, qy, qz, T, Kx, Ky, Kz, dx, dy, dz)
     @parallel update_T!(Tnew, T, qx, qy, qz, Rho, Cp, H, Hl, dt, dx, dy, dz,  dϕdT)
-   
+
     return
 end
 

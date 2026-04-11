@@ -2,6 +2,11 @@
 
 This package requires selecting a backend and dimensionality before loading backend-specific diffusion/fields modules.
 
+Important distinction:
+
+- `environment!(...)` initializes backend modules inside MagmaThermoKinematics.
+- If your own script/module uses ParallelStencil macros directly (for example `@zeros`, `@parallel`, `@parallel_indices`), initialize ParallelStencil in your script scope as well with `@init_parallel_stencil(...)`.
+
 ## 2D CPU Workflow
 
 :::code-group
@@ -11,6 +16,7 @@ using ParallelStencil
 using MagmaThermoKinematics
 
 environment!(:cpu, Float64, 2)
+@init_parallel_stencil(Threads, Float64, 2)   # needed when this script uses @zeros/@parallel
 
 using MagmaThermoKinematics.Diffusion2D
 using MagmaThermoKinematics.Fields2D
@@ -22,6 +28,8 @@ using ParallelStencil
 using MagmaThermoKinematics
 
 environment!(:gpu, Float64, 2)
+CUDA.device!(0)
+@init_parallel_stencil(CUDA, Float64, 2)      # needed when this script uses @zeros/@parallel
 
 using MagmaThermoKinematics.Diffusion2D
 using MagmaThermoKinematics.Fields2D
@@ -37,6 +45,7 @@ using ParallelStencil
 using MagmaThermoKinematics
 
 environment!(:cpu, Float64, 3)
+@init_parallel_stencil(Threads, Float64, 3)   # needed when this script uses @zeros/@parallel
 
 using MagmaThermoKinematics.Diffusion3D
 using MagmaThermoKinematics.Fields3D
@@ -48,6 +57,8 @@ using ParallelStencil
 using MagmaThermoKinematics
 
 environment!(:gpu, Float64, 3)
+CUDA.device!(0)
+@init_parallel_stencil(CUDA, Float64, 3)      # needed when this script uses @zeros/@parallel
 
 using MagmaThermoKinematics.Diffusion3D
 using MagmaThermoKinematics.Fields3D

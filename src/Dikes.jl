@@ -19,51 +19,51 @@ with
 - Center:     center of the dike
                     2D - [x; z]
                     3D - [x; y; z]
-    
+
     Angle:      Dip (and strike) angle of dike
                     2D - [Dip]
                     3D - [Strike; Dip]
-    
+
     Type:           Type of dike
-                    "SquareDike"    -   square dike area   
-                    "SquareDike_TopAccretion"           -   square dike area, which grows by underaccreting   
-                    "CylindricalDike_TopAccretion"      -   cylindrical dike area, which grows by underaccreting   
-                    "CylindricalDike_TopAccretion_FullModelAdvection"      -   cylindrical dike area, which grows by underaccreting; also material to the side of the dike is moved downwards   
+                    "SquareDike"    -   square dike area
+                    "SquareDike_TopAccretion"           -   square dike area, which grows by underaccreting
+                    "CylindricalDike_TopAccretion"      -   cylindrical dike area, which grows by underaccreting
+                    "CylindricalDike_TopAccretion_FullModelAdvection"      -   cylindrical dike area, which grows by underaccreting; also material to the side of the dike is moved downwards
                     "ElasticDike"   -   penny-shaped elastic dike in elastic halfspace
-                    "EllipticalIntrusion" - elliptical dike intrusion area with radius Width/2 and height Height/2 
-    
-    T:          Temperature of the dike [Celcius]   
-    
+                    "EllipticalIntrusion" - elliptical dike intrusion area with radius Width/2 and height Height/2
+
+    T:          Temperature of the dike [Celcius]
+
     ν:          Poison ratio of host rocks
-    
+
     E:          Youngs modulus of host rocks [Pa]
-    
+
     [ΔP]:       Overpressure of dike w.r.t. host rock [Pa], (optional in case we want to compute width/length directly
-    [Q]:        Volume of magma within dike [m^3], 
-            
-           
-    All parameters can be specified through keywords as shown above. 
+    [Q]:        Volume of magma within dike [m^3],
+
+
+    All parameters can be specified through keywords as shown above.
     If keywords are not given, default parameters are employed.
-    
- The 
-    
+
+ The
+
 """
 @with_kw struct Dike    # stores info about dike
-    # Note: since we utilize the "Parameters.jl" package, we can add more keywords here w/out breaking the rest of the code 
+    # Note: since we utilize the "Parameters.jl" package, we can add more keywords here w/out breaking the rest of the code
     #
     # We can also define only a few parameters here (like Q and ΔP) and compute Width/Thickness from that
-    # Or we can define thickness 
-    Angle       ::  Vector{Float64} =   [0.]                                  # Strike/Dip angle of dike
-    Type        ::  String          =   "SquareDike"                          # Type of dike
-    T           ::  Float64         =   950.0                                 # Temperature of dike
-    E           ::  Float64         =   1.5e10                                # Youngs modulus (only required for elastic dikes)
-    ν           ::  Float64         =   0.3                                   # Poison ratio of host rocks
-    ΔP          ::  Float64         =   1e6;                                  # Overpressure of elastic dike
-    Q           ::  Float64         =   1000;                                 # Volume of elastic dike
-    W           ::  Float64         =   (3*E*Q/(16*(1-ν^2)*ΔP))^(1.0/3.0);    # Width of dike/sill   
-    H           ::  Float64         =   8*(1-ν^2)*ΔP*W/(π*E);                 # (maximum) Thickness of dike/sill
-    Center      ::  Vector{Float64} =   [20e3 ; -10e3]                        # Center
-    Phase       ::  Int64           =   2;                                    # Phase of newly injected magma
+    # Or we can define thickness
+    Angle       ::Vector{Float64}   =   [0.]                                  # Strike/Dip angle of dike
+    Type        ::String            =   "SquareDike"                          # Type of dike
+    T           ::Float64           =   950.0                                 # Temperature of dike
+    E           ::Float64           =   1.5e10                                # Youngs modulus (only required for elastic dikes)
+    ν           ::Float64           =   0.3                                   # Poison ratio of host rocks
+    ΔP          ::Float64           =   1e6;                                  # Overpressure of elastic dike
+    Q           ::Float64           =   1000;                                 # Volume of elastic dike
+    W           ::Float64           =   (3*E*Q/(16*(1-ν^2)*ΔP))^(1.0/3.0);    # Width of dike/sill
+    H           ::Float64           =   8*(1-ν^2)*ΔP*W/(π*E);                 # (maximum) Thickness of dike/sill
+    Center      ::Vector{Float64}   =   [20e3 ; -10e3]                        # Center
+    Phase       ::Int64             =   2;                                    # Phase of newly injected magma
 end
 
 struct DikePoly    # polygon that describes the geometry of the dike (only in 2D)
@@ -73,13 +73,13 @@ end
 
 """
     This injects a dike in the computational domain in an instantaneous manner,
-    while "pushing" the host rocks to the sides. 
+    while "pushing" the host rocks to the sides.
 
-    The orientation and the type of the dike are described by the structure     
+    The orientation and the type of the dike are described by the structure
 
     General form:
           Tracers, Tnew, VolumeInjected, dike_poly, Velocity = InjectDike(Tracers, T, Grid, FullGrid, dike, nTr_dike; AdvectionMethod="RK2", InterpolationMethod="Quadratic", dike_poly=[])
-      
+
 
     with:
         T:          Temperature grid (will be modified)
@@ -98,15 +98,15 @@ end
 
     optional input parameters with keywords (add them with: AdvectionMethod="RK4", etc.):
 
-        AdvectionMethod:    Advection algorithm 
+        AdvectionMethod:    Advection algorithm
                     "Euler"     -    1th order accurate Euler timestepping
                     "RK2"       -    2nd order Runga Kutta advection method [default]
                     "RK4"       -    4th order Runga Kutta advection method
-                
-        InterpolationMethod: Interpolation Algorithm to interpolate data on advected points 
-                    
-                    Note:  higher order is more accurate for smooth fields, but if there are very sharp gradients, 
-                        it may result in a 'Gibbs' effect that has over and undershoots.   
+
+        InterpolationMethod: Interpolation Algorithm to interpolate data on advected points
+
+                    Note:  higher order is more accurate for smooth fields, but if there are very sharp gradients,
+                        it may result in a 'Gibbs' effect that has over and undershoots.
 
                     "Linear"    -    Linear interpolation
                     "Quadratic" -    Quadratic spline
@@ -121,38 +121,38 @@ function InjectDike(Tracers, T::Array, Grid, dike::Dike, nTr_dike::Int64; Advect
     # Some notes on the algorithm:
     #   For computational reasons, we do not open the dike at once, but in sufficiently small pseudo timesteps
     #   Sufficiently small implies that the motion per "pseudotimestep" cannot be more than 0.5*{dx|dy|dz}
-    
+
     @unpack H   =   dike
     dim         =   length(Grid);
     Spacing     =   Vector{Float64}(undef, dim);
-    
+
     if dim==2
-        coords      =   collect(Iterators.product(Grid[1],Grid[2]))                             # generate coordinates from 1D coordinate vectors   
-        X,Z         =   (x->x[1]).(coords), (x->x[2]).(coords);    
-        GridFull    =   (X,Z); 
+        coords      =   collect(Iterators.product(Grid[1],Grid[2]))                             # generate coordinates from 1D coordinate vectors
+        X,Z         =   (x->x[1]).(coords), (x->x[2]).(coords);
+        GridFull    =   (X,Z);
     elseif dim==3
-        coords      =   collect(Iterators.product(Grid[1],Grid[2],Grid[3]))                     # generate coordinates from 1D coordinate vectors   
-        X,Y,Z       =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);     
-        GridFull    =   (X,Y,Z); 
+        coords      =   collect(Iterators.product(Grid[1],Grid[2],Grid[3]))                     # generate coordinates from 1D coordinate vectors
+        X,Y,Z       =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);
+        GridFull    =   (X,Y,Z);
     end
 
     for i=1:dim
         Spacing[i] = Grid[i][2] - Grid[i][1];
     end
-    d           =   minimum(Spacing)*0.5;                              # maximum distance the dike can open per pseudotimestep 
+    d           =   minimum(Spacing)*0.5;                              # maximum distance the dike can open per pseudotimestep
     nsteps      =   maximum([ceil(H/d), 2]);                           # the number of steps (>=10)
-    
+
     # Compute velocity required to create space for dike
     dt          =   1.0/nsteps
     Δ           =   H
-    Velocity    =   HostRockVelocityFromDike(Grid,GridFull, Δ, 1.0,dike);       # compute velocity field/displacement used for a full dt. 
+    Velocity    =   HostRockVelocityFromDike(Grid,GridFull, Δ, 1.0,dike);       # compute velocity field/displacement used for a full dt.
 
     # Move hostrock & already existing tracers to the side to create space for new dike
     Tnew        =   zeros(size(T));
     for ipseudotime=1:nsteps
         Tnew        =   AdvectTemperature(T, Grid,  GridFull, Velocity, dt, AdvectionMethod, InterpolationMethod);                      # use interpolation of velocity from grid to advect T
         #Tnew    =   AdvectTemperature(T, Grid,  GridFull, Velocity, dt, AdvectionMethod, InterpolationMethod, "FromDike", dike, Δ);    # optional method, in which we use the analytical velocity to advect T
-        
+
         if isassigned(Tracers,1)
             AdvectTracers!(Tracers,  Grid,    Velocity, dt);
         end
@@ -190,8 +190,8 @@ end
 
             dike: structure that holds info about dike
             dt:   time in which the full dike is opened
-            
-    Note: the velocity is computed in such a manner that a maximum opening 
+
+    Note: the velocity is computed in such a manner that a maximum opening
         increment of Δ = Vmax*dt is obtained after this timestep
 
 
@@ -199,11 +199,11 @@ end
 function HostRockVelocityFromDike( Grid, Points, Δ, dt, dike::Dike)
 
     # Prescibe the velocity field to inject the dike with given orientation
-    # 
+    #
     dim = length(Grid);
     if dim==2
         #X,Z          =  Points[1], Points[2];
-         
+
         # Rotate and shift coordinate system into 'dike' reference frame
         @unpack Angle,Type = dike
         α           =   Angle[1];
@@ -217,11 +217,11 @@ function HostRockVelocityFromDike( Grid, Points, Δ, dt, dike::Dike)
 
         Vx_rot, Vz_rot  = zeros(size( Points[1])), zeros(size( Points[1]));
         Vx, Vz          = zeros(size( Points[1])), zeros(size( Points[1]));
-            
+
         if Type=="SquareDike"
             @unpack H,W = dike
             Vint    =  Δ/dt/2.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
-                
+
             Vz_rot[(Points[2] .<= 0) .& (abs.(Points[1]).<= W/2.0)]  .= -Vint;
             Vz_rot[(Points[2] .>  0) .& (abs.(Points[1]).<  W/2.0)]  .=  Vint;
 
@@ -229,25 +229,25 @@ function HostRockVelocityFromDike( Grid, Points, Δ, dt, dike::Dike)
         elseif Type=="SquareDike_TopAccretion"
                 @unpack H,W = dike
                 Vint    =  Δ/dt/1.0;                        # open the dike by a maximum amount of Δ in one dt
-                    
+
                 Vz_rot[(Points[2] .<= 0) .& (abs.(Points[1]).<= W/2.0)]  .= -Vint;
                 #Vz_rot[(Points[2] .>  0) .& (abs.(Points[1]).<  W/2.0)]  .=  Vint;
-    
-                Vx_rot[abs.(Points[1]).<=W]          .=   0.0;      # set radial velocity 
-    
-        elseif   Type=="CylindricalDike_TopAccretion" 
+
+                Vx_rot[abs.(Points[1]).<=W]          .=   0.0;      # set radial velocity
+
+        elseif   Type=="CylindricalDike_TopAccretion"
             @unpack H,W = dike
-            Vint    =  Δ/dt/1.0;                        # open the dike by a maximum amount of Δ in one dt 
-                
+            Vint    =  Δ/dt/1.0;                        # open the dike by a maximum amount of Δ in one dt
+
             Vz_rot[(Points[2] .<= 0) .& ( Points[1]  .<= (W/2.0))]  .= -Vint;
             #Vz_rot[(Points[2] .>  0) .& (abs.(Points[1]).<  W/2.0)]  .=  Vint;
 
-            Vx_rot[abs.(Points[1]).<=W]          .=   0.0;      # set radial velocity 
+            Vx_rot[abs.(Points[1]).<=W]          .=   0.0;      # set radial velocity
 
         elseif  Type=="CylindricalDike_TopAccretion_FullModelAdvection"
             @unpack H,W = dike
             Vint    =  Δ/dt/1.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
-                
+
             Vz_rot[(Points[2] .<= 0) ]  .= -Vint;
             #Vz_rot[(Points[2] .>  0) .& (abs.(Points[1]).<  W/2.0)]  .=  Vint;
 
@@ -256,19 +256,19 @@ function HostRockVelocityFromDike( Grid, Points, Δ, dt, dike::Dike)
         elseif Type=="ElasticDike"
                 @unpack H,W = dike
                 Vint    =  Δ/dt;                            # open the dike by a maximum amount of Δ in one dt (no 1/2 as that is taken care off inside the routine below)
-                
+
 Threads.@threads for i in eachindex(Vz_rot)
                     # use elastic dike solution to compute displacement
                     Displacement, Bmax = DisplacementAroundPennyShapedDike(dike, SVector(Points[1][i], Points[2][i]), dim);
 
                     Displacement    .=  Displacement/Bmax;     # normalize such that 1 is the maximum
-                        
+
                     Vz_rot[i]       =   Vint.*Displacement[2];
-                    Vx_rot[i]       =   Vint.*Displacement[1];      
-             
+                    Vx_rot[i]       =   Vint.*Displacement[1];
+
                 end
 
-        elseif Type == "EllipticalIntrusion" 
+        elseif Type == "EllipticalIntrusion"
                 @unpack H,W = dike
                 AR  = H/W         # aspect ratio of ellipse
                 H   = Δ           # we don't open the dike @ once but piece by piece
@@ -316,54 +316,54 @@ Threads.@threads for i in eachindex(Vz_rot)
         Points[1]       .=  Points[1] .- dike.Center[1];
         Points[2]       .=  Points[2] .- dike.Center[2];
         Points[3]       .=  Points[3] .- dike.Center[3];
-        RotatePoints_3D!(Points[1],Points[2],Points[3], Points[1],Points[2],Points[3], RotMat)                 # rotate coordinates 
-       
+        RotatePoints_3D!(Points[1],Points[2],Points[3], Points[1],Points[2],Points[3], RotMat)                 # rotate coordinates
+
         Vx_rot, Vy_rot, Vz_rot  = zeros(size(Points[1])), zeros(size(Points[2])), zeros(size(Points[3]));
         Vx, Vy, Vz              = zeros(size(Points[1])), zeros(size(Points[2])), zeros(size(Points[3]));
-        
+
         if Type=="SquareDike"
             @unpack H,W = dike                          # Dimensions of square dike
             Vint    =  Δ/dt/2.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
-                
+
             Vz_rot[(Points[3].<0) .& (abs.(Points[1]).<W/2.0) .& (abs.(Points[2]).<W/2.0)]  .= -Vint;
             Vz_rot[(Points[3].>0) .& (abs.(Points[1]).<W/2.0) .& (abs.(Points[2]).<W/2.0)]  .=  Vint;
 
             Vx_rot[abs.(Points[1]).<W]          .=   0.0;      # set radial velocity to zero at left boundary
             Vy_rot[abs.(Points[2]).<W]          .=   0.0;      # set radial velocity to zero at left boundary
 
-        elseif  (Type=="SquareDike_TopAccretion") 
+        elseif  (Type=="SquareDike_TopAccretion")
                 @unpack H,W = dike                          # Dimensions of square dike
                 Vint    =  Δ/dt/1.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
-                    
+
                 Vz_rot[(Points[3].<0) .& (abs.(Points[1]).<W/2.0) .& (abs.(Points[2]).<W/2.0)]  .= -Vint;
                # Vz_rot[(Points[3].>0) .& (abs.(Points[1]).<W/2.0) .& (abs.(Points[2]).<W/2.0)]  .=  Vint;
-    
+
                 Vx_rot[abs.(Points[1]).<W]          .=   0.0;      # set radial velocity to zero at left boundary
                 Vy_rot[abs.(Points[2]).<W]          .=   0.0;      # set radial velocity to zero at left boundary
         elseif  (Type=="CylindricalDike_TopAccretion") || (Type=="CylindricalDike_TopAccretion_FullModelAdvection")
                 @unpack H,W = dike                          # Dimensions of square dike
                 Vint    =  Δ/dt/1.0;                        # open the dike by a maximum amount of Δ in one dt (2=because we open 2 sides)
-                    
+
                 Vz_rot[(Points[3] .<= 0.0) .& ( (Points[1].^2 + Points[2].^2).<=(W/2.0).^2) ]  .= -Vint;
                # Vz_rot[(Points[3].>0) .& (abs.(Points[1]).<W/2.0) .& (abs.(Points[2]).<W/2.0)]  .=  Vint;
-    
+
                 Vx_rot[abs.(Points[1]).<= W]          .=   0.0;      # set radial velocity to zero at left boundary
                 Vy_rot[abs.(Points[2]).<= W]          .=   0.0;      # set radial velocity to zero at left boundary
-    
+
         elseif Type=="ElasticDike"
                 @unpack H,W = dike                          # Dimensions of dike
                 Vint    =  Δ/dt;                            # open the dike by a maximum amount of Δ in one dt (no 1/2 as that is taken care off inside the routine below)
-                    
+
                 Threads.@threads for i=firstindex(Vx_rot):lastindex(Vx_rot)
-                 
+
                     # use elastic dike solution to compute displacement
                     Displacement, Bmax  = DisplacementAroundPennyShapedDike(dike, SVector(Points[1][i], Points[2][i], Points[3][i]), dim);
 
                     Displacement        .=  Displacement/Bmax;     # normalize such that 1 is the maximum
-                    
+
                     Vz_rot[i]           =   Vint.*Displacement[3];
-                    Vy_rot[i]           =   Vint.*Displacement[2];      
-                    Vx_rot[i]           =   Vint.*Displacement[1];      
+                    Vy_rot[i]           =   Vint.*Displacement[2];
+                    Vx_rot[i]           =   Vint.*Displacement[1];
 
                 end
 
@@ -374,7 +374,7 @@ Threads.@threads for i in eachindex(Vz_rot)
         # "unrotate" vector fields
         RotatePoints_3D!(Vx,Vy,Vz, Vx_rot,Vy_rot,Vz_rot, RotMat')           # rotate velocities back
         RotatePoints_3D!( Points[1], Points[2], Points[3], Points[1]  ,Points[2]  ,Points[3]  , RotMat')           # rotate coordinates back
-        
+
         Points[1]   .=  Points[1] .+ dike.Center[1];
         Points[2]   .=  Points[2] .+ dike.Center[2];
         Points[3]   .=  Points[3] .+ dike.Center[3];
@@ -407,7 +407,7 @@ end
 """
     dike_poly = CreateDikePolygon(dike::Dike, numpoints=101)
 
-    Creates a new dike polygon with given orientation and width. 
+    Creates a new dike polygon with given orientation and width.
     This polygon is used for plotting, and described by the struct dike
 
 """
@@ -416,12 +416,12 @@ function CreateDikePolygon(dike::Dike, nump=101)
 
     if Type=="CylindricalDike_TopAccretion"
 
-        dx = dike.W/2/nump/2 
+        dx = dike.W/2/nump/2
         xx = Vector(dike.Center[1]:dx:dike.W/2)
         x  = [xx; xx[end:-1:1]];
         z  = [ones(size(xx))*dike.H; -ones(size(xx))*dike.H/2 ] .+ dike.Center[2];
         poly = [x,z];
-    
+
     elseif Type=="EllipticalIntrusion"
         dp = 2*pi/nump
         p = 0.0:.01:2*pi;
@@ -430,19 +430,19 @@ function CreateDikePolygon(dike::Dike, nump=101)
         x =  cos.(p)*a_ellipse
         z = -sin.(p)*b_ellipse .+ dike.Center[2];
         poly = [x,z];
-    
+
     else
         println("WARNING: Polygon not yet implemented for dike type $Type; leaving it empty")
         poly = [];
     end
-    
-    return poly 
+
+    return poly
 end
 
 """
     dike_poly = CreatDikePolygon(dike::Dike, numpoints=101)
 
-    Creates a new dike polygon with given orientation and width. 
+    Creates a new dike polygon with given orientation and width.
     This polygon is used for plotting, and described by the struct dike
 
 """
@@ -451,12 +451,12 @@ function CreatDikePolygon(dike::Dike, nump=101)
 
     if Type=="CylindricalDike_TopAccretion"
 
-        dx = dike.W/2/nump/2 
+        dx = dike.W/2/nump/2
         xx = Vector(dike.Center[1]:dx:dike.W/2)
         x  = [xx; xx[end:-1:1]];
         z  = [ones(size(xx))*dike.H; -ones(size(xx))*dike.H/2 ] .+ Dikes.Center[2];
         poly = [x,z];
-    
+
     elseif Type=="EllipticalIntrusion"
         dp = 2*pi/nump
         p = 0.0:.01:2*pi;
@@ -465,13 +465,13 @@ function CreatDikePolygon(dike::Dike, nump=101)
         x =  cos.(p)*a_ellipse
         z = -sin.(p)*b_ellipse .+ dike.Center[2];
         poly = [x,z];
-    
+
     else
         println("WARNING: Polygon not yet implemented for dike type $Type; leaving it empty")
         poly = [];
     end
-    
-    return poly 
+
+    return poly
 end
 
 """
@@ -480,13 +480,13 @@ end
 Advects a dike polygon
 """
 function advect_dike_polygon!(poly, Grid, Velocity, dt=1.0)
-    
+
     poly_vel = AdvectPoints( (poly[1],poly[2]), Grid, Velocity, dt);
 
     for i=1:length(poly)
         poly[i] .=+ poly_vel[i]*dt;
     end
-    
+
     return nothing
 end
 
@@ -543,7 +543,7 @@ function isinside_dike(pt, dike::Dike)
         error("Unknown dike type $Type")
     end
 
-    return in 
+    return in
 end
 
 
@@ -551,9 +551,9 @@ end
     A,V = volume_dike(dike::Dike)
 
     Returns the area A and volume V of the injected dike
-    
+
     In 2D, the volume is compute by assuming a penny-shaped dike, with length=width
-    In 3D, the cross-sectional area in x-z direction is returned 
+    In 3D, the cross-sectional area in x-z direction is returned
 
 """
 function volume_dike(dike::Dike)
@@ -584,9 +584,9 @@ end
 #--------------------------------------------------------------------------
 """
     T, Tracers, dike_poly = AddDike(T,Tracers, Grid, dike,nTr_dike)
-    
+
 Adds a dike, described by the dike polygon dike_poly, to the temperature field T (defined at points Grid).
-Also adds nTr_dike new tracers randomly distributed within the dike, to the 
+Also adds nTr_dike new tracers randomly distributed within the dike, to the
 tracers array Tracers.
 
 """
@@ -595,22 +595,22 @@ function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
     dim         =   length(Grid);
     @unpack Angle,Center,W,H,T, Phase = dike;
     PhaseDike = Phase;
-    
+
     if dim==2
         α           =    Angle[1];
-        RotMat      =    SMatrix{2,2}([cosd(α) -sind(α); sind(α) cosd(α)]); 
+        RotMat      =    SMatrix{2,2}([cosd(α) -sind(α); sind(α) cosd(α)]);
     elseif dim==3
         α,β             =   Angle[1], Angle[end];
         RotMat_y        =   SMatrix{3,3}([cosd(α) 0.0  -sind(α); 0.0 1.0 0.0; sind(α) 0.0 cosd(α)  ]);                      # perpendicular to y axis
         RotMat_z        =   SMatrix{3,3}([cosd(β) -sind(β) 0.0; sind(β) cosd(β) 0.0; 0.0 0.0 1.0   ]);                      # perpendicular to z axis
         RotMat          =   RotMat_y*RotMat_z;
     end
-  
+
     # Add dike to temperature field
     if dim==2
         x,z = Grid[1], Grid[2];
         for ix=1:length(x)
-            for iz=1:length(z)  
+            for iz=1:length(z)
                 pt      =   SVector(x[ix],z[iz]) - Center;
                 pt_rot  =   RotMat*pt;                      # rotate
                 in      =   isinside_dike(pt_rot, dike);
@@ -639,7 +639,7 @@ function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
 
     # Add new tracers to the dike area
     for iTr=1:nTr_dike
-       
+
         # 1) Randomly initialize tracers to the approximate dike area
         pt      = rand(dim,1) .- 0.5*ones(dim,1);
         if dim==2
@@ -651,23 +651,23 @@ function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
         pt      = pt.*Size;
         pt_rot  = (RotMat')*pt .+ Center[:];          # rotate backwards (hence the transpose!) and shift
 
-        # 2) Make sure that they are inside the dike area   
+        # 2) Make sure that they are inside the dike area
         in      = isinside_dike(pt, dike);
-       
+
         # 3) Add them to the tracers structure
         if in   # we are inside the dike
-            
+
             if      dim==2; pt_new = [pt_rot[1]; pt_rot[2]];
             elseif  dim==3; pt_new = [pt_rot[1]; pt_rot[2]; pt_rot[3]]; end
-            
+
             if !isassigned(Tr,1)
                 number  =   1;
-            else     
-                number  =   Tr.num[end]+1;  
+            else
+                number  =   Tr.num[end]+1;
             end
 
             new_tracer  =   Tracer(num=number, coord=pt_new, T=T, Phase=PhaseDike);          # Create new tracer
-            
+
             if !isassigned(Tr,1)
 
                 if length(Tr)==0
@@ -689,7 +689,7 @@ end
 
 
 """
-    This computes the displacement around a fluid-filled penny-shaped sill that is 
+    This computes the displacement around a fluid-filled penny-shaped sill that is
     inserted inside in an infinite elastic halfspace.
 
     Displacement, Bmax, p = DisplacementAroundPennyShapedDike(dike, CartesianPoint)
@@ -701,27 +701,27 @@ end
             CartesianPoint: Coordinate of the point @ which we want to compute displacments
                         2D - [dx;dz]
                         3D - [dx;dy;dz]
-            
-            Displacement:   Displacements of that point  
+
+            Displacement:   Displacements of that point
                         2D - [Ux;Uz]
                         3D - [Ux;Uy;Uz]
 
-            Bmax:           Max. opening of the dike 
+            Bmax:           Max. opening of the dike
             p:              Overpressure of dike
-    
-    Reference: 
-        Sun, R.J., 1969. Theoretical size of hydraulically induced horizontal fractures and 
-        corresponding surface uplift in an idealized medium. J. Geophys. Res. 74, 5995–6011. 
+
+    Reference:
+        Sun, R.J., 1969. Theoretical size of hydraulically induced horizontal fractures and
+        corresponding surface uplift in an idealized medium. J. Geophys. Res. 74, 5995–6011.
         https://doi.org/10.1029/JB074i025p05995
 
-        Notes:    
-            - We employ equations 7a and 7b from that paper, which assume that the dike is in a 
+        Notes:
+            - We employ equations 7a and 7b from that paper, which assume that the dike is in a
                 horizontal (sill-like) position; rotations have to be performed outside this routine
-            
+
             - The center of the dike should be at [0,0,0]
-            
-            - This does not account for the presence of a free surface. 
-            
+
+            - This does not account for the presence of a free surface.
+
             - The values are in absolute displacements; this may have to be normalized
 
 """
@@ -733,7 +733,7 @@ function DisplacementAroundPennyShapedDike(dike::Dike, CartesianPoint::SVector, 
     Displacement = Vector{Float64}(undef, dim);
 
     # Compute r & z; note that the Sun solution is defined for z>=0 (vertical)
-    if      dim==2; r = sqrt(CartesianPoint[1]^2);                       z = abs(CartesianPoint[2]); 
+    if      dim==2; r = sqrt(CartesianPoint[1]^2);                       z = abs(CartesianPoint[2]);
     elseif  dim==3; r = sqrt(CartesianPoint[1]^2 + CartesianPoint[2]^2); z = abs(CartesianPoint[3]); end
 
     if r==0; r=1e-3; end
@@ -743,10 +743,10 @@ function DisplacementAroundPennyShapedDike(dike::Dike, CartesianPoint::SVector, 
 
     # note, we can either specify B and a, and compute pressure p and injected volume Q
     # Alternatively, it is also possible to:
-    #       - specify p and a, and compute B and Q 
-    #       - specify volume Q & p and compute radius and B 
+    #       - specify p and a, and compute B and Q
+    #       - specify volume Q & p and compute radius and B
     #
-    # What is best to do is to be decided later (and doesn't change the code below) 
+    # What is best to do is to be decided later (and doesn't change the code below)
     Q   =   B*(2pi*a.^2)/3.0;               # volume of dike (follows from eq. 9 and 10a)
     p   =   3E*Q/(16.0*(1.0 - ν^2)*a^3);    # overpressure of dike (from eq. 10a) = 3E*pi*B/(8*(1-ν^2)*a)
 
@@ -755,35 +755,35 @@ function DisplacementAroundPennyShapedDike(dike::Dike, CartesianPoint::SVector, 
     R2  =   sqrt(r^2. + (z + im*a)^2);
 
     # equation 7a:
-    dU   =   im*p*(1+ν)*(1-2ν)/(2pi*E)*( r*log( (R2+z+im*a)/(R1 +z- im*a)) 
-                                                - r/2*((im*a-3z-R2)/(R2+z+im*a) 
-                                                + (R1+3z+im*a)/(R1+z-im*a)) 
-                                                - (2z^2 * r)/(1 -2ν)*(1/(R2*(R2+z+im*a)) -1/(R1*(R1+z-im*a))) 
+    dU   =   im*p*(1+ν)*(1-2ν)/(2pi*E)*( r*log( (R2+z+im*a)/(R1 +z- im*a))
+                                                - r/2*((im*a-3z-R2)/(R2+z+im*a)
+                                                + (R1+3z+im*a)/(R1+z-im*a))
+                                                - (2z^2 * r)/(1 -2ν)*(1/(R2*(R2+z+im*a)) -1/(R1*(R1+z-im*a)))
                                                 + (2*z*r)/(1-2ν)*(1/R2 - 1/R1) );
     # equation 7b:
-    dW   =       2*im*p*(1-ν^2)/(pi*E)*( z*log( (R2+z+im*a)/(R1+z-im*a)) 
-                                                - (R2-R1) 
+    dW   =       2*im*p*(1-ν^2)/(pi*E)*( z*log( (R2+z+im*a)/(R1+z-im*a))
+                                                - (R2-R1)
                                                 - 1/(2*(1-ν))*( z*log( (R2+z+im*a)/(R1+z-im*a)) - im*a*z*(1/R2 + 1/R1)) );
 
-    # Displacements are the real parts of U and W. 
+    # Displacements are the real parts of U and W.
     #  Note that this is the total required elastic displacement (in m) to open the dike.
-    #  If we only want to open the dike partially, we will need to normalize these values accordingly (done externally)  
+    #  If we only want to open the dike partially, we will need to normalize these values accordingly (done externally)
     Uz   =  real(dW);  # vertical displacement should be corrected for z<0
     Ur   =  real(dU);
     if (CartesianPoint[end]<0); Uz = -Uz; end
     if (CartesianPoint[1]  <0); Ur = -Ur; end
-    
+
     if      dim==2
-        Displacement = [Ur;Uz] 
+        Displacement = [Ur;Uz]
     elseif  dim==3
         # Ur denotes the radial displacement; in 3D we have to decompose this in x and y components
         x   = abs(CartesianPoint[1]); y = abs(CartesianPoint[2]);
         Ux  = x/r*Ur; Uy = y/r*Ur;
 
-        Displacement = [Ux;Uy;Uz] 
+        Displacement = [Ux;Uy;Uz]
     end
 
-    return Displacement, B, p   
+    return Displacement, B, p
 end
 
 """

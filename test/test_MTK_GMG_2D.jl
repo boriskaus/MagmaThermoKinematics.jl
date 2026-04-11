@@ -3,26 +3,22 @@ const USE_GPU=false;
 if USE_GPU
     using CUDA      # needs to be loaded before loading Parallkel=
 end
-using ParallelStencil, ParallelStencil.FiniteDifferences2D
 
 using MagmaThermoKinematics
 @static if USE_GPU
     environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
     CUDA.device!(0)                     # select the GPU you use (starts @ zero)
-    @init_parallel_stencil(CUDA, Float64, 2)
 else
     environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
-    @init_parallel_stencil(Threads, Float64, 2)
 end
-using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
+import MagmaThermoKinematics.Diffusion2D # load module AFTER calling environment!()
+import MagmaThermoKinematics.MTK_GMG_2D
 using GeophysicalModelGenerator, GeoParams
-using MagmaThermoKinematics.Fields2D
-using MagmaThermoKinematics.MTK_GMG_2D
 
 const rng = Random.seed!(1234);     # same seed such that we can reproduce results
 
 # Import a few routines, so we can overwrite them below
-using MagmaThermoKinematics.MTK_GMG
+import MagmaThermoKinematics.MTK_GMG
 
 @testset "MTK_GMG_2D" begin
 #=
@@ -69,7 +65,7 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
                 )
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_2D.MTK_GeoParams_2D(MatParam, Num, Dike_params); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 296.4607300089425  rtol= 1e-4
 @test sum(time_props.MeltFraction)  ≈ 0.0  rtol= 1e-5
@@ -178,7 +174,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params, CartData_input=Data_2D); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_2D.MTK_GeoParams_2D(MatParam, Num, Dike_params, CartData_input=Data_2D); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 251.7176457588078  rtol= 1e-4
 @test sum(time_props.MeltFraction)  ≈  0.22380478479632507 rtol= 1e-5
