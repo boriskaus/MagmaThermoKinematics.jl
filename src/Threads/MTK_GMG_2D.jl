@@ -74,7 +74,7 @@ There are a few functions that you can overwrite in your user code to customize 
     Arrays.Rc              .=   (Arrays.R[2:end,:] + Arrays.R[1:end-1,:])/2     # center points in x
     # --------------------------------------------
 
-    Tracers                 =   StructArray{Tracer}(undef, 1)                       # Initialize tracers
+    Tracers                 =   StructArray{Tracer{Num.TracerFloatType}}(undef, 1)   # Initialize tracers
 
     # Update buffer & phases arrays --------------
     if Num.USE_GPU

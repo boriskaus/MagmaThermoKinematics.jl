@@ -152,7 +152,7 @@ function test_InjectDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45],
 
   # Test the InsertDike routine, which modifies temperature and adds tracers
   nTr_dike                =   1000;
-  Tracers                 =   StructArray{Tracer}(undef, 1)                                    # Initialize Tracers structure
+  Tracers                 =   StructArray{Tracer{Float32}}(undef, 1)                           # Initialize Tracers structure
   Tracers, Tnew, InjectVol, dike_poly, Velocity    =   InjectDike(Tracers, T, Grid, dike, nTr_dike,  InterpolationMethod=InterpolationMethod, AdvectionMethod=AdvectionMethod);           # Inject first dike
 
 

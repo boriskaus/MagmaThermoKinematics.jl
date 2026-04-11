@@ -67,6 +67,7 @@ using Printf        # pretty print
     a_init::Float64             =   2.5e3;
     b_init::Float64             =   1.5e3;
     TrackTracersOnGrid::Bool    =   true;
+    TracerFloatType::DataType   =   Float32;
 end
 
 """
@@ -114,7 +115,8 @@ end
 
     println("Timestep Δt= $(Num.dt/SecYear) ")
 
-    Tracers                 =   StructArray{Tracer}(undef, 1)                       # Initialize tracers
+    FT                      =   Num.TracerFloatType
+    Tracers                 =   StructArray{Tracer{FT}}(undef, 1)                   # Initialize tracers
     dike                    =   Dike(W=Dikes.W_in,H=Dikes.H_in,Type=Dikes.Type,T=Dikes.T_in_Celsius, Center=Dikes.Center[:]);               # "Reference" dike with given thickness,radius and T
 
     # Set initial geotherm -----------------------
@@ -197,9 +199,9 @@ end
     #  This tracks Tt evolution on fixed grid points in the same manner as the other codes do it (these tracers remain fixed in space)
     if Num.TrackTracersOnGrid==true
         X,Z = Array(Arrays.R), Array(Arrays.Z)
-        Tracers_grid     =   StructArray{Tracer}(undef, 1)
+        Tracers_grid     =   StructArray{Tracer{FT}}(undef, 1)
         for i in eachindex(X)
-            Tracers0 = Tracer(coord=[X[i]-1e-3,Z[i]])   #
+            Tracers0 = Tracer{FT}(coord=[X[i]-1e-3,Z[i]])   #
             push!(Tracers_grid, Tracers0);
         end
         MagmaThermoKinematics.StructArrays.foreachfield(v -> deleteat!(v, 1), Tracers_grid)         # Delete first (undefined) row of tracer StructArray.

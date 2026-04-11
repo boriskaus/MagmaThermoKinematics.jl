@@ -441,7 +441,7 @@ function test_AdvectTracers2D(Method="ConstantZ",  AdvectionMethod="RK2")
   Xt0, Zt0    =   Xt, Zt;    
 
   new_tracer  =   Tracer(num=1, coord=[Xt[1]; Zt[1]], T=0.);            # Create new tracer
-  Tracers     =   StructArray([new_tracer]);                            # Create tracer array
+  Tracers     =   StructArray([new_tracer]);        # Create tracer array
   for i=firstindex(Xt)+1:lastindex(Xt)
     new_tracer  =   Tracer(num=i, coord=[Xt[i]; Zt[i]], T=0.);          # Create new tracer
     push!(Tracers, new_tracer);                             # Add new point to existing array
@@ -576,7 +576,7 @@ function test_AdvectTracers3D(Method="ConstantZ",  AdvectionMethod="RK2")
   Xt .=  Xt .+ Xc; Yt .=  Yt .+ Yc; Zt .=  Zt .+ Zc;   # shift coordinates of tracers
 
   new_tracer  =   Tracer(num=1, coord=[Xt[1]; Yt[1]; Zt[1]], T=0.);            # Create new tracer
-  Tracers     =   StructArray([new_tracer]);                # Create tracer array
+  Tracers     =   StructArray([new_tracer]);        # Create tracer array
   for i=firstindex(Xt)+1:lastindex(Xt)
     new_tracer  =   Tracer(num=i, coord=[Xt[i]; Yt[i]; Zt[i]], T=0.);          # Create new tracer
     push!(Tracers, new_tracer);                             # Add new point to existing array

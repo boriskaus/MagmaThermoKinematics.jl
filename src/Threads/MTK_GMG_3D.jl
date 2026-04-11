@@ -70,7 +70,7 @@ There are a few functions that you can overwrite in your user code to customize 
     GridArray!(Arrays.X, Arrays.Y, Arrays.Z, Grid)
     # --------------------------------------------
 
-    Tracers  =   StructArray{Tracer}(undef, 1)                       # Initialize tracers
+    Tracers  =   StructArray{Tracer{Num.TracerFloatType}}(undef, 1)   # Initialize tracers
 
     # Update buffer & phases arrays --------------
     if Num.USE_GPU

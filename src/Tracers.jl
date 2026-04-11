@@ -20,15 +20,24 @@
             time_vec:   Vector with time
             T_vec :     Vector with temperature values
 """
-@with_kw mutable struct Tracer
-    num         ::  Int64       =  0           # number
-    coord       ::  Vector{Float64}          # holds coordinates [2D or 3D]
-    T           ::Float64 =  900         # temperature
-    Phase       ::  Int64       =  1           # Phase (aka rock type) of the Tracer
-    Phi         ::Float64 =  0           # Melt fraction on Tracers
-    time_vec    ::  Vector{Float64} = []     # Time vector
-    T_vec       ::  Vector{Float64} = []     # Temperature vector
+mutable struct Tracer{FT<:AbstractFloat}
+    num         ::  Int64
+    coord       ::  Vector{Float64}
+    T           ::  Float64
+    Phase       ::  Int64
+    Phi         ::  Float64
+    time_vec    ::  Vector{FT}
+    T_vec       ::  Vector{FT}
 end
+
+# Default constructor: Tracer(coord=[...]) or Tracer{Float32}(coord=[...])
+function Tracer{FT}(; num::Int64=0, coord::Vector{Float64}, T::Float64=900.0,
+                     Phase::Int64=1, Phi::Float64=0.0,
+                     time_vec::Vector{FT}=FT[], T_vec::Vector{FT}=FT[]) where {FT<:AbstractFloat}
+    Tracer{FT}(num, coord, T, Phase, Phi, time_vec, T_vec)
+end
+# Convenience constructor without type parameter: defaults to Float32
+Tracer(; kwargs...) = Tracer{Float32}(; kwargs...)
 #    Chemistry   ::  Vector{Float64} = []    # Could @ some stage hold the evolving chemistry of the magma
 
 """
@@ -314,10 +323,10 @@ function InitializeTracers(Grid, NumTracersDir=3, RandomPertur=true)
     numTr           =   0;
     cen,d           =   zeros(dim), zeros(dim)
     coord_loc       =   zeros(NumTracersDir^dim,dim);
-    Tracers         =   StructArray{Tracer}(undef, 1)                                    # Initialize Tracers structure
+    Tracers         =   StructArray{Tracer{Float32}}(undef, 1)                           # Initialize Tracers structure
 
     # create a 'basic' Tracers struct
-    t               =   Tracer(num=numTr, coord=zeros(dim), T=0.0, Phase=1);
+    t               =   Tracer{Float32}(num=numTr, coord=zeros(dim), T=0.0, Phase=1);
     Tracers0        =   StructArray([t]);
     for i=1:NumTracersDir^dim-1
         append!(Tracers0,[t])
@@ -1105,8 +1114,9 @@ function update_Tvec!(Tracers::StructArray, time_val::Float64)
 
     if isassigned(Tracers,1)
         for iT = 1:length(Tracers)
-            LazyRow(Tracers, iT).time_vec = push!(LazyRow(Tracers, iT).time_vec, time_val);
-            LazyRow(Tracers, iT).T_vec    = push!(LazyRow(Tracers, iT).T_vec,     LazyRow(Tracers, iT).T);
+            FT = eltype(LazyRow(Tracers, iT).time_vec)
+            LazyRow(Tracers, iT).time_vec = push!(LazyRow(Tracers, iT).time_vec, FT(time_val));
+            LazyRow(Tracers, iT).T_vec    = push!(LazyRow(Tracers, iT).T_vec,    FT(LazyRow(Tracers, iT).T));
         end
     end
 

@@ -40,12 +40,14 @@ using Plots                             # plots
 using Random, GeoParams
 =#
 
-Random.seed!(1234);     # such that we can reproduce results
+Random.seed!(1234);     # use the same random seed, such that we can reproduce results
 
 # Test setup
 println("Example 1 of the MTK - GMG integration")
 
-# Overwrite some functions
+# Overwrite some of the MTK functions ---
+
+# Printing output e
 function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
     println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
     return nothing
@@ -92,7 +94,7 @@ function MTK_GMG.MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::Numeri
     @views  Arrays.Phases[Arrays.Z .> -5000] .= 0;
     Arrays.Phases_init .= Arrays.Phases;    # Initialize all as rock
 
-     # open pvd file if requested
+     # open pvd file if requested 
      if Num.Output_VTK
         name =  joinpath(Num.SimName,Num.SimName*".pvd")
         Num.pvd = movie_paraview(name=name, Initialize=true);
@@ -100,6 +102,7 @@ function MTK_GMG.MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::Numeri
 
     return nothing
 end
+# ---------------------------------------
 
 
 # Define numerical parameters

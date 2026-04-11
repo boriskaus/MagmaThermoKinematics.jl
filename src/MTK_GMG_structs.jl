@@ -113,6 +113,7 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     a_init::Float64           =   2.5e3;
     b_init::Float64           =   1.5e3;
     TrackTracersOnGrid::Bool        =   true;
+    TracerFloatType::DataType       =   Float32;    # float type for Tracer time_vec/T_vec (Float32 saves memory)
 end
 
 """

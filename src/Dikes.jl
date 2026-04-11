@@ -666,7 +666,8 @@ function AddDike(Tfield,Tr, Grid,dike, nTr_dike)
                 number  =   Tr.num[end]+1;
             end
 
-            new_tracer  =   Tracer(num=number, coord=pt_new, T=T, Phase=PhaseDike);          # Create new tracer
+            FT          =   eltype(eltype(Tr.time_vec))
+            new_tracer  =   Tracer{FT}(num=number, coord=pt_new, T=T, Phase=PhaseDike);      # Create new tracer
 
             if !isassigned(Tr,1)
 

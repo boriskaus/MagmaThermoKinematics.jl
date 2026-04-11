@@ -18,10 +18,13 @@ else
     @init_parallel_stencil(Threads, Float64, 2)
 end
 using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
+import MagmaThermoKinematics.Diffusion2D: GridArray!, assign!, Nonlinear_Diffusion_step_2D!
 using GeophysicalModelGenerator, GeoParams
 using MagmaThermoKinematics.Fields2D
+import MagmaThermoKinematics.Fields2D: CreateArrays
 
 using CairoMakie    # plotting
+import CairoMakie: Figure, Axis, lines!, contourf!, contour!, heatmap!, scatter!, axislegend, limits!, Colorbar, save
 using Printf        # pretty print
 using MAT, JLD2     # saves files in matlab format & JLD2 (hdf5) format
 
@@ -69,6 +72,7 @@ using TimerOutputs
     a_init::Float64             =   2.5e3;
     b_init::Float64             =   1.5e3;
     TrackTracersOnGrid::Bool    =   true;
+    TracerFloatType::DataType   =   Float32;    # float type for Tracer time_vec/T_vec (Float32 saves memory)
 end
 
 """
@@ -116,7 +120,8 @@ end
 
     println("Timestep Δt= $(Num.dt/SecYear) ")
 
-    Tracers                 =   StructArray{Tracer}(undef, 1)                       # Initialize tracers
+    FT                      =   Num.TracerFloatType
+    Tracers                 =   StructArray{Tracer{FT}}(undef, 1)                   # Initialize tracers
     dike                    =   Dike(W=Dikes.W_in,H=Dikes.H_in,Type=Dikes.Type,T=Dikes.T_in_Celsius, Center=Dikes.Center[:]);               # "Reference" dike with given thickness,radius and T
 
     # Set initial geotherm -----------------------
@@ -199,9 +204,9 @@ end
     #  This tracks Tt evolution on fixed grid points in the same manner as the other codes do it (these tracers remain fixed in space)
     if Num.TrackTracersOnGrid==true
         X,Z = Array(Arrays.R), Array(Arrays.Z)
-        Tracers_grid     =   StructArray{Tracer}(undef, 1)
+        Tracers_grid     =   StructArray{Tracer{FT}}(undef, 1)
         for i in eachindex(X)
-            Tracers0 = Tracer(coord=[X[i]-1e-3,Z[i]])   #
+            Tracers0 = Tracer{FT}(coord=[X[i]-1e-3,Z[i]])   #
             push!(Tracers_grid, Tracers0);
         end
         MagmaThermoKinematics.StructArrays.foreachfield(v -> deleteat!(v, 1), Tracers_grid)         # Delete first (undefined) row of tracer StructArray.
@@ -233,7 +238,7 @@ end
             InjectVol          +=   Vol                                                     # Keep track of injected volume
             Qrate               =   InjectVol/time
             Qrate_km3_yr        =   Qrate*SecYear/km³
-            Qrate_km3_yr_km2    =   Qrate_km3_yr/(pi*(Dike_params.W_in/2/1e3)^2)
+            Qrate_km3_yr_km2    =   Qrate_km3_yr/(pi*(Dikes.W_in/2/1e3)^2)
 
             @printf "  Added new dike; time=%.3f kyrs, total injected magma volume = %.2f km³; rate Q= %.2e km³yr⁻¹  \n" time/kyr InjectVol/km³ Qrate_km3_yr
 
@@ -328,7 +333,7 @@ end
             Phi_melt_plot   = Array(Arrays.ϕ)
             # ---------------------------------
             # Create plot (using Makie)
-            fig = Figure(resolution = (2000,1000))
+            fig = Figure(size = (2000,1000))
 
             # 1D figure with cross-sections
             time_Myrs_rnd = round(time_Myrs,digits=3)
@@ -611,7 +616,7 @@ if 1==1
                      FigTitle="UCLA Models", plot_tracers=true, advect_polygon=true, TrackTracersOnGrid=true);
     =#
 
-    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_10_7e_6_v2",
+    Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_10_7e_6_v3",
                          SaveOutput_steps=200000, CreateFig_steps=1000, axisymmetric=false,
                          flux_bottom_BC=true, flux_bottom=30/1e3*1.9, fac_dt=0.2, ω=0.5, verbose=false,
                          #maxTime_Myrs=1.1,  # Fig. 11, Fig. 12B
