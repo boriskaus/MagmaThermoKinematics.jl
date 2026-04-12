@@ -178,7 +178,7 @@ Backend selection through `environment!` configures CPU threads, or CUDA executi
 
 When your own script uses ParallelStencil macros directly (for example `@zeros` or `@parallel`), call `@init_parallel_stencil(...)` in script scope after `environment!(...)`.
 
-If you run this on a CPU, you can run it in parallel by starting julia in ,ulti-threading mode:
+If you run this on a CPU, you can run it in parallel by starting julia in multi-threading mode:
 
 ```julia
 $julia -t auto
