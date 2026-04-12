@@ -2,10 +2,12 @@
 
 This page follows the same style as the 2D MTK_GMG examples, but for 3D setups. It allows you to adapt a simulation to any location .
 
-## Why MTK_GMG Is Flexible for Real-World Systems
+## Using MTK_GMG for real volcanic systems
 
 These examples show that the same MTK_GMG solver pipeline can be reused across different volcanic systems by changing setup data and runtime choices instead of rewriting the core numerics. 
-The main 
+The main code does not have to be changed if you want to do things such as change the location of magma intrusions over time, or store particular datasets. All can be specified in the input file, which makes this approach very flexible and reproducible (just make sure to report the exact version of MTK you employed).
+
+We will show two examples here:
 
 - `Unzen3D` demonstrates a workflow where the model domain, phase structure, and thermal state are assembled from imported topography and project-specific initialization logic.
 - `Lanin3D` demonstrates a workflow where a custom topography is downloaded using GMT if the file doesn't exist, and a custom output hook is defined to print time and iteration diagnostics.
@@ -13,12 +15,12 @@ The main
 
 In practice, this means `MagmaThermoKinematics.jl` can move from synthetic benchmark setups to real-world applications by swapping geological input data and user hooks while keeping the computational framework stable.
 
-## Unzen3D
+## Example 1: Unzen3D
 
 This section documents the script in [examples/MTK_GMG_3D_example.jl](https://github.com/boriskaus/MagmaThermoKinematics.jl/blob/main/examples/MTK_GMG_3D_example.jl) which focusses on [Mount Unzen](https://en.wikipedia.org/wiki/Mount_Unzen) in Japan and produces the following script:
 ![](../assets/movies/Unzen3D.gif)
 
-### Imports and Backend
+#### Imports and Backend
 As always, we start with loading the required input:
 ```julia
 const USE_GPU = false
@@ -40,7 +42,7 @@ using MagmaThermoKinematics.MTK_GMG_3D
 using Random, GeoParams, GeophysicalModelGenerator
 ```
 
-### GeophysicalModelGenerator Setup
+#### GeophysicalModelGenerator Setup
 The GMG package is used to generate the 3D setup (and can also be used to import screenshots, seismic tomography models, seismicity and all other data that is available). We also load the topography from disk, and set the `Phases` below the topography to 1: 
 ```julia
 Topo_cart = load_GMG(joinpath(@__DIR__, "Topo_cart"))
@@ -55,7 +57,7 @@ Data_3D.fields.Phases[Below] .= 1
 ```
 Likewise, we set a Moho, and initialize a temperature structure.
 
-### Parameter Setup and Run
+#### Parameter Setup and Run
 The numerical and dike parameters are:
 ```julia
 Num         = NumParam( SimName="Unzen3D", axisymmetric=false,
@@ -111,12 +113,12 @@ Finally, the simulation is performed as:
 Grid, Arrays, Tracers, Dikes, time_props =
 	MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Dike_params, CartData_input = Data_3D)
 ```
-One way this can look like is:
+Which looks like:
 ![Unzen 3D](../assets/Unzen3D.png)
 
-Note that this is a Paraview PNG file, which can be reproduced with Paraview 6.1 or newer (open with `Load State...`).
+Here, the isosurface indicates the area with eruptable melt (>50% melt content). Note that this is a Paraview PNG file, which can be reproduced with Paraview 6.1 or newer (open with `Load State...`).
 
-## Lanin3D
+## Example 2: Lanin 3D
 
 This section documents the scripts:
 
@@ -125,7 +127,7 @@ This section documents the scripts:
 which is a 3D simulation of (hypothetical) magma injection below Lanin.
 ![](../assets/movies/Lanin3D.gif)
 
-### Custom Setup Builder
+#### Custom Setup Builder
 Many parts of the scripts are the same as in the previous example and are thus not repeated here. In the case of Lanin, we also download the topography and save it to disk if that file does not exist yet (which requires you to install the `GMT` package):
 
 ```julia
@@ -145,7 +147,7 @@ if !isfile(joinpath(@__DIR__,"Topo_cart_Lanin3D.jld2"))
 end
 ```
 
-### Hooks and Run
+#### Hooks and Run
 We also adjust the printing info that is shown during the simulation with:
 ```julia
 import MagmaThermoKinematics.MTK_GMG
@@ -157,7 +159,13 @@ function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters,
 	println("$(Num.it), Time=$(round(Num.time / Num.SecYear / 1e3, digits = 3)) kyrs")
 	return nothing
 end
+```
 
+As always, the simulation is performed with:
+```julia
 Grid, Arrays, Tracers, Dikes, time_props =
 	MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Dike_params, CartData_input = Data_3D)
 ```
+
+Which looks like:
+![Lanin 3D](../assets/Lanin3D.png)

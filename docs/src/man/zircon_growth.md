@@ -1,9 +1,19 @@
-# ZirconGrowth Integration
+# Compute zircon ages
 
-MagmaThermoKinematics has an optional integration with
-[ZirconGrowth.jl](https://github.com/JuliaGeodynamics/ZirconGrowth.jl), a package that simulates zircon crystal growth along a magma Tt-path using an implicit finite-difference scheme on a 1-D spherical grid. The integration is implemented as a [Julia package extension](https://pkgdocs.julialang.org/v1/creating-packages/#Conditional-loading-of-code-in-packages-(Extensions)) and is loaded automatically when you do `using ZirconGrowth` in your session.
+MagmaThermoKinematics has 3 ways to cpmpute zircon ages:
 
-## Installation
+1. Following the method of Oscar Lovera ("UCLA" method)
+2. Following the method of Gregor Weber & coworkers ("Geneva" method)
+3. Following the approach of Melnik & Bindemann in which 1D radially symmetric models are used to compute the details of how zircon crystals grow.
+
+Method 1 and 2 were benchmarked in the ZASSy paper of [Schmitt et al. (2023)](https://pubs.geoscienceworld.org/gsa/geosphere/article/19/4/1006/624461/Zircon-age-spectra-to-quantify-magma-evolution) and are implemented in the script [Plot_ZirconAgeStatistics.jl](https://github.com/boriskaus/MagmaThermoKinematics.jl/blob/main/examples/Plot_ZirconAgeStatistics.jl). See the citations in the ZASSy paper for details. We obtained a reasonable good agreement between our scripts and the other codes that participated in the benchmark, but note that we have not performed a very thorough comparison between the two methods.
+Method 3 grows a zircon crystal following the temporal cooling history of every tracer in MTK simulations and will be described in more detail here.
+
+## Growing zircon crystals with ZirconGrowth.jl
+
+MagmaThermoKinematics has an optional integration with [ZirconGrowth.jl](https://github.com/JuliaGeodynamics/ZirconGrowth.jl), a package that simulates zircon crystal growth along a magma Tt-path using an implicit finite-difference scheme on a 1-D spherical grid. The integration is implemented as a [Julia package extension](https://pkgdocs.julialang.org/v1/creating-packages/#Conditional-loading-of-code-in-packages-(Extensions)) and is loaded automatically when you do `using ZirconGrowth` in your session.
+
+#### Installation
 
 ZirconGrowth.jl is a separate package:
 
@@ -12,7 +22,7 @@ ZirconGrowth.jl is a separate package:
 ] add ZirconGrowth                                          # once registered
 ```
 
-## Workflow
+#### Workflow
 
 A typical MagmaThermoKinematics run records the temperature–time history of each passive tracer particle.  After the simulation, these Tt-paths can be passed directly to the ZirconGrowth model:
 
@@ -31,9 +41,9 @@ age_years, zircon_radius_um = simulate_zircon_growth_from_tracers(Tracers)
 # Option 3 — single tracer
 result = simulate_zircon_growth_from_tracers(Tracers[1])
 ```
-Note that `ZirconGrowth` simulates how a single zierocn crystal grows with with time. `age_years` is a volume-averaged age of the crystal (with age is in years), which one would obtain if measuring the age using the full zircon crystal,
+Note that `ZirconGrowth` simulates how a single zircon crystal grows with with time. `age_years` is a volume-averaged age of the crystal (with age is in years), which one would obtain if measuring the age using the full zircon crystal,
 
-## Return values
+#### Return values
 
 `simulate_zircon_growth_from_tracers` returns a `NamedTuple` with one entry per successfully simulated tracer (tracers with fewer than 2 time steps are skipped):
 
@@ -43,7 +53,7 @@ Note that `ZirconGrowth` simulates how a single zierocn crystal grows with with 
 | `zircon_radius_um`  | `Vector{Float64}` | Final crystal radius in µm |
 
 
-## Keyword arguments
+#### Keyword arguments
 
 ```julia
 simulate_zircon_growth_from_tracers(Tracers;
@@ -54,7 +64,7 @@ simulate_zircon_growth_from_tracers(Tracers;
     return_results = false)            # also return Vector{SimulationResult}
 ```
 
-### `nx` — spatial resolution
+#### `nx` — spatial resolution
 
 The ZirconGrowth solver discretises the crystal on a 1-D spherical grid with `nx` points
 (default 100).  Adjusting it trades speed against spatial resolution:
@@ -69,7 +79,7 @@ age_years, zircon_radius_um = simulate_zircon_growth_from_tracers(Tracers; nx=10
 
 `nx` is ignored when a fully constructed `params` object is passed explicitly.
 
-### `return_results`
+##### `return_results`
 
 Set `return_results = true` to retrieve the full `ZirconGrowth.SimulationResult` objects.
 This uses more memory but gives access to the complete crystal profile, trace-element concentrations, growth rates, etc.:
@@ -83,7 +93,7 @@ results[1].time_years
 results[1].zircon_radius_um
 ```
 
-### `filename`
+##### `filename`
 
 When a `filename` is provided the summary vectors are saved to a JLD2 file:
 
@@ -98,7 +108,7 @@ simulate_zircon_growth_from_tracers("MyRun/")
 simulate_zircon_growth_from_tracers("MyRun/"; filename = nothing)
 ```
 
-## Performance
+#### Performance
 As a full 1D calculation is run for every tracer, this can take quite some time. Each tracer is independent, so the loop is parallelised with `Threads.@threads`.  
 
 Start Julia with multiple threads for a proportional speedup:
