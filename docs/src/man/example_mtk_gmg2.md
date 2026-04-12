@@ -165,8 +165,6 @@ Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(
 
 The `USE_GPU` flag passed to `NumParam` must match the `environment!` call at the top of the script.
 
-
-
 ## Full Example File
 The result of the simulation looks like this:
 
