@@ -113,7 +113,6 @@ makedocs(;
             ],
             "Numerics and Physics" => "man/numerics.md",
             "ZirconGrowth Integration" => "man/zircon_growth.md",
-            "Ongoing Development" => "man/development.md",
         ],
         "API" => Any[
             "Function Reference" => "man/listfunctions.md",
