@@ -1,0 +1,122 @@
+# ZirconGrowth Integration
+
+MagmaThermoKinematics has an optional integration with
+[ZirconGrowth.jl](https://github.com/JuliaGeodynamics/ZirconGrowth.jl), a package that
+simulates zircon crystal growth along a magma Tt-path using an implicit finite-difference
+scheme on a 1-D spherical grid. The integration is implemented as a
+[Julia package extension](https://pkgdocs.julialang.org/v1/creating-packages/#Conditional-loading-of-code-in-packages-(Extensions))
+and is loaded automatically when you do `using ZirconGrowth` in your session.
+
+## Installation
+
+ZirconGrowth.jl is a separate package:
+
+```julia
+] add https://github.com/JuliaGeodynamics/ZirconGrowth.jl   # while unregistered
+] add ZirconGrowth                                           # once registered
+```
+
+## Workflow
+
+A typical MagmaThermoKinematics run records the temperature–time history of each passive
+tracer particle.  After the simulation, these Tt-paths can be passed directly to the
+ZirconGrowth model:
+
+```julia
+using MagmaThermoKinematics
+using ZirconGrowth          # activates the extension
+
+# Option 1 — point at an output directory
+age_years, zircon_radius_um = simulate_zircon_growth_from_tracers("MyRun/")
+
+# Option 2 — pass tracers already loaded in memory
+using JLD2
+Tracers = JLD2.load("MyRun/Tracers_SimParams.jld2", "Tracers")
+age_years, zircon_radius_um = simulate_zircon_growth_from_tracers(Tracers)
+
+# Option 3 — single tracer
+result = simulate_zircon_growth_from_tracers(Tracers[1])
+```
+
+## Return values
+
+`simulate_zircon_growth_from_tracers` returns a `NamedTuple` with one entry per
+successfully simulated tracer (tracers with fewer than 2 time steps are skipped):
+
+| Field               | Type              | Description |
+|:--------------------|:------------------|:------------|
+| `age_years`         | `Vector{Float64}` | Volume-averaged crystallisation age in years before the end of the simulation |
+| `zircon_radius_um`  | `Vector{Float64}` | Final crystal radius in µm |
+
+### Volume-averaged age
+
+The volume-averaged age weights each concentric shell of the crystal by its volume.
+The shell between radii $r_i$ and $r_{i+1}$ crystallised at simulation time $t_i$ and has
+volume proportional to $r_{i+1}^3 - r_i^3$.  Its age (years before the end of the
+simulation) is $t_\text{end} - \tfrac{1}{2}(t_i + t_{i+1})$.  The weighted mean is:
+
+$$\bar{t} = \frac{\sum_i (t_\text{end} - \bar{t}_i)\,(r_{i+1}^3 - r_i^3)}{\sum_i (r_{i+1}^3 - r_i^3)}$$
+
+This can also be called directly on a `SimulationResult`:
+
+```julia
+age = volume_averaged_age(results[1])      # single crystal → Float64
+ages = volume_averaged_age(results)        # vector → Vector{Float64}
+```
+
+## Keyword arguments
+
+```julia
+simulate_zircon_growth_from_tracers(Tracers;
+    params         = nothing,          # ZirconGrowth.GrowthParams (one per tracer if nothing)
+    elements       = ZirconGrowth.default_element_data(),  # trace elements to track
+    filename       = nothing,          # save age_years & zircon_radius_um to this JLD2 file
+    return_results = false)            # also return Vector{SimulationResult}
+```
+
+### `return_results`
+
+Set `return_results = true` to retrieve the full `ZirconGrowth.SimulationResult` objects.
+This uses more memory but gives access to the complete crystal profile, trace-element
+concentrations, growth rates, etc.:
+
+```julia
+age_years, zircon_radius_um, results = simulate_zircon_growth_from_tracers(
+    Tracers; return_results = true)
+
+# example: inspect the radius–time history of the first crystal
+results[1].time_years
+results[1].zircon_radius_um
+```
+
+### `filename`
+
+When a `filename` is provided the summary vectors are saved to a JLD2 file:
+
+```julia
+# explicit filename
+simulate_zircon_growth_from_tracers(Tracers; filename = "MyRun/ZirconGrowth.jld2")
+
+# directory form saves to dirname/ZirconGrowth.jld2 automatically
+simulate_zircon_growth_from_tracers("MyRun/")
+
+# suppress saving when using the directory form
+simulate_zircon_growth_from_tracers("MyRun/"; filename = nothing)
+```
+
+## Performance
+
+Each tracer is independent, so the loop is parallelised with `Threads.@threads`.  Start
+Julia with multiple threads for a proportional speedup:
+
+```bash
+julia --threads auto
+```
+
+or set the environment variable permanently:
+
+```bash
+export JULIA_NUM_THREADS=auto
+```
+
+Check the thread count at runtime with `Threads.nthreads()`.

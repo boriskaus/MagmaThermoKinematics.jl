@@ -57,6 +57,21 @@ function Process_ZirconAges(dirname; ZirconData=ZirconAgeData())
     return nothing
 end
 
+"""
+    simulate_zircon_growth_from_tracers(dirname; params, elements)
+
+Requires `ZirconGrowth.jl` to be loaded.  Load the extension with `using ZirconGrowth`.
+"""
+function simulate_zircon_growth_from_tracers end
+
+"""
+    volume_averaged_age(result)
+    volume_averaged_age(results)
+
+Requires `ZirconGrowth.jl` to be loaded.  Load the extension with `using ZirconGrowth`.
+"""
+function volume_averaged_age end
+
 function copy_arrays_GPU2CPU!(T_CPU::AbstractArray,  ϕ_CPU::AbstractArray, T_GPU::AbstractArray, ϕ_GPU::AbstractArray)
 
     T_CPU  .= Array(T_GPU)

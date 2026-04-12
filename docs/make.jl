@@ -112,6 +112,7 @@ makedocs(;
                 "MTK_GMG 3D Examples" => "man/example_mtk_gmg_3d.md"
             ],
             "Numerics and Physics" => "man/numerics.md",
+            "ZirconGrowth Integration" => "man/zircon_growth.md",
             "Ongoing Development" => "man/development.md",
         ],
         "API" => Any[
