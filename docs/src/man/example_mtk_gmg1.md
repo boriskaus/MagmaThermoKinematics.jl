@@ -3,7 +3,7 @@
 This page documents the coding style used in [examples/MTK_GMG_2D_example1.jl](https://github.com/boriskaus/MagmaThermoKinematics.jl/blob/main/examples/MTK_GMG_2D_example1.jl). It is a simple 2D example where we 
 
 ## Imports and Backend
-All simulations need to important the appropriate libraries:
+All simulations need to import the appropriate libraries:
 ```julia
 const USE_GPU=false;
 if USE_GPU
