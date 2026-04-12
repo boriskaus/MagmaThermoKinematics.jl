@@ -294,9 +294,9 @@ function MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArra
                 Data_set3D  =   CartData(X/1e3,Y/1e3,Z/1e3, (Z=Z,))
             end
             # add datasets
-            Data_set3D = add_data_CartData(Data_set3D, "Temp",         Array(Arrays.Tnew));
-            Data_set3D = add_data_CartData(Data_set3D, "Phases",       Array(Arrays.Phases));
-            Data_set3D = add_data_CartData(Data_set3D, "MeltFraction", Array(Arrays.ϕ));
+            Data_set3D = add_data_CartData(Data_set3D, "Temp",         Float32.(Array(Arrays.Tnew)));
+            Data_set3D = add_data_CartData(Data_set3D, "Phases",       Int32.(Array(Arrays.Phases)));
+            Data_set3D = add_data_CartData(Data_set3D, "MeltFraction", Float64.(Array(Arrays.ϕ)));
 
             # Save output to CartData
             Num.pvd  = write_paraview(Data_set3D, name, pvd=Num.pvd,time=Num.time/SecYear/1e3);

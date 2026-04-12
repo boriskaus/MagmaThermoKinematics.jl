@@ -140,9 +140,9 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Dike_params, CartData_input=Data_3D); # start the main code
 
 Data_set3D_out = Data_3D;
-Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Temperature[C]",  Array(Arrays.Tnew ));   # in MPa
-Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Temp",         Array(Arrays.Tnew));
-Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Phases",       Array(Arrays.Phases));
-Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "MeltFraction", Array(Arrays.ϕ));
+Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Temperature[C]",  Float32.(Array(Arrays.Tnew )));   # in MPa
+Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Temp",         Float32.(Array(Arrays.Tnew)));
+Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Phases",       Int32.(Array(Arrays.Phases)));
+Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "MeltFraction", Float32.(Array(Arrays.ϕ)));
 save_GMG(joinpath(Num.SimName,"Lanin3D_MTK_final"), Data_set3D_out)
 write_paraview(Data_3D, joinpath(Num.SimName,"Lanin3D_MTK_final"))
