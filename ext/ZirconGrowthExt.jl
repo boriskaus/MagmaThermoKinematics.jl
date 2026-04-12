@@ -42,6 +42,8 @@ When `return_results = true` a third field `results` is included, containing a
 ## Arguments
 - `params`         : `ZirconGrowth.GrowthParams`; if `nothing` (default) a fresh instance
                      is constructed from each tracer's Tt-path individually.
+- `nx`             : number of 1-D spatial grid points for the ZirconGrowth solver
+                     (default 100).  Ignored when `params` is provided explicitly.
 - `elements`       : `ZirconGrowth.ElementData` selecting which trace elements are tracked;
                      defaults to `ZirconGrowth.default_element_data()`.
 - `filename`       : path to a JLD2 file; if provided the `age_years` and
@@ -75,6 +77,7 @@ age_years, zircon_radius_um, results = simulate_zircon_growth_from_tracers(
 """
 function MagmaThermoKinematics.simulate_zircon_growth_from_tracers(Tracers;
         params::Union{Nothing, ZirconGrowth.GrowthParams} = nothing,
+        nx::Int = 100,
         elements::ZirconGrowth.ElementData = ZirconGrowth.default_element_data(),
         filename::Union{Nothing, AbstractString} = nothing,
         return_results::Bool = false)
@@ -96,8 +99,7 @@ function MagmaThermoKinematics.simulate_zircon_growth_from_tracers(Tracers;
 
         length(time_Myr) < 2 && continue
 
-        p = isnothing(params) ?
-            ZirconGrowth.GrowthParams(time_Myr, T_C) : params
+        p = isnothing(params) ? ZirconGrowth.GrowthParams(time_Myr, T_C; nx=nx) : params
 
         res = ZirconGrowth.simulate_from_cooling_path(time_Myr, T_C;
                   params = p, elements = elements)
