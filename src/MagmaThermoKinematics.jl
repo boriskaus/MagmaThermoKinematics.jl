@@ -230,7 +230,7 @@ export AdvectTemperature, Interpolate!, CorrectBounds, evaluate_interp_2D, evalu
 # Shared utility routines and MTK/GMG structs are loaded at module initialization
 # to avoid defining new global bindings inside environment!.
 include("Utils.jl")
-export Process_ZirconAges, copy_arrays_GPU2CPU!, copy_arrays_CPU2GPU!
+export Process_ZirconAges, simulate_zircon_growth_from_tracers, volume_averaged_age, copy_arrays_GPU2CPU!, copy_arrays_CPU2GPU!
 
 include("MTK_GMG_structs.jl")
 export NumParam, DikeParam, TimeDepProps
