@@ -257,6 +257,7 @@ end
         Phi_melt_cpu  .= Array(Arrays.ϕ)
 
         UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);     # Update info on tracers
+        update_Tvec!(Tracers, time/SecYear*1e-6)                                # update T & time vectors on tracers
 
         if (Num.TrackTracersOnGrid==true) &&  (mod(it,100)==0)
             UpdateTracers_T_ϕ!(Tracers_grid, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);                             # Initialize info on grid tracers
@@ -312,10 +313,6 @@ end
         end
 
         Time_vec[it]        =   time;                                               # Vector with time
-
-        if mod(it,10)==0
-            update_Tvec!(Tracers, time/SecYear*1e-6)                                # update T & time vectors on tracers
-        end
         # --------------------------------------------
 
         # Visualize results --------------------------
