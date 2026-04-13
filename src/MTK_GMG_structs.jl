@@ -181,6 +181,7 @@ dp = DikeParam(Type="MyDike", Center=[0., -7.0e3], ...)
     Dip_ran::Float64                =   30.0;                     # maximum variation of dip
     Strike_ran::Float64             =   90.0;                     # maximum variation of strike
     SillsAbove::Float64             =   -15e3;                    # Sills above this depth
+    sill::Union{Nothing, InjectSills.AbstractSill} = nothing      # InjectSills.jl sill object (used when Type="InjectSills")
 
 end
 

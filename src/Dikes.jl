@@ -31,6 +31,7 @@ with
                     "CylindricalDike_TopAccretion_FullModelAdvection"      -   cylindrical dike area, which grows by underaccreting; also material to the side of the dike is moved downwards
                     "ElasticDike"   -   penny-shaped elastic dike in elastic halfspace
                     "EllipticalIntrusion" - elliptical dike intrusion area with radius Width/2 and height Height/2
+                    "InjectSills"   -   use an InjectSills.jl AbstractSill object (set via the `sill` field)
 
     T:          Temperature of the dike [Celcius]
 
@@ -64,6 +65,50 @@ with
     H           ::Float64           =   8*(1-ν^2)*ΔP*W/(π*E);                 # (maximum) Thickness of dike/sill
     Center      ::Vector{Float64}   =   [20e3 ; -10e3]                        # Center
     Phase       ::Int64             =   2;                                    # Phase of newly injected magma
+    sill        ::Union{Nothing, InjectSills.AbstractSill} = nothing          # InjectSills.jl sill object (used when Type="InjectSills")
+end
+
+"""
+    Dike(sill::InjectSills.AbstractSill; kwargs...)
+
+Convenience constructor: create a `Dike` with `Type="InjectSills"` directly from an
+`InjectSills.AbstractSill` object.  Geometry (`W`, `H`) and elastic parameters (`E`, `ν`)
+are read from the sill automatically.
+
+!!! note
+    The sill **must** have zero angle.  MTK's `HostRockVelocityFromDike` rotates the
+    coordinate frame before calling the InjectSills displacement routine, so the sill
+    should always be defined at the origin with zero orientation.  An error is thrown if
+    any angle component is non-zero.
+
+    InjectSills uses `W` as the *radius* (half-width); the MTK `Dike` struct uses `W` as
+    the full diameter.  This constructor converts automatically.
+
+# Example
+```julia
+sill = InjectSills.PennyShapedSill(W=10e3m, H=200m, E=1.5e10Pa, ν=0.3*NoUnits)
+dike = Dike(sill; T=900.0, Center=[0.0, -10e3], Angle=[45.0])
+```
+"""
+function Dike(sill::InjectSills.AbstractSill; kwargs...)
+    # Validate: sill angle must be zero (MTK handles rotation externally)
+    angle_vals = sill.Angle.val
+    if !all(iszero, angle_vals)
+        error("InjectSills sill must have zero angle when used with MTK " *
+              "(MTK pre-rotates coordinates into the dike frame). " *
+              "Got Angle=$(angle_vals). Use Angle=Vec1(0.0)*Pas (2D) or " *
+              "Angle=Vec2(0.0,0.0)*Pas (3D).")
+    end
+
+    # Read geometry and material params from the sill
+    # Use .val to get the numeric value (InjectSills.Value returns a Quantity for dimensional fields)
+    # InjectSills W = radius; MTK Dike W = full diameter
+    W_dike = 2.0 * sill.W.val
+    H_dike = sill.H.val
+    E_val  = sill.E.val
+    ν_val  = sill.ν.val
+
+    return Dike(; W=W_dike, H=H_dike, E=E_val, ν=ν_val, Type="InjectSills", sill=sill, kwargs...)
 end
 
 struct DikePoly    # polygon that describes the geometry of the dike (only in 2D)
@@ -75,7 +120,7 @@ end
     This injects a dike in the computational domain in an instantaneous manner,
     while "pushing" the host rocks to the sides.
 
-    The orientation and the type of the dike are described by the structure
+    The orientation and the type of the dike are described by the structure `Dike`
 
     General form:
           Tracers, Tnew, VolumeInjected, dike_poly, Velocity = InjectDike(Tracers, T, Grid, FullGrid, dike, nTr_dike; AdvectionMethod="RK2", InterpolationMethod="Quadratic", dike_poly=[])
@@ -268,6 +313,17 @@ Threads.@threads for i in eachindex(Vz_rot)
 
                 end
 
+        elseif Type=="InjectSills"
+                @unpack H = dike
+                Vint    =  Δ/dt;
+                sill    =  dike.sill
+                Threads.@threads for i in eachindex(Vz_rot)
+                    pt      = InjectSills.Point2(Points[1][i], Points[2][i])
+                    disp    = InjectSills.hostrock_displacement(sill, pt)
+                    Vx_rot[i] = Vint * disp[1] / H
+                    Vz_rot[i] = Vint * disp[2] / H
+                end
+
         elseif Type == "EllipticalIntrusion"
                 @unpack H,W = dike
                 AR  = H/W         # aspect ratio of ellipse
@@ -365,6 +421,19 @@ Threads.@threads for i in eachindex(Vz_rot)
                     Vy_rot[i]           =   Vint.*Displacement[2];
                     Vx_rot[i]           =   Vint.*Displacement[1];
 
+                end
+
+        elseif Type=="InjectSills"
+                @unpack H = dike
+                Vint    =  Δ/dt;
+                sill    =  dike.sill
+
+                Threads.@threads for i=firstindex(Vx_rot):lastindex(Vx_rot)
+                    pt      = InjectSills.Point3(Points[1][i], Points[2][i], Points[3][i])
+                    disp    = InjectSills.hostrock_displacement(sill, pt)
+                    Vx_rot[i] = Vint * disp[1] / H
+                    Vy_rot[i] = Vint * disp[2] / H
+                    Vz_rot[i] = Vint * disp[3] / H
                 end
 
         else
@@ -523,7 +592,7 @@ function isinside_dike(pt, dike::Dike)
                 in = true
             end
         end
-    elseif (Type=="ElasticDike") || (Type=="EllipticalIntrusion")
+    elseif (Type=="ElasticDike") || (Type=="EllipticalIntrusion") || (Type=="InjectSills")
         eq_ellipse = 100.0;
 
         if dim==2
@@ -570,7 +639,7 @@ function volume_dike(dike::Dike)
         area    = W*H;                  #  (in 2D, in m^2)
         volume  = pi*(W/2.0)^2*H;       #  (equivalent 3D volume, in m^3)
 
-    elseif (Type=="ElasticDike") || (Type=="EllipticalIntrusion")
+    elseif (Type=="ElasticDike") || (Type=="EllipticalIntrusion") || (Type=="InjectSills")
         area    = pi*W/2*H/2                    #   (in 2D, in m^2)  - note that W,H are the diameters
         volume  = 4/3*pi*(W/2)*(W/2)*(H/2)      #   (equivalent 3D volume, in m^3)
     else

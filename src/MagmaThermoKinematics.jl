@@ -14,6 +14,7 @@ using Parameters                                # More flexible definition of pa
 using Interpolations                            # Fast interpolations
 using StaticArrays
 using JLD2                                      # Load/save data to disk
+using InjectSills                               # Dike/sill emplacement methods
 @reexport using GeoParams                                 # Material parameters calculations
 @reexport using ParallelStencil
 
