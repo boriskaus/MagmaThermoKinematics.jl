@@ -70,7 +70,7 @@ else
 end
 
 @parallel (1:Nx, 1:Nz) GridArray!(Arrays.X,  Arrays.Z, Grid.coord1D[1], Grid.coord1D[2])
-Tracers                 =   StructArray{Tracer}(undef, 1)                           # Initialize tracers
+Tracers                 =   StructArray{Tracer{Float32}}(undef, 1)                   # Initialize tracers
 dike                    =   Dike(W=W_in,H=H_in,Type=DikeType,T=T_in);               # "Reference" dike with given thickness,radius and T
 Arrays.T               .=   -Arrays.Z.*GeoT;                                        # Initial (linear) temperature profile
 
