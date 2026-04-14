@@ -224,6 +224,9 @@ export Dike, DikePoly
 export Tracer, AddDike, HostRockVelocityFromDike, CreateDikePolygon, advect_dike_polygon!,
        volume_dike, InjectDike, TracersToGrid!
 
+include("InjectSills_utils.jl")
+export inject_sills, add_dike
+
 # routines related to advection & interpolation
 include("Advection.jl")
 export AdvectTemperature, Interpolate!, CorrectBounds, evaluate_interp_2D, evaluate_interp_3D

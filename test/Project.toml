@@ -1,0 +1,5 @@
+[deps]
+GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
+JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
+MagmaThermoKinematics = "e7fe3d1a-f102-40b5-a66b-64b14986c4c8"
+ZirconGrowth = "5085b5e1-578a-4bbf-9dfc-2862bf7461c3"

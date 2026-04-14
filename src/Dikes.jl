@@ -96,8 +96,8 @@ function Dike(sill::InjectSills.AbstractSill; kwargs...)
     if !all(iszero, angle_vals)
         error("InjectSills sill must have zero angle when used with MTK " *
               "(MTK pre-rotates coordinates into the dike frame). " *
-              "Got Angle=$(angle_vals). Use Angle=Vec1(0.0)*Pas (2D) or " *
-              "Angle=Vec2(0.0,0.0)*Pas (3D).")
+              "Got Angle=$(angle_vals). Use Angle=Vec1(0.0) (2D) or " *
+              "Angle=Vec2(0.0,0.0) (3D).")
     end
 
     # Read geometry and material params from the sill
