@@ -66,7 +66,7 @@ function add_dike(Tfield, Tr, Grid, sill::InjectSills.AbstractSill, T_in::Float6
 
         number = isassigned(Tr, 1) ? Tr.num[end] + 1 : 1
 
-        FT         = eltype(eltype(Tr.time_vec))
+        FT = isassigned(Tr, 1) ? eltype(Tr[1].time_vec) : Float32
         coord      = [Float64(pt[i]) for i in 1:dim]  # Vector{Float64}
         new_tracer = Tracer{FT}(num=number, coord=coord, T=T_in, Phase=Phase_in)
 
@@ -81,6 +81,11 @@ function add_dike(Tfield, Tr, Grid, sill::InjectSills.AbstractSill, T_in::Float6
     end
 
     return Tfield, Tr
+end
+
+# Accept generic numeric inputs and normalize to the concrete method used internally.
+function add_dike(Tfield, Tr, Grid, sill::InjectSills.AbstractSill, T_in::Real, Phase_in::Integer, nTr_dike::Integer)
+    return add_dike(Tfield, Tr, Grid, sill, Float64(T_in), Int64(Phase_in), Int64(nTr_dike))
 end
 
 
@@ -200,4 +205,16 @@ function inject_sills(Tracers, T::Array, Grid,
     end
 
     return Tracers, Tnew, InjectedVolume, dike_poly, Velocity
+end
+
+# Convenience overload to accept Int/Float combinations from user-facing scripts.
+function inject_sills(Tracers, T::Array, Grid,
+                      sill::InjectSills.AbstractSill,
+                      T_in::Real, Phase_in::Integer, nTr_dike::Integer;
+                      AdvectionMethod="RK2", InterpolationMethod="Linear",
+                      dike_poly=[])
+    return inject_sills(Tracers, T, Grid, sill, Float64(T_in), Int64(Phase_in), Int64(nTr_dike);
+                        AdvectionMethod=AdvectionMethod,
+                        InterpolationMethod=InterpolationMethod,
+                        dike_poly=dike_poly)
 end

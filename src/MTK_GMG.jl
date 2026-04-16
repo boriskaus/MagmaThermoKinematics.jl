@@ -9,11 +9,12 @@ module MTK_GMG
 
 using Parameters
 using GeoParams
+using InjectSills
 using GeophysicalModelGenerator
 using StructArrays
 using MagmaThermoKinematics.Grid
 import MagmaThermoKinematics: NumericalParameters, DikeParameters, TimeDependentProperties
-import MagmaThermoKinematics: update_Tvec!, Dike, InjectDike, km³, kyr, Myr, CreateDikePolygon
+import MagmaThermoKinematics: update_Tvec!, inject_sills, km³, kyr, Myr
 import MagmaThermoKinematics: PhasesFromTracers!
 SecYear = 3600*24*365.25;
 
@@ -56,10 +57,39 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         else
             T_bottom  =   Array(@view Arrays.T[:,:,1])
         end
-        dike      =   Dike(W=Dikes.W_in, H=Dikes.H_in, Type=Dikes.Type, T=Dikes.T_in_Celsius, Center=Dikes.Center[:],  Angle=Dikes.Angle, Phase=Dikes.DikePhase, sill=Dikes.sill);               # "Reference" dike with given thickness,radius and T
+        if Dikes.Type == "CylindricalDike_TopAccretion"
+            if Num.dim == 2
+                sill = InjectSills.CylindricalDikeTopAccretion(Center=InjectSills.Point2(Dikes.Center[1], Dikes.Center[2]) * m,
+                                                               Angle=InjectSills.Vec1(Dikes.Angle[1]) * NoUnits,
+                                                               W=Dikes.W_in * m,
+                                                               H=Dikes.H_in * m)
+            else
+                sill = InjectSills.CylindricalDikeTopAccretion(Center=InjectSills.Point3(Dikes.Center[1], Dikes.Center[2], Dikes.Center[3]) * m,
+                                                               Angle=InjectSills.Vec2(Dikes.Angle[1], Dikes.Angle[end]) * NoUnits,
+                                                               W=Dikes.W_in * m,
+                                                               H=Dikes.H_in * m)
+            end
+        elseif Dikes.Type == "EllipticalIntrusion" || Dikes.Type == "ElasticDike"
+            if Num.dim == 2
+                sill = InjectSills.EllipticalIntrusion(Center=InjectSills.Point2(Dikes.Center[1], Dikes.Center[2]) * m,
+                                                       Angle=InjectSills.Vec1(Dikes.Angle[1]) * NoUnits,
+                                                       W=Dikes.W_in * m,
+                                                       H=Dikes.H_in * m)
+            else
+                sill = InjectSills.EllipticalIntrusion(Center=InjectSills.Point3(Dikes.Center[1], Dikes.Center[2], Dikes.Center[3]) * m,
+                                                       Angle=InjectSills.Vec2(Dikes.Angle[1], Dikes.Angle[end]) * NoUnits,
+                                                       W=Dikes.W_in * m,
+                                                       H=Dikes.H_in * m)
+            end
+        elseif Dikes.Type == "InjectSills"
+            isnothing(Dikes.sill) && error("Dikes.Type='InjectSills' requires Dikes.sill to be set")
+            sill = Dikes.sill
+        else
+            error("Unsupported Dikes.Type for InjectSills callback: $(Dikes.Type)")
+        end
         copyto!(Tnew_cpu, Arrays.T)
 
-        Tracers, Tnew_cpu,Vol,Dikes.dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, Dikes.nTr_dike, dike_poly=Dikes.dike_poly);     # Add dike, move hostrocks
+        Tracers, Tnew_cpu, Vol, Dikes.dike_poly, _ = inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, Float64(Dikes.T_in_Celsius), Dikes.DikePhase, Dikes.nTr_dike, dike_poly=Dikes.dike_poly);     # Add dike, move hostrocks
 
         if Num.flux_bottom_BC==false
             # Keep bottom T constant (advection modifies this)
@@ -78,7 +108,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         println("  Added new dike; time=$(Num.time/kyr) kyrs, total injected magma volume = $(Dikes.InjectVol/km³) km³; rate Q= $(Dikes.Qrate_km3_yr) km³yr⁻¹")
 
         if Num.advect_polygon==true && isempty(Dikes.dike_poly)
-            Dikes.dike_poly   =   CreateDikePolygon(dike);            # create dike for the 1th time
+            Dikes.dike_poly = InjectSills.dike_polygon(sill);            # create dike polygon for the first time
         end
 
         if length(Mat_tup)>1

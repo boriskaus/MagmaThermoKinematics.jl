@@ -82,6 +82,12 @@ Dike_params = DikeParam(Type="ElasticDike",
                         Center=[0.0,0.0, -7000], Angle=[0.0, 0.0],
                 )
 
+# Keep random sill relocation and actual injection in sync.
+if Num.AddRandomSills
+    Dike_params.InjectionInterval = Num.dt * Num.RandomSills_timestep
+    Dike_params.InjectionInterval_year = Dike_params.InjectionInterval / SecYear
+end
+
 # Define parameters for the different phases
 MatParam     = (SetMaterialParams(Name="Air", Phase=0,
                                 Density    = ConstantDensity(ρ=2700kg/m^3),

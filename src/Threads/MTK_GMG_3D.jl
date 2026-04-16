@@ -14,7 +14,7 @@ using GeophysicalModelGenerator
 import ..Diffusion3D: GridArray!, Nonlinear_Diffusion_step_3D!, assign!
 using ..MTK_GMG
 import ..NumericalParameters, ..DikeParameters, ..TimeDependentProperties, ..TimeDepProps
-import ..CreateGrid, ..Tracer, ..Dike, ..CreateDikePolygon, ..UpdateTracers_T_ϕ!
+import ..CreateGrid, ..Tracer, ..UpdateTracers_T_ϕ!, ..InjectSills, ..m, ..NoUnits
 
 
 const SecYear = 3600*24*365.25;
@@ -116,8 +116,11 @@ There are a few functions that you can overwrite in your user code to customize 
         ind = findall( (Arrays.R.<=Dikes.W_in/2) .& (abs.(Arrays.Z.-Dikes.Center[2]) .< Dikes.H_in/2) );
         Arrays.T_init[ind] .= Dikes.T_in_Celsius;
         if Num.advect_polygon==true
-            dike              =   Dike(W=Dikes.W_in,H=Dikes.H_in,Type=Dikes.Type,T=Dikes.T_in_Celsius, Center=Dikes.Center[:],  Angle=Dikes.Angle, Phase=Dikes.DikePhase);               # "Reference" dike with given thickness,radius and T
-            Dikes.dike_poly   =   CreateDikePolygon(dike);
+            sill = InjectSills.CylindricalDikeTopAccretion(Center=InjectSills.Point3(Dikes.Center[1], Dikes.Center[2], Dikes.Center[3]) * m,
+                                                           Angle=InjectSills.Vec2(Dikes.Angle[1], Dikes.Angle[end]) * NoUnits,
+                                                           W=Dikes.W_in * m,
+                                                           H=Dikes.H_in * m)
+            Dikes.dike_poly = InjectSills.dike_polygon(sill);
         end
     end
     # --------------------------------------------
