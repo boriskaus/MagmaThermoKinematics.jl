@@ -19,6 +19,11 @@ package-lock.json
 */*.mat
 */*.csv
 *.vtk
+*.vts
+*.pvd
 *.h5
 *.jld2
 *.txt
+
+# Julia
+Manifest.toml

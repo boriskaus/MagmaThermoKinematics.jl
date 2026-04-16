@@ -92,7 +92,7 @@ end
 MatParam     = (SetMaterialParams(Name="Air", Phase=0,
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
                                 LatentHeat = ConstantLatentHeat(Q_L=0.0J/kg),
-                                Conductivity = ConstantConductivity(k=3Watt/K/m),          # in case we use constant k
+                                Conductivity = ConstantConductivity(k=300Watt/K/m),         # in case we use constant k
                                 HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
                                 Melting = SmoothMelting(MeltingParam_4thOrder())),          # Marxer & Ulmer melting
 
