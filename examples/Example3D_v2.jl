@@ -60,7 +60,6 @@ using WriteVTK
 
     @parallel (1:Nx,1:Ny,1:Nz) GridArray!(Arrays.X,Arrays.Y,Arrays.Z, Grid.coord1D[1], Grid.coord1D[2], Grid.coord1D[3])
     Tracers                 =   StructArray{Tracer{Float32}}(undef, 1)                   # Initialize tracers
-    dike                    =   Dike(W=W_in,H=H_in,Type=DikeType,T=T_in);               # "Reference" dike with given thickness,radius and T
     Arrays.T               .=   -Arrays.Z.*GeoT;                                        # Initial (linear) temperature profile
 
     # Preparation of VTK/Paraview output
@@ -125,4 +124,4 @@ using WriteVTK
 end # end of main function
 
 Time_vec, Melt_Time, Tracers, Grid, Arrays = MainCode_3D(); # start the main code
-plot(Time_vec/kyr, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example2D") # Create plot
+plot(Time_vec/kyr, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example3D_v2") # Create plot
