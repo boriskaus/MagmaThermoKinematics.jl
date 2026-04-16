@@ -5,6 +5,7 @@ const USE_GPU=false;
 if USE_GPU
     using CUDA      # needs to be loaded before loading Parallkel=
 end
+using InjectSills
 using ParallelStencil, ParallelStencil.FiniteDifferences2D
 
 using MagmaThermoKinematics
@@ -117,8 +118,6 @@ end
 
     FT                      =   Num.TracerFloatType
     Tracers                 =   StructArray{Tracer{FT}}(undef, 1)                   # Initialize tracers
-    dike                    =   Dike(W=Dikes.W_in,H=Dikes.H_in,Type=Dikes.Type,T=Dikes.T_in_Celsius, Center=Dikes.Center[:]);               # "Reference" dike with given thickness,radius and T
-
     # Set initial geotherm -----------------------
     if Num.AnalyticalInitialGeo
         # Turcotte & Schubert  analytical geotherm which takes depth-dependent radioactive heating into account
@@ -157,9 +156,6 @@ end
     if Dikes.Type  == "CylindricalDike_TopAccretion"
         ind = findall( (Arrays.R.<=Dikes.W_in/2) .& (abs.(Arrays.Z.-Dikes.Center[2]) .< Dikes.H_in/2) );
         Arrays.T_init[ind] .= Dikes.T_in_Celsius;
-        if Num.advect_polygon==true
-            dike_poly   =   CreateDikePolygon(dike);
-        end
     end
     if Num.InitialEllipse
         ind =  findall( ((Arrays.R.^2.0)/(Num.a_init^2.0) .+ ((Arrays.Z.-Dikes.Center[2]).^2.0)/((Num.b_init)^2.0)) .< 1.0); # ellipse
@@ -170,15 +166,18 @@ end
 
 
         # Inject initial dike to the tracers
-        dike_initial        =   Dike(dike, Center=Dikes.Center[:],Angle=[0],W=Num.a_init*2, H=Num.b_init*2);           # Specify dike with random location/angle but fixed size/T
+        sill_initial        =   EllipticalIntrusion(Center=Point2(Dikes.Center[1], Dikes.Center[2]) * m,
+                                Angle=Vec1(0.0) * NoUnits,
+                                W=(Num.a_init*2) * m,
+                                H=(Num.b_init*2) * m)
+        if Num.advect_polygon==true && isempty(dike_poly)
+            dike_poly = InjectSills.dike_polygon(sill_initial)
+        end
         Tnew_cpu           .=   Array(Arrays.T)
-        Tracers, Tnew_cpu,Vol,dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike_initial, Dikes.nTr_dike, dike_poly=dike_poly);     # Add dike, move hostrocks
+        Tracers, Tnew_cpu,Vol,_, VEL  =   inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill_initial, Dikes.T_in_Celsius, 2, Dikes.nTr_dike);     # Add dike, move hostrocks
 
         Arrays.T           .=   Data.Array(Tnew_cpu)
         InjectVol          +=   Vol                                                     # Keep track of injected volume
-        if Num.advect_polygon==true && isempty(dike_poly)
-            dike_poly   =   CreateDikePolygon(dike_initial);            # create dike for the 1th time
-        end
         @printf "  Added initial dike; total injected magma volume = %.2f km³ \n"  InjectVol/km³
 
 
@@ -219,9 +218,24 @@ end
         # Add new dike every X years -----------------
         if floor(time/Dikes.InjectionInterval)> dike_inj
             dike_inj            =   floor(time/Dikes.InjectionInterval)                     # Keeps track on what was injected already
-            dike                =   Dike(dike, Center=Dikes.Center[:],Angle=[0]);           # Specify dike with random location/angle but fixed size/T
+            if Dikes.Type == "CylindricalDike_TopAccretion"
+                sill = CylindricalDikeTopAccretion(Center=Point2(Dikes.Center[1], Dikes.Center[2]) * m,
+                                                   Angle=Vec1(0.0) * NoUnits,
+                                                   W=Dikes.W_in * m,
+                                                   H=Dikes.H_in * m)
+            elseif Dikes.Type == "EllipticalIntrusion"
+                sill = EllipticalIntrusion(Center=Point2(Dikes.Center[1], Dikes.Center[2]) * m,
+                                           Angle=Vec1(0.0) * NoUnits,
+                                           W=Dikes.W_in * m,
+                                           H=Dikes.H_in * m)
+            else
+                error("Unsupported Dikes.Type for inject_sills in test_ZASSY: $(Dikes.Type)")
+            end
+            if Num.advect_polygon==true && isempty(dike_poly)
+                dike_poly = InjectSills.dike_polygon(sill)
+            end
             Tnew_cpu           .=   Array(Arrays.T)
-            Tracers, Tnew_cpu,Vol,dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, Dikes.nTr_dike, dike_poly=dike_poly);     # Add dike, move hostrocks
+            Tracers, Tnew_cpu,Vol,_, VEL  =   inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, Dikes.T_in_Celsius, 2, Dikes.nTr_dike);     # Add dike, move hostrocks
 
             if Num.flux_bottom_BC==false
                 # Keep bottom T absolutey constant (advection modifies this)
@@ -235,10 +249,6 @@ end
             Qrate_km3_yr_km2    =   Qrate_km3_yr/(pi*(Dikes.W_in/2/1e3)^2)
 
             @printf "  Added new dike; time=%.3f kyrs, total injected magma volume = %.2f km³; rate Q= %.2e km³yr⁻¹  \n" time/kyr InjectVol/km³ Qrate_km3_yr
-
-            if Num.advect_polygon==true && isempty(dike_poly)
-                dike_poly   =   CreateDikePolygon(dike);            # create dike for the 1th time
-            end
 
             if length(Mat_tup)>1
                PhasesFromTracers!(Array(Phases), Grid, Tracers, BackgroundPhase=1, InterpolationMethod="Constant");    # update phases from grid

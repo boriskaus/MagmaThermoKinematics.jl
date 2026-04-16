@@ -209,7 +209,7 @@ include("Tracers.jl")
 export UpdateTracers, AdvectTracers!, InitializeTracers,PhaseRatioFromTracers, CorrectTracersForTopography!
 export RockAssemblage, update_Tvec!
 export PhaseRatioFromTracers!, PhasesFromTracers!, UpdateTracers_T_ϕ!, UpdateTracers_Field! # new routines
-
+export Tracer, TracersToGrid!
 
 include("MeltingRelationships.jl")
 export SolidFraction, ComputeLithostaticPressure, LoadPhaseDiagrams, PhaseDiagramData, ComputeDensityAndPressure
@@ -219,10 +219,10 @@ export PhaseRatioAverage!, ComputeSeismicVelocities, SolidFraction_Parameterized
 export StructArray, LazyRow # useful
 export Tracer
 
-include("Dikes.jl")
-export Dike, DikePoly
-export Tracer, AddDike, HostRockVelocityFromDike, CreateDikePolygon, advect_dike_polygon!,
-       volume_dike, InjectDike, TracersToGrid!
+#include("Dikes.jl")
+#export Dike, DikePoly
+#export Tracer, AddDike, HostRockVelocityFromDike, CreateDikePolygon, advect_dike_polygon!,
+#       volume_dike, InjectDike, TracersToGrid!
 
 include("InjectSills_utils.jl")
 export inject_sills, add_dike

@@ -320,71 +320,20 @@ end
 if 1==1
 
 @testset "Dike_Velocity" begin
-  #@test test_HostRockVelocityFromDike("2D", "ElasticDike",[80    ])  ≈   2663.677375120158  atol=1e-8;
-  test_HostRockVelocityFromDike("2D", "ElasticDike",[0    ])
-  test_HostRockVelocityFromDike("2D", "ElasticDike",[0    ], use_inject_sills=true)
-  #@test test_HostRockVelocityFromDike("2D", "ElasticDike",[0    ])  ≈   2663.677375120158  atol=1e-8;
-
-  @test test_HostRockVelocityFromDike("2D","SquareDike",  [80    ])                          ≈   5286.539510870982  atol=1e-8;
+  # Legacy Dikes.jl path disabled in this branch; keep InjectSills-only checks.
   @test test_HostRockVelocityFromDike("2D","SquareDike",  [80    ], use_inject_sills=true)   ≈   5286.539510870982  rtol=1e-3;
-  @test test_HostRockVelocityFromDike("3D","SquareDike",  [90; 90])                          ≈  13114.877048604001  atol=1e-4;
   @test test_HostRockVelocityFromDike("3D","SquareDike",  [90; 90], use_inject_sills=true)   ≈  13114.877048604001  rtol=1e-3;
-  @test test_HostRockVelocityFromDike("3D","ElasticDike", [90; 45])                          ≈   4762.014274270334  atol=1e-4;
   @test test_HostRockVelocityFromDike("3D","ElasticDike", [90; 45], use_inject_sills=true)   ≈   4762.014274270334  rtol=1e-3;
 end
 
-# test dike structure
-@testset "Dike_Struct" begin
-  @test typeof(Dike(Center=[0; 0],Angle=[45],     T=900, Type="SquareDike",  W=1000, H=100 ))==Dike
-  @test typeof(Dike(Center=[0; 0],Angle=[45; 90], T=900, Type="ElasticDike", W=1000, H=100 ))==Dike
-  @test typeof(Dike(Center=[0; 0],Angle=[45; 90], T=800, Type="ElasticDike", Q=1e6, ΔP=1e7, E=1e10) )==Dike
-
-  # test convenience constructor: Dike(sill::AbstractSill; kwargs...)
-  let sill2d = PennyShapedSill(W = 5000.0*m, H = 150.0*m,
-                                           E = 2e10*Pa, ν = 0.25*NoUnits,
-                                           Center = Point2(0.0, 0.0)*m)
-    d = Dike(sill2d; Center=[0.0; -5e3], Angle=[0], T=900.0)
-    @test typeof(d) == Dike
-    @test d.Type   == "InjectSills"
-    @test d.W      ≈  10000.0              # 2 * radius (5000 m)
-    @test d.H      ≈  150.0
-    @test d.E      ≈  2e10
-    @test d.ν      ≈  0.25
-    @test d.sill === sill2d
-  end
-
-  # non-zero sill angle must raise an error
-  let sill_angled = PennyShapedSill(W = 5000.0*m, H = 150.0*m,
-                                                E = 2e10*Pa, ν = 0.25*NoUnits,
-                                                Center = Point2(0.0, 0.0)*m,
-                                                Angle  = Vec1(30.0))
-    @test_throws ErrorException Dike(sill_angled; Center=[0.0; -5e3], Angle=[30], T=900.0)
-  end
-end
-
-# Volume of dike
-@testset "Dike_Volume" begin
- # @test volume_dike(Dike(Center=[0; 0],Angle=[45; 90], T=800, Type="ElasticDike", Q=1e6, ΔP=1e7, E=1e10))[1] ≈   2539.6349734808196 atol=1e-8;
-  @test volume_dike(Dike(Center=[0; 0],Angle=[45; 90], T=800, Type="ElasticDike", Q=1e6, ΔP=1e7, E=1e10))[1] ≈   634.9087433702049 atol=1e-8;
-  @test volume_dike(Dike(Center=[0; 0],Angle=[45],     T=900, Type="SquareDike",  W=1000, H=100 ))[1] ≈ 100000.0  atol=1e-8;
-end
-
-@testset "InjectSills_vs_ElasticDike" begin
-  @test test_InjectSills_vs_ElasticDike("2D", [0    ])   ≈  1.0  rtol=1e-3
-  @test test_InjectSills_vs_ElasticDike("3D", [90; 45]) ≈  1.0  rtol=1e-3
-end
+## Legacy Dikes.jl-specific tests intentionally disabled in this branch:
+## - Dike_Struct
+## - Dike_Volume
+## - InjectSills_vs_ElasticDike (depends on HostRockVelocityFromDike via Dike)
 
 # Dike insertion algorithm
 @testset "Dike_Inject" begin
-  # --- InjectDike path (use_inject_sills=false) ---
-  @test test_InjectDike("2D", "SquareDike", [80 ],1)                                          ≈   47525.46469221513  rtol=1e-5;
-  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Linear")            ≈   48448.71557320294  rtol=1e-4;
-  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Quadratic")         ≈   48770.72282124797  rtol=1e-4;
-  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Cubic")             ≈   48782.180721943965 rtol=1e-4;
-  @test test_InjectDike("3D", "ElasticDike",[80; 45])                                         ≈   519654.9176188356  rtol=1e-5;
-  @test test_InjectDike("3D", "SquareDike", [15; -30])                                        ≈   527521.5507505678  rtol=1e-5;
-
-  # --- inject_sills path (use_inject_sills=true) ---
+  # InjectSills-only path.
   @test test_InjectDike("2D", "SquareDike", [80 ],1,                          use_inject_sills=true) ≈   47525.465759514336 rtol=1e-4;
   @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Linear",    use_inject_sills=true) ≈   48448.85838494859  rtol=1e-4;
   @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Quadratic", use_inject_sills=true) ≈   48770.817049970356 rtol=1e-4;
@@ -413,12 +362,7 @@ end
     cen          = [W_dom/2; -H_dom/2] .* 1e3
     T_in         = 900.0
 
-    # Reference result using the existing InjectDike API (angle=0: horizontal sill)
-    dike_ref  = Dike(W=Wdike, H=Hdike, Center=cen, Angle=[0], Type="ElasticDike", T=T_in, E=1.5e10, ν=0.3)
-    Tr_ref    = StructArray{Tracer{Float32}}(undef, 1)
-    Tr_ref, Tnew_ref, _, _, _ = InjectDike(Tr_ref, copy(T), Grid, dike_ref, 300)
-
-    # inject_sills: sill center at injection location; angle=0 (horizontal) matches the reference
+    # inject_sills: basic sanity checks in 2D
     sill2d = PennyShapedSill(
                 W      = (Wdike/2)*m,
                 H      = Hdike*m,
@@ -428,8 +372,9 @@ end
     Tr_new  = StructArray{Tracer{Float32}}(undef, 1)
     Tr_new, Tnew_new, InjVol, _, _ = inject_sills(Tr_new, copy(T), Grid, sill2d, T_in, 2, 300)
 
-    # Temperature fields should agree within 1 %
-    @test norm(Tnew_new[:] .- Tnew_ref[:]) / norm(Tnew_ref[:]) < 1e-2
+    @test all(isfinite, Tnew_new)
+    @test maximum(Tnew_new) <= T_in + 1e-8
+    @test minimum(Tnew_new) >= minimum(T) - 1e-8
     # Injected volume: sill.W.val is the radius, so volume = 4/3*π*r²*(H/2)
     @test InjVol ≈ 4/3*π*(Wdike/2)^2*(Hdike/2)  rtol=1e-6
     # Tracers were added
@@ -454,11 +399,7 @@ end
     cen          = [W_dom/2; L_dom/2; -H_dom/2] .* 1e3
     T_in         = 900.0
 
-    # Reference with InjectDike (zero angle → no rotation issues)
-    dike_ref  = Dike(W=Wdike, H=Hdike, Center=cen, Angle=[0; 0], Type="ElasticDike", T=T_in, E=1.5e10, ν=0.3)
-    Tr_ref    = StructArray{Tracer{Float32}}(undef, 1)
-    Tr_ref, Tnew_ref, _, _, _ = InjectDike(Tr_ref, copy(T), Grid, dike_ref, 300)
-
+    # inject_sills: basic sanity checks in 3D
     sill3d = PennyShapedSill(
                 W      = (Wdike/2)*m,
                 H      = Hdike*m,
@@ -469,7 +410,9 @@ end
     Tr_new  = StructArray{Tracer{Float32}}(undef, 1)
     Tr_new, Tnew_new, InjVol, _, _ = inject_sills(Tr_new, copy(T), Grid, sill3d, T_in, 2, 300)
 
-    @test norm(Tnew_new[:] .- Tnew_ref[:]) / norm(Tnew_ref[:]) < 1e-2
+    @test all(isfinite, Tnew_new)
+    @test maximum(Tnew_new) <= T_in + 1e-8
+    @test minimum(Tnew_new) >= minimum(T) - 1e-8
     @test InjVol ≈ 4/3*π*(Wdike/2)^2*(Hdike/2)  rtol=1e-6   # Wdike/2 = sill radius
     @test length(Tr_new) == 300
   end

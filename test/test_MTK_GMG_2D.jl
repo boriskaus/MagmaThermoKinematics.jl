@@ -3,6 +3,7 @@ const USE_GPU=false;
 if USE_GPU
     using CUDA      # needs to be loaded before loading Parallkel=
 end
+using InjectSills
 
 using MagmaThermoKinematics
 @static if USE_GPU
@@ -19,6 +20,98 @@ const rng = Random.seed!(1234);     # same seed such that we can reproduce resul
 
 # Import a few routines, so we can overwrite them below
 import MagmaThermoKinematics.MTK_GMG
+import MagmaThermoKinematics: inject_sills, km³, kyr, PhasesFromTracers!
+
+function _build_injectsill(Dikes)
+    if Dikes.Type == "CylindricalDike_TopAccretion"
+        return CylindricalDikeTopAccretion(Center=Point2(Dikes.Center[1], Dikes.Center[2]) * m,
+                                           Angle=Vec1(Dikes.Angle[1]) * NoUnits,
+                                           W=Dikes.W_in * m,
+                                           H=Dikes.H_in * m)
+    elseif Dikes.Type == "EllipticalIntrusion" || Dikes.Type == "ElasticDike"
+        return EllipticalIntrusion(Center=Point2(Dikes.Center[1], Dikes.Center[2]) * m,
+                                   Angle=Vec1(Dikes.Angle[1]) * NoUnits,
+                                   W=Dikes.W_in * m,
+                                   H=Dikes.H_in * m)
+    elseif Dikes.Type == "InjectSills"
+        isnothing(Dikes.sill) && error("Dikes.Type='InjectSills' requires Dikes.sill to be set")
+        return Dikes.sill
+    else
+        error("Unsupported Dikes.Type for InjectSills callback in test_MTK_GMG_2D: $(Dikes.Type)")
+    end
+end
+
+@eval MTK_GMG begin
+function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters, Tracers::StructVector, Tnew_cpu)
+    if floor(Num.time / Dikes.InjectionInterval) > Dikes.dike_inj
+        Dikes.dike_inj = floor(Num.time / Dikes.InjectionInterval)
+
+        if Num.dim == 2
+            T_bottom = Array(@view Arrays.T[:, 1])
+        else
+            T_bottom = Array(@view Arrays.T[:, :, 1])
+        end
+
+        IS = getproperty(parentmodule(@__MODULE__), :InjectSills)
+        m_unit = getproperty(parentmodule(@__MODULE__), :m)
+        no_unit = getproperty(parentmodule(@__MODULE__), :NoUnits)
+
+        if Dikes.Type == "CylindricalDike_TopAccretion"
+            sill = IS.CylindricalDikeTopAccretion(Center=IS.Point2(Dikes.Center[1], Dikes.Center[2]) * m_unit,
+                                                 Angle=IS.Vec1(Dikes.Angle[1]) * no_unit,
+                                                 W=Dikes.W_in * m_unit,
+                                                 H=Dikes.H_in * m_unit)
+        elseif Dikes.Type == "EllipticalIntrusion" || Dikes.Type == "ElasticDike"
+            sill = IS.EllipticalIntrusion(Center=IS.Point2(Dikes.Center[1], Dikes.Center[2]) * m_unit,
+                                         Angle=IS.Vec1(Dikes.Angle[1]) * no_unit,
+                                         W=Dikes.W_in * m_unit,
+                                         H=Dikes.H_in * m_unit)
+        elseif Dikes.Type == "InjectSills"
+            isnothing(Dikes.sill) && error("Dikes.Type='InjectSills' requires Dikes.sill to be set")
+            sill = Dikes.sill
+        else
+            error("Unsupported Dikes.Type for InjectSills callback in test_MTK_GMG_2D: $(Dikes.Type)")
+        end
+        if Num.advect_polygon == true && isempty(Dikes.dike_poly)
+            Dikes.dike_poly = InjectSills.dike_polygon(sill)
+        end
+
+        copyto!(Tnew_cpu, Arrays.T)
+        Tracers, Tnew_cpu, Vol, _, _ = getproperty(parentmodule(@__MODULE__), :inject_sills)(Tracers, Tnew_cpu, Grid.coord1D, sill, Dikes.T_in_Celsius, Dikes.DikePhase, Dikes.nTr_dike)
+
+        if Num.flux_bottom_BC == false
+            if Num.dim == 2
+                Tnew_cpu[:, 1] .= T_bottom
+            else
+                Tnew_cpu[:, :, 1] .= T_bottom
+            end
+        end
+
+        Arrays.T .= DataArray(Tnew_cpu)
+        Dikes.InjectVol += Vol
+        Qrate = Dikes.InjectVol / Num.time
+        Dikes.Qrate_km3_yr = Qrate * SecYear / km³
+        println("  Added new dike; time=$(Num.time / kyr) kyrs, total injected magma volume = $(Dikes.InjectVol / km³) km³; rate Q= $(Dikes.Qrate_km3_yr) km³yr⁻¹")
+
+        if length(Mat_tup) > 1
+            PhasesFromTracers!(Array(Arrays.Phases), Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant")
+
+            if Num.keep_init_RockPhases == true
+                Phases = Array(Arrays.Phases)
+                Phases_init = Array(Arrays.Phases_init)
+                for i in eachindex(Phases)
+                    if Phases[i] != Dikes.DikePhase
+                        Phases[i] = Phases_init[i]
+                    end
+                end
+                Arrays.Phases .= DataArray(Phases)
+            end
+        end
+    end
+
+    return Tracers
+end
+end
 
 @testset "MTK_GMG_2D" begin
 #=
@@ -41,7 +134,7 @@ Num         = NumParam( #Nx=269*1, Nz=269*1,
                         fac_dt=0.2, ω=0.5, verbose=false,
                         flux_bottom_BC=false, flux_bottom=0, deactivate_La_at_depth=false,
                         Geotherm=30/1e3, TrackTracersOnGrid=true,
-                        SaveOutput_steps=100000, CreateFig_steps=100000, plot_tracers=false, advect_polygon=true,
+                        SaveOutput_steps=100000, CreateFig_steps=100000, plot_tracers=false, advect_polygon=false,
                         FigTitle="Geneva Models, Geotherm 30/km",
                         USE_GPU=USE_GPU);
 
@@ -75,7 +168,7 @@ Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_2D.MTK_GeoParams_2D(MatParam,
 # -----------------------------
 
 
-Topo_cart = load_GMG("../examples/Topo_cart")       # Note: Laacher seee is around [10,20]
+Topo_cart = load_GMG(normpath(joinpath(@__DIR__, "..", "examples", "Topo_cart")))       # Note: Laacher seee is around [10,20]
 
 # Create 3D grid of the region
 X,Y,Z       =   xyz_grid(-23:.1:23,-19:.1:19,-20:.1:5)
@@ -176,8 +269,8 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 # Call the main code with the specified material parameters
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_2D.MTK_GeoParams_2D(MatParam, Num, Dike_params, CartData_input=Data_2D); # start the main code
 
-@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 251.7176457588078  rtol= 1e-4
-@test sum(time_props.MeltFraction)  ≈  0.22380478479632507 rtol= 1e-5
+@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 251.58206620240594  rtol= 1e-4
+@test sum(time_props.MeltFraction)  ≈  0.2238128607809668 rtol= 1e-5
 
 # remove directory created by this test
 rm("ZASSy_Geneva_9_1e_6", recursive=true, force=true)
