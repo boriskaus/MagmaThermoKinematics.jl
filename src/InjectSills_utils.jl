@@ -201,7 +201,11 @@ function inject_sills(Tracers, T::Array, Grid,
     # Optionally advect a plotting polygon
     # ------------------------------------------------------------------
     if !isempty(dike_poly)
-        advect_dike_polygon!(dike_poly, Grid, Velocity)
+        # Keep polygon tracking local to InjectSills to avoid depending on legacy Dikes.jl symbols.
+        poly_vel = AdvectPoints((dike_poly[1], dike_poly[2]), Grid, Velocity, 1.0)
+        for i in eachindex(dike_poly)
+            dike_poly[i] .+= poly_vel[i]
+        end
     end
 
     return Tracers, Tnew, InjectedVolume, dike_poly, Velocity
