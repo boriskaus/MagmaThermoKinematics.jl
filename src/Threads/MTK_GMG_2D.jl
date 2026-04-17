@@ -12,7 +12,7 @@ using GeophysicalModelGenerator
 
 import ..Diffusion2D: GridArray!, Nonlinear_Diffusion_step_2D!, assign!
 using ..MTK_GMG
-import ..NumericalParameters, ..DikeParameters, ..TimeDependentProperties, ..TimeDepProps
+import ..NumericalParameters, ..SillParameters, ..TimeDependentProperties, ..TimeDepProps
 import ..CreateGrid, ..Tracer, ..UpdateTracers_T_ϕ!, ..InjectSills, ..m, ..NoUnits
 
 const SecYear = 3600*24*365.25;
@@ -21,7 +21,7 @@ export MTK_GeoParams_2D
 
 #-----------------------------------------------------------------------------------------
 """
-    Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::DikeParameters; CartData_input=nothing, time_props::TimeDependentProperties = TimeDepProps());
+    Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::SillParameters; CartData_input=nothing, time_props::TimeDependentProperties = TimeDepProps());
 
 Main routine that performs a 2D or 2D axisymmetric thermal diffusion simulation with injection of dikes.
 
@@ -29,7 +29,7 @@ Parameters
 ====
 - `Mat_tup::Tuple`: Tuple of material properties.
 - `Num::NumericalParameters`: Numerical parameters.
-- `Dikes::DikeParameters`: Dike parameters.
+- `Dikes::SillParameters`: Intrusion parameters.
 - `CartData_input::CartData`: Optional input of a CartData structure generated with GeophysicalModelGenerator.
 - `time_props::TimeDependentProperties`: Optional input of a `TimeDependentProperties` structure.
 
@@ -37,18 +37,18 @@ Customizable functions
 ====
 There are a few functions that you can overwrite in your user code to customize the simulation:
 
-- `MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)`
-- `MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)`
-- `MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)`
-- `MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input)`
-- `MTK_updateTracers(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters)`
-- `MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input::CartData)`
-- `MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters, Tracers::StructVector, Tnew_cpu)`
-- `MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters)`
-- `MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::CartData)`
+- `MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)`
+- `MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)`
+- `MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::SillParameters, Num::NumericalParameters)`
+- `MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters, CartData_input)`
+- `MTK_updateTracers(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::SillParameters, time_props::TimeDependentProperties, Num::NumericalParameters)`
+- `MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::SillParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input::CartData)`
+- `MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters, Tracers::StructVector, Tnew_cpu)`
+- `MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters)`
+- `MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters, CartData_input::CartData)`
 
 """
-@views function MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::DikeParameters; CartData_input::Union{Nothing,CartData}=nothing, time_props::TimeDependentProperties = TimeDepProps());
+@views function MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::SillParameters; CartData_input::Union{Nothing,CartData}=nothing, time_props::TimeDependentProperties = TimeDepProps());
 
     # Change parameters based on CartData input
     Num.dim = 2;
@@ -116,15 +116,16 @@ There are a few functions that you can overwrite in your user code to customize 
     end
 
     # Optionally set initial sill in models ------
-    if Dikes.Type  == "CylindricalDike_TopAccretion"
-        ind = findall( (Arrays.R.<=Dikes.W_in/2) .& (abs.(Arrays.Z.-Dikes.Center[2]) .< Dikes.H_in/2) );
-        Arrays.T_init[ind] .= Dikes.T_in_Celsius;
+    if hasproperty(Dikes, :sill) && !isnothing(Dikes.sill) && Dikes.sill isa InjectSills.CylindricalDikeTopAccretion
+        c = [Dikes.sill.Center[i].val for i in 1:2]
+        ind = findall((Arrays.R .<= Dikes.sill.W.val) .& (abs.(Arrays.Z .- c[2]) .< Dikes.sill.H.val/2))
+        Arrays.T_init[ind] .= Dikes.T_in_Celsius
         if Num.advect_polygon==true
-            sill = InjectSills.CylindricalDikeTopAccretion(Center=InjectSills.Point2(Dikes.Center[1], Dikes.Center[2]) * m,
-                                                           Angle=InjectSills.Vec1(Dikes.Angle[1]) * NoUnits,
-                                                           W=Dikes.W_in * m,
-                                                           H=Dikes.H_in * m)
-            Dikes.dike_poly = InjectSills.dike_polygon(sill);
+            if hasproperty(Dikes, :sill_poly)
+                Dikes.sill_poly = InjectSills.dike_polygon(Dikes.sill)
+            else
+                Dikes.dike_poly = InjectSills.dike_polygon(Dikes.sill)
+            end
         end
     end
     # --------------------------------------------

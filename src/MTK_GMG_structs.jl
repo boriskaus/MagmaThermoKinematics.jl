@@ -117,74 +117,69 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
 end
 
 """
-    mutable struct DikeParam <: DikeParameters
+        mutable struct SillParams <: SillParameters
 
-This mutable structure represents parameters related to a dike in the simulation. It is used to store and manage values related to the dike's properties and behavior.
+This mutable structure represents parameters for sill injection in the MTK/GMG
+workflow. The geometric and mechanical definition of
+the intrusion is stored directly in `sill` as an `InjectSills.AbstractSill`
+object (for example `InjectSills.EllipticalIntrusion` or
+`InjectSills.CylindricalDikeTopAccretion`).
 
 # Fields
 
-- `Type::String`: Type of the dike.
-- `Center::Vector{Float64}`: Center of the dike.
-- `T_in_Celsius::Float64`: Temperature of the injected magma in Celsius.
-- `W_in::Float64`: Diameter of the dike.
-- `H_in::Float64`: Thickness of the dike.
-- `AspectRatio::Float64`: Aspect ratio of the dike.
-- `SillRadius::Float64`: Radius of the sill.
-- `SillArea::Float64`: Horizontal area of the sill.
+- `sill::Union{Nothing, InjectSills.AbstractSill}`: Full InjectSills object that
+    defines sill type, center, orientation, width, thickness, and any additional
+    model parameters.
+- `T_in_Celsius::Float64`: Temperature of injected magma in Celsius.
 - `InjectionInterval_year::Float64`: Injection interval in years.
 - `SecYear`: Number of seconds in a year.
 - `InjectionInterval::Float64`: Injection interval in seconds.
-- `nTr_dike::Int64`: Number of tracers in the dike.
-- `InjectVol`: Injected volume into the dike.
-- `Qrate_km3_yr`: Dike insertion rate in km^3/year.
-- `dike_poly`: Polygon representing the dike.
-- `dike_inj`: Injection into the dike.
+- `nTr_dike::Int64`: Number of tracers inserted per injection event.
+- `InjectVol::Float64`: Cumulative injected volume.
+- `Qrate_km3_yr::Float64`: Time-averaged emplacement rate in km^3/yr.
+- `BackgroundPhase::Int64`: Host-rock phase index.
+- `SillPhase::Int64`: Injected sill phase index.
+- `sill_poly::Vector`: Optional polygon representation used for advection/plotting.
+- `sill_inj::Float64`: Counter that tracks how many sill injections already occurred.
+- `H_ran::Float64`: Randomization range for vertical placement.
+- `L_ran::Float64`: Randomization range for horizontal x placement.
+- `W_ran::Float64`: Randomization range for horizontal y placement.
+- `Dip_ran::Float64`: Maximum dip perturbation for randomized injections.
+- `Strike_ran::Float64`: Maximum strike perturbation for randomized injections.
+- `SillsAbove::Float64`: Depth threshold above which intrusions are treated as sills.
 
-- `H_ran`:    Zone in which we vary the vertical location of the dike (if we add random dikes)
-- `L_ran`:    Zone in which we vary the horizontal (x) location of the dike (if we add random dikes)
-- `W_ran`:    Zone in which we vary the horizontal (y) location of the dike (if we add random dikes)
-
-- `Dip_ran`:  maximum variation of dip (if we add random dikes)
-- `Strike_ran`: maximum variation of strike (if we add random dikes)
-
-
-# Examples
+# Example
 
 ```julia
-dp = DikeParam(Type="MyDike", Center=[0., -7.0e3], ...)
+sp = SillParams(
+        sill = InjectSills.EllipticalIntrusion(...),
+        T_in_Celsius = 1000.0,
+        InjectionInterval_year = 10e3,
+)
 ```
+
 """
-@with_kw mutable struct DikeParam <: DikeParameters
-    Type::String                    =   "CylindricalDike_TopAccretion"
-    Center::Vector{Float64}         =   [0.; -7.0e3 - 0/2];     # Center of dike
-    Angle::Vector{Float64}          =   [0.0];                  # Angle of dike
+@with_kw mutable struct SillParams <: SillParameters
+    sill::Union{Nothing, InjectSills.AbstractSill} = nothing    # InjectSills.jl sill object (used when Type="InjectSills")
     T_in_Celsius::Float64           =   1000;                   # Temperature of injected magma
-    W_in::Float64                   =   20e3                    # Diameter of dike
-    H_in::Float64                   =   74.6269                 # Thickness
-    AspectRatio::Float64            =   H_in/W_in;              # Aspect ratio
-    SillRadius::Float64             =   W_in/2                  # Sill radius
-    SillArea::Float64               =   pi*SillRadius^2         # Horizontal area  of sill
     InjectionInterval_year::Float64 =   10e3;                   # Injection interval [years]
     SecYear                         =   3600*24*365.25;         # s/year
     InjectionInterval::Float64      =   InjectionInterval_year*SecYear;           # Injection interval [s]
     nTr_dike::Int64                 =   300                     # Number of tracers
     InjectVol::Float64              =   0.0;                    # injected volume
     Qrate_km3_yr::Float64           =   0.0;                    # Dikes insertion rate
-    BackgroundPhase::Int64          =   1; # Background phase  (non-dikes)
-    DikePhase::Int64                =   2; # Dike phase
-    dike_poly::Vector               =   [];                     # polygon with dike
-    dike_inj::Float64               =   0.0
+    BackgroundPhase::Int64          =   1;                      # Background phase  (non-sills)
+    SillPhase::Int64                =   2;                      # Sill phase
+    sill_poly::Vector               =   [];                     # polygon with sill
+    sill_inj::Float64               =   0.0
 
-    H_ran::Float64                  =   5000.0                    # Zone in which we vary the horizontal location of the dike
-    L_ran::Float64                  =   2000.0                    # Zone in which we vary the horizontal location of the dike
-    W_ran::Float64                  =   2000.0                   # Zone in which we vary the vertical location of the dike
-    Dip_ran::Float64                =   30.0;                     # maximum variation of dip
-    Strike_ran::Float64             =   90.0;                     # maximum variation of strike
-    SillsAbove::Float64             =   -15e3;                    # Sills above this depth
-    sill::Union{Nothing, InjectSills.AbstractSill} = nothing      # InjectSills.jl sill object (used when Type="InjectSills")
-
+    H_ran::Float64                  =   5000.0                  # Zone in which we vary the horizontal location of the sill
+    L_ran::Float64                  =   2000.0                  # Zone in which we vary the horizontal location of the dike
+    W_ran::Float64                  =   2000.0                  # Zone in which we vary the vertical location of the dike
+    Dip_ran::Float64                =   30.0;                   # maximum variation of dip
+    Strike_ran::Float64             =   90.0;                   # maximum variation of strike
+    SillsAbove::Float64             =   -15e3;                  # Sills above this depth
 end
-
 
 """
     mutable struct TimeDepProps <: TimeDependentProperties

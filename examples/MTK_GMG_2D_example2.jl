@@ -73,12 +73,12 @@ println(" --- Performing MTK models --- ")
 
 # Overwrite some of the default functions
 @static if USE_GPU
-    function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+    function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
         println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
         return nothing
     end
 else
-    function MTK_GMG.MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+    function MTK_GMG.MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
         if mod(Num.it,Num.CreateFig_steps)==0
             x_1d        =   Grid.coord1D[1]/1e3;
             z_1d        =   Grid.coord1D[2]/1e3;
@@ -105,21 +105,21 @@ else
     end
 end
 
-function MTK_GMG.MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+function MTK_GMG.MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
     return nothing
 end
 
-function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
     println("$(Num.it), Time=$(round(Num.time/Num.SecYear/1e3, digits=3)) kyrs; max(T) = $(round(maximum(Arrays.Tnew)))")
     return nothing
 end
 
 """
-    MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+    MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
 
 Update time-dependent properties during a simulation
 """
-function MTK_GMG.MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+function MTK_GMG.MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
     push!(time_props.Time_vec,      Num.time);   # time
     push!(time_props.MeltFraction,  sum( Arrays.ϕ)/(Num.Nx*Num.Nz));    # melt fraction
 
@@ -154,23 +154,29 @@ Num         = NumParam( SimName             =   "Unzen1",
                         AddRandomSills      =   true,
                         RandomSills_timestep=   5);
 
-# dike parameters
-Dike_params = DikeParam(Type                    =   "ElasticDike",
-                        InjectionInterval_year  =   1000,       # flux= 14.9e-6 km3/km2/yr
-                        W_in                    =   5e3,
-                        H_in                    =   250,
-                        H_ran                   =   5000,
-                        W_ran                   =   5000,       # width of random injection area
-                        nTr_dike                =   2000,
-                        Dip_ran                 =   45,         # angle aroun d which we randomly change the dip
-                        DikePhase               =   3,          # phase of dike
-                        SillsAbove              =   -10e3       # below this we have dikes; above sills
-                )
+# Default setup: ElasticDike equivalent via PennyShapedSill.
+sill = PennyShapedSill(Center=Point2(0.0, -7.0e3) * m, W=2.5e3 * m, H=250 * m, E=1.5e10 * Pa, ν=0.3 * NoUnits)
+
+# Alternative sill definitions (currently unused):
+# sill = CylindricalDikeTopAccretion(Center=Point2(0.0, -7.0e3) * m, W=5e3 * m, H=250 * m)
+# sill = EllipticalIntrusion(Center=Point2(0.0, -7.0e3) * m, W=5e3 * m, H=250 * m)
+
+Sill_params = SillParams(
+    sill                    = sill,
+    InjectionInterval_year  = 1000,
+    nTr_dike                = 2000,
+    H_ran                   = 5000,
+    W_ran                   = 5000,
+    Dip_ran                 = 45,
+    SillPhase               = 3,
+    BackgroundPhase         = 1,
+    SillsAbove              = -10e3,
+)
 
 # Keep random sill relocation and actual injection in sync.
 if Num.AddRandomSills
-    Dike_params.InjectionInterval = Num.dt * Num.RandomSills_timestep
-    Dike_params.InjectionInterval_year = Dike_params.InjectionInterval / SecYear
+    Sill_params.InjectionInterval = Num.dt * Num.RandomSills_timestep
+    Sill_params.InjectionInterval_year = Sill_params.InjectionInterval / SecYear
 end
 
 # Define parameters for the different phases
@@ -200,4 +206,4 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
                 )
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params, CartData_input=Data_2D, time_props=TimeDepProps1()); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Sill_params, CartData_input=Data_2D, time_props=TimeDepProps1()); # start the main code

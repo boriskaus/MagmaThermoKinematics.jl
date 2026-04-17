@@ -39,9 +39,15 @@ function _build_injectsill_3d(Dikes)
 end
 
 @eval MTK_GMG begin
-function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters, Tracers::StructVector, Tnew_cpu)
-    if floor(Num.time / Dikes.InjectionInterval) > Dikes.dike_inj
-        Dikes.dike_inj = floor(Num.time / Dikes.InjectionInterval)
+function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters, Tracers::StructVector, Tnew_cpu)
+    inj_counter = hasproperty(Dikes, :sill_inj) ? Dikes.sill_inj : Dikes.dike_inj
+    if floor(Num.time / Dikes.InjectionInterval) > inj_counter
+        inj_counter = floor(Num.time / Dikes.InjectionInterval)
+        if hasproperty(Dikes, :sill_inj)
+            Dikes.sill_inj = inj_counter
+        else
+            Dikes.dike_inj = inj_counter
+        end
 
         if Num.dim == 2
             T_bottom = Array(@view Arrays.T[:, 1])
@@ -53,7 +59,9 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         m_unit = getproperty(parentmodule(@__MODULE__), :m)
         no_unit = getproperty(parentmodule(@__MODULE__), :NoUnits)
 
-        if Dikes.Type == "CylindricalDike_TopAccretion"
+        if hasproperty(Dikes, :sill) && !isnothing(Dikes.sill)
+            sill = Dikes.sill
+        elseif Dikes.Type == "CylindricalDike_TopAccretion"
             sill = IS.CylindricalDikeTopAccretion(Center=IS.Point3(Dikes.Center[1], Dikes.Center[2], Dikes.Center[3]) * m_unit,
                                                  Angle=IS.Vec2(Dikes.Angle[1], Dikes.Angle[end]) * no_unit,
                                                  W=Dikes.W_in * m_unit,
@@ -63,18 +71,21 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
                                          Angle=IS.Vec2(Dikes.Angle[1], Dikes.Angle[end]) * no_unit,
                                          W=Dikes.W_in * m_unit,
                                          H=Dikes.H_in * m_unit)
-        elseif Dikes.Type == "InjectSills"
-            isnothing(Dikes.sill) && error("Dikes.Type='InjectSills' requires Dikes.sill to be set")
-            sill = Dikes.sill
         else
             error("Unsupported Dikes.Type for InjectSills callback in test_MTK_GMG_3D: $(Dikes.Type)")
         end
-        if Num.advect_polygon == true && isempty(Dikes.dike_poly)
-            Dikes.dike_poly = InjectSills.dike_polygon(sill)
+        poly = hasproperty(Dikes, :sill_poly) ? Dikes.sill_poly : Dikes.dike_poly
+        if Num.advect_polygon == true && isempty(poly)
+            if hasproperty(Dikes, :sill_poly)
+                Dikes.sill_poly = InjectSills.dike_polygon(sill)
+            else
+                Dikes.dike_poly = InjectSills.dike_polygon(sill)
+            end
         end
 
         copyto!(Tnew_cpu, Arrays.T)
-        Tracers, Tnew_cpu, Vol, _, _ = getproperty(parentmodule(@__MODULE__), :inject_sills)(Tracers, Tnew_cpu, Grid.coord1D, sill, Dikes.T_in_Celsius, Dikes.DikePhase, Dikes.nTr_dike)
+        intrusion_phase = hasproperty(Dikes, :SillPhase) ? Dikes.SillPhase : Dikes.DikePhase
+        Tracers, Tnew_cpu, Vol, _, _ = getproperty(parentmodule(@__MODULE__), :inject_sills)(Tracers, Tnew_cpu, Grid.coord1D, sill, Dikes.T_in_Celsius, intrusion_phase, Dikes.nTr_dike)
 
         if Num.flux_bottom_BC == false
             if Num.dim == 2
@@ -97,7 +108,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
                 Phases = Array(Arrays.Phases)
                 Phases_init = Array(Arrays.Phases_init)
                 for i in eachindex(Phases)
-                    if Phases[i] != Dikes.DikePhase
+                    if Phases[i] != intrusion_phase
                         Phases[i] = Phases_init[i]
                     end
                 end
@@ -113,7 +124,7 @@ end
 
 @testset "MTK_GMG_3D" begin
 
-function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
     if mod(Num.it,10) == 0
         println("$(Num.it), $(Num.time/SecYear/1e3) kyrs; max(T)=$(maximum(Arrays.Tnew))")
     end
@@ -141,15 +152,14 @@ Num         = NumParam( #Nx=269*1, Nz=269*1,
                         AddRandomSills = false, RandomSills_timestep=5
                         );
 
-Dike_params = DikeParam(Type="ElasticDike",
-                        InjectionInterval_year = 1000,
-                        W_in=5e3, H_in=200.0*4,       # note: H must be numerically resolved
-                        Dip_ran = 20.0, Strike_ran = 0.0,
-                        W_ran = 10e3; H_ran = 10e3, L_ran=10e3,
-                        nTr_dike=300*1,
-                        SillsAbove = -10e3,
-                        Center=[0.0,0.0, -7000], Angle=[0.0, 0.0],
-                )
+Sill_params = SillParams(
+            sill=EllipticalIntrusion(Center=Point3(0.0, 0.0, -7000.0) * m, Angle=Vec2(0.0, 0.0) * NoUnits, W=5e3 * m, H=200.0*4 * m),
+            InjectionInterval_year = 1000,
+            Dip_ran = 20.0, Strike_ran = 0.0,
+            W_ran = 10e3, H_ran = 10e3, L_ran=10e3,
+            nTr_dike=300*1,
+            SillsAbove = -10e3,
+        )
 
 MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
@@ -165,7 +175,7 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
                 )
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Dike_params); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Sill_params); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 299.981239425671  rtol= 1e-2
 @test sum(time_props.MeltFraction)  ≈ 0.0  rtol= 1e-5
@@ -209,14 +219,13 @@ Num         = NumParam( SimName="Unzen2", axisymmetric=false,
                         AddRandomSills = false, RandomSills_timestep=5);
 
 # dike parameters
-Dike_params = DikeParam(Type="ElasticDike",
-                        InjectionInterval_year = 1000,       # flux= 14.9e-6 km3/km2/yr
-                        W_in=5e3, H_in=250*4,
-                        nTr_dike=300*1,
-                        H_ran = 5000, W_ran = 5000,
-                        DikePhase=3, BackgroundPhase=1,
-                        Center=[0.0,0.0, -7000], Angle=[0.0, 0.0],
-                )
+Sill_params = SillParams(
+            sill=EllipticalIntrusion(Center=Point3(0.0, 0.0, -7000.0) * m, Angle=Vec2(0.0, 0.0) * NoUnits, W=5e3 * m, H=250*4 * m),
+            InjectionInterval_year = 1000,       # flux= 14.9e-6 km3/km2/yr
+            nTr_dike=300*1,
+            H_ran = 5000, W_ran = 5000,
+            SillPhase=3, BackgroundPhase=1,
+        )
 
 # Define parameters for the different phases
 MatParam     = (SetMaterialParams(Name="Air", Phase=0,
@@ -253,7 +262,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Dike_params, CartData_input=Data_3D); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Sill_params, CartData_input=Data_3D); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 244.14916470514495  rtol= 1e-2
 @test sum(time_props.MeltFraction)  ≈ 0.8377621121586017 rtol= 1e-5

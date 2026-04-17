@@ -14,24 +14,24 @@ using Parameters                                # More flexible definition of pa
 using Interpolations                            # Fast interpolations
 using StaticArrays
 using JLD2                                      # Load/save data to disk
-using InjectSills                               # Dike/sill emplacement methods
+@reexport using InjectSills                     # Re-export InjectSills API (sill constructors + helpers)
 @reexport using GeoParams                                 # Material parameters calculations
 @reexport using ParallelStencil
 
 abstract type NumericalParameters end
-abstract type DikeParameters end
+abstract type SillParameters end
 abstract type TimeDependentProperties end
 
 include("Units.jl")                             # various useful units
 
 # Few useful parameters
-const SecYear     = 3600*24*365.25
+const SecYear     = 3600*24*365.25  
 const kyr         = 1000*SecYear
 const Myr         = 1e6*SecYear
 const km³         = 1000^3
 export SecYear, kyr, Myr, km³
 
-export NumericalParameters, DikeParameters, TimeDependentProperties
+export NumericalParameters, SillParameters, TimeDependentProperties
 
 struct EnvironmentConfig
     model_device::Symbol
@@ -237,7 +237,7 @@ include("Utils.jl")
 export Process_ZirconAges, simulate_zircon_growth_from_tracers, volume_averaged_age, copy_arrays_GPU2CPU!, copy_arrays_CPU2GPU!
 
 include("MTK_GMG_structs.jl")
-export NumParam, DikeParam, TimeDepProps
+export NumParam, SillParams, TimeDepProps
 
 include("MTK_GMG.jl")
 

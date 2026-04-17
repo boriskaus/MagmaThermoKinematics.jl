@@ -13,7 +13,7 @@ using InjectSills
 using GeophysicalModelGenerator
 using StructArrays
 using MagmaThermoKinematics.Grid
-import MagmaThermoKinematics: NumericalParameters, DikeParameters, TimeDependentProperties
+import MagmaThermoKinematics: NumericalParameters, SillParameters, TimeDependentProperties
 import MagmaThermoKinematics: update_Tvec!, inject_sills, km³, kyr, Myr
 import MagmaThermoKinematics: PhasesFromTracers!
 SecYear = 3600*24*365.25;
@@ -33,6 +33,9 @@ end
     return f(args...)
 end
 
+@inline _active_sill(Dikes) = isnothing(Dikes.sill) ? error("SillParameters requires a valid `sill` object") : Dikes.sill
+@inline _sill_radius_m(sill) = sill.W.val
+
 #using CUDA
 
 """
@@ -48,48 +51,20 @@ end
 
 Function that injects dikes once in a while
 """
-function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters, Tracers::StructVector, Tnew_cpu)
+function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters, Tracers::StructVector, Tnew_cpu)
 
-    if floor(Num.time/Dikes.InjectionInterval)> Dikes.dike_inj
-        Dikes.dike_inj      =   floor(Num.time/Dikes.InjectionInterval)                 # Keeps track on what was injected already
+    if floor(Num.time/Dikes.InjectionInterval)> Dikes.sill_inj
+        Dikes.sill_inj = floor(Num.time/Dikes.InjectionInterval)                 # Keeps track on what was injected already
         if Num.dim==2
             T_bottom  =   Array(@view Arrays.T[:,1])
         else
             T_bottom  =   Array(@view Arrays.T[:,:,1])
         end
-        if Dikes.Type == "CylindricalDike_TopAccretion"
-            if Num.dim == 2
-                sill = InjectSills.CylindricalDikeTopAccretion(Center=InjectSills.Point2(Dikes.Center[1], Dikes.Center[2]) * m,
-                                                               Angle=InjectSills.Vec1(Dikes.Angle[1]) * NoUnits,
-                                                               W=Dikes.W_in * m,
-                                                               H=Dikes.H_in * m)
-            else
-                sill = InjectSills.CylindricalDikeTopAccretion(Center=InjectSills.Point3(Dikes.Center[1], Dikes.Center[2], Dikes.Center[3]) * m,
-                                                               Angle=InjectSills.Vec2(Dikes.Angle[1], Dikes.Angle[end]) * NoUnits,
-                                                               W=Dikes.W_in * m,
-                                                               H=Dikes.H_in * m)
-            end
-        elseif Dikes.Type == "EllipticalIntrusion" || Dikes.Type == "ElasticDike"
-            if Num.dim == 2
-                sill = InjectSills.EllipticalIntrusion(Center=InjectSills.Point2(Dikes.Center[1], Dikes.Center[2]) * m,
-                                                       Angle=InjectSills.Vec1(Dikes.Angle[1]) * NoUnits,
-                                                       W=Dikes.W_in * m,
-                                                       H=Dikes.H_in * m)
-            else
-                sill = InjectSills.EllipticalIntrusion(Center=InjectSills.Point3(Dikes.Center[1], Dikes.Center[2], Dikes.Center[3]) * m,
-                                                       Angle=InjectSills.Vec2(Dikes.Angle[1], Dikes.Angle[end]) * NoUnits,
-                                                       W=Dikes.W_in * m,
-                                                       H=Dikes.H_in * m)
-            end
-        elseif Dikes.Type == "InjectSills"
-            isnothing(Dikes.sill) && error("Dikes.Type='InjectSills' requires Dikes.sill to be set")
-            sill = Dikes.sill
-        else
-            error("Unsupported Dikes.Type for InjectSills callback: $(Dikes.Type)")
-        end
+        sill = _active_sill(Dikes)
         copyto!(Tnew_cpu, Arrays.T)
 
-        Tracers, Tnew_cpu, Vol, Dikes.dike_poly, _ = inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, Float64(Dikes.T_in_Celsius), Dikes.DikePhase, Dikes.nTr_dike, dike_poly=Dikes.dike_poly);     # Add dike, move hostrocks
+        Tracers, Tnew_cpu, Vol, poly_out, _ = inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, Float64(Dikes.T_in_Celsius), Dikes.SillPhase, Dikes.nTr_dike, dike_poly=Dikes.sill_poly);     # Add dike, move hostrocks
+        Dikes.sill_poly = poly_out
 
         if Num.flux_bottom_BC==false
             # Keep bottom T constant (advection modifies this)
@@ -104,11 +79,12 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         Dikes.InjectVol    +=   Vol                                                     # Keep track of injected volume
         Qrate               =   Dikes.InjectVol/Num.time
         Dikes.Qrate_km3_yr  =   Qrate*SecYear/km³
-        Qrate_km3_yr_km2    =   Dikes.Qrate_km3_yr/(pi*(Dikes.W_in/2/1e3)^2)
+        radius_m            =   _sill_radius_m(sill)
+        Qrate_km3_yr_km2    =   Dikes.Qrate_km3_yr/(pi*(radius_m/1e3)^2)
         println("  Added new dike; time=$(Num.time/kyr) kyrs, total injected magma volume = $(Dikes.InjectVol/km³) km³; rate Q= $(Dikes.Qrate_km3_yr) km³yr⁻¹")
 
-        if Num.advect_polygon==true && isempty(Dikes.dike_poly)
-            Dikes.dike_poly = InjectSills.dike_polygon(sill);            # create dike polygon for the first time
+        if Num.advect_polygon==true && isempty(Dikes.sill_poly)
+            Dikes.sill_poly = InjectSills.dike_polygon(sill)            # create sill polygon for the first time
         end
 
         if length(Mat_tup)>1
@@ -119,7 +95,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
                 Phases      = Array(Arrays.Phases)          # move to CPU
                 Phases_init = Array(Arrays.Phases_init)
                 for i in eachindex(Phases)
-                    if Phases[i] != Dikes.DikePhase
+                    if Phases[i] != Dikes.SillPhase
                         Phases[i] = Phases_init[i]
                     end
                 end
@@ -133,31 +109,31 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
 end
 
 """
-    MTK_display_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+    MTK_display_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
 
 Function that creates plots
 """
-function MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+function MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
 
     return nothing
 end
 
 """
-    MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+    MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
 
 Function that prints output to the REPL
 """
-function MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+function MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
 
     return nothing
 end
 
 """
-    MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+    MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
 
 Update time-dependent properties during a simulation
 """
-function MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+function MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
     push!(time_props.Time_vec,      Num.time);   # time
     push!(time_props.MeltFraction,  sum( Arrays.ϕ)/(Num.Nx*Num.Nz));    # melt fraction
 
@@ -174,11 +150,11 @@ function MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::Gri
 end
 
 """
-    MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters)
+    MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters)
 
 Initialize temperature and phases
 """
-function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters)
+function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters)
     # Initalize T
     Arrays.T_init      .=   @. Num.Tsurface_Celcius - Arrays.Z*Num.Geotherm;                # Initial (linear) temperature profile
 
@@ -215,11 +191,11 @@ function MTK_initialize_arrays(Num::NumericalParameters)
 end
 
 """
-    MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::CartData)
+    MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters, CartData_input::CartData)
 
 Initialize temperature and phases
 """
-function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::Union{Nothing,CartData})
+function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters, CartData_input::Union{Nothing,CartData})
     # Initalize T from CartData set
     # NOTE: this almost certainly requires changes if we use GPUs
 
@@ -256,11 +232,11 @@ end
 
 
 """
-    MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::CartData)
+    MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters, CartData_input::CartData)
 
 Finalize model run
 """
-function MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::Union{Nothing,CartData})
+function MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters, CartData_input::Union{Nothing,CartData})
     if Num.Output_VTK & !isnothing(Num.pvd)
         movie_paraview(pvd=Num.pvd, Finalize=true)
     end
@@ -270,12 +246,12 @@ end
 
 
 """
-    MTK_update_Arrays!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters, Mat_tup::Tuple)
+    MTK_update_Arrays!(Arrays::NamedTuple, Grid::GridData, Dikes::SillParameters, Num::NumericalParameters, Mat_tup::Tuple)
 
 Update arrays and structs of the simulation (in case you want to change them during a simulation)
 You can use this, for example, to change the size and location of an intruded dike
 """
-function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters, Mat_tup::Tuple)
+function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::SillParameters, Num::NumericalParameters, Mat_tup::Tuple)
 
     if Num.AddRandomSills && mod(Num.it,Num.RandomSills_timestep)==0
         # This randomly changes the location and orientation of the sills
@@ -295,19 +271,27 @@ function MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::Di
             Dip = Dip   + 90.0                                          # Orientation: near-vertical @ depth
         end
 
-        Dikes.Center = cen;
-        Dikes.Angle  = [Dip, Strike];
+        sill = _active_sill(Dikes)
+        if Num.dim == 2
+            Dikes.sill = InjectSills.update_abstractsill(sill;
+                                                         Center=InjectSills.Point2(cen[1], cen[2]) * m,
+                                                         Angle=InjectSills.Vec1(Dip) * NoUnits)
+        else
+            Dikes.sill = InjectSills.update_abstractsill(sill;
+                                                         Center=InjectSills.Point3(cen[1], cen[2], cen[3]) * m,
+                                                         Angle=InjectSills.Vec2(Dip, Strike) * NoUnits)
+        end
     end
     return nothing
 end
 
 
 """
-    MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input::Union{CartData, Nothing})
+    MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::SillParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input::Union{CartData, Nothing})
 
 Save the output to disk
 """
-function MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input::Union{CartData, Nothing})
+function MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::SillParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input::Union{CartData, Nothing})
 
     if mod(Num.it,Num.SaveOutput_steps)==0
         # Save output
@@ -357,11 +341,11 @@ end
 
 
 """
-    Tracers = MTK_updateTracers(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters)
+    Tracers = MTK_updateTracers(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::SillParameters, time_props::TimeDependentProperties, Num::NumericalParameters)
 
 Updates info on tracers
 """
-function MTK_updateTracers(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters)
+function MTK_updateTracers(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::SillParameters, time_props::TimeDependentProperties, Num::NumericalParameters)
 
     if mod(Num.it,10)==0
         update_Tvec!(Tracers, Num.time/SecYear*1e-6)  # update T & time vectors on tracers
