@@ -66,15 +66,17 @@ Num         = NumParam( SimName="Unzen3D", axisymmetric=false,
                         SaveOutput_steps=20, CreateFig_steps=1000, plot_tracers=false, advect_polygon=false,
                         USE_GPU=USE_GPU,
                         AddRandomSills = true, RandomSills_timestep=5);
-# dike parameters
-Dike_params = DikeParam(Type="ElasticDike",
-                        InjectionInterval_year = 1000,       # flux= 14.9e-6 km3/km2/yr
-                        W_in=5e3, H_in=250*4,
-                        nTr_dike=300*1,
-                        H_ran = 5000, W_ran = 5000,
-                        DikePhase=3, BackgroundPhase=1,
-                        Center=[0.0,0.0, -7000], Angle=[0.0, 0.0],
-                )
+# sill parameters
+sill = PennyShapedSill(Center=Point3(0.0, 0.0, -7.0e3) * m, Angle=Vec2(0.0, 0.0) * NoUnits, W=2.5e3 * m, H=1000 * m, E=1.5e10 * Pa, ν=0.3 * NoUnits)
+Sill_params = SillParams(
+    sill                    = sill,
+    InjectionInterval_year  = 1000,
+    nTr_dike                = 300,
+    H_ran                   = 5000,
+    W_ran                   = 5000,
+    SillPhase               = 3,
+    BackgroundPhase         = 1,
+)
 ```
 
 Material properties are as follows:
@@ -111,7 +113,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 Finally, the simulation is performed as:
 ```julia
 Grid, Arrays, Tracers, Dikes, time_props =
-	MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Dike_params, CartData_input = Data_3D)
+	MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Sill_params, CartData_input = Data_3D)
 ```
 Which looks like:
 ![Unzen 3D](../assets/Unzen3D.png)
@@ -155,7 +157,7 @@ import MagmaThermoKinematics.MTK_GMG_3D
 
 function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters,
 								  Arrays::NamedTuple, Mat_tup::Tuple,
-								  Dikes::DikeParameters)
+								  Dikes::SillParameters)
 	println("$(Num.it), Time=$(round(Num.time / Num.SecYear / 1e3, digits = 3)) kyrs")
 	return nothing
 end
@@ -164,7 +166,7 @@ end
 As always, the simulation is performed with:
 ```julia
 Grid, Arrays, Tracers, Dikes, time_props =
-	MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Dike_params, CartData_input = Data_3D)
+	MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Sill_params, CartData_input = Data_3D)
 ```
 
 Which looks like:

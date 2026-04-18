@@ -15,7 +15,7 @@ The general workflow is as follows:
 1. Initialize backend and MTK modules.
 2. Optionally construct or import a CartData model using the [GeophysicalModelGenerator](https://github.com/JuliaGeodynamics/GeophysicalModelGenerator.jl).
 3. Override selected functions in the MTK_GMG namespace for custom output, visualization, initialization, or time-dependent diagnostics, or dike injection.
-4. Define NumParam and DikeParam inputs.
+4. Define NumParam and SillParams inputs.
 5. Define material parameters as tuples of SetMaterialParams entries.
 6. Run MTK_GeoParams_2D or MTK_GeoParams_3D.
 
