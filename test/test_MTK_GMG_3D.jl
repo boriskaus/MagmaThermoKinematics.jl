@@ -102,18 +102,18 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         println("  Added new dike; time=$(Num.time / kyr) kyrs, total injected magma volume = $(Dikes.InjectVol / km³) km³; rate Q= $(Dikes.Qrate_km3_yr) km³yr⁻¹")
 
         if length(Mat_tup) > 1
-            PhasesFromTracers!(Array(Arrays.Phases), Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant")
+            Phases = Array(Arrays.Phases)               # CPU copy — must be captured + written back
+            PhasesFromTracers!(Phases, Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant")
 
             if Num.keep_init_RockPhases == true
-                Phases = Array(Arrays.Phases)
                 Phases_init = Array(Arrays.Phases_init)
                 for i in eachindex(Phases)
                     if Phases[i] != intrusion_phase
                         Phases[i] = Phases_init[i]
                     end
                 end
-                Arrays.Phases .= DataArray(Phases)
             end
+            Arrays.Phases .= DataArray(Phases)
         end
     end
 
@@ -269,5 +269,42 @@ Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_3D.MTK_GeoParams_3D(MatParam,
 
 rm("Test1", recursive=true, force=true) # remove directory created by this test
 rm("Unzen2", recursive=true, force=true) # remove directory created by this test
+
+# -----------------------------
+# Eruption time-loop integration (issue 2) in 3D: erupt_magma! wired into the
+# loop via the MTK_erupt! callback. Short, self-contained run that injects hot
+# (T_in=1000°C ⇒ ϕ=1) magma and erupts it once V_e exceeds a tiny V_crit.
+# -----------------------------
+@testset "Eruption time-loop 3D" begin
+
+    Num_e = NumParam(Nx=31, Ny=31, Nz=31, W=10e3, L=10e3, H=10e3,
+                     SimName="Erupt3D", maxTime_Myrs=0.001, fac_dt=0.2, ω=0.5,
+                     verbose=false, Geotherm=30/1e3, TrackTracersOnGrid=true,
+                     SaveOutput_steps=100000, CreateFig_steps=100000,
+                     plot_tracers=false, advect_polygon=false, USE_GPU=USE_GPU)
+
+    Sill_e = SillParams(
+                sill=EllipticalIntrusion(Center=Point3(5.0e3, 5.0e3, -5.0e3) * m,
+                                         Angle=Vec2(0.0, 0.0) * NoUnits, W=2e3 * m, H=1000.0 * m),
+                InjectionInterval_year=100, nTr_dike=100)
+
+    Mat_e  = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
+                                Density      = ConstantDensity(ρ=2700kg/m^3),
+                                LatentHeat   = ConstantLatentHeat(Q_L=3.13e5J/kg),
+                                Conductivity = T_Conductivity_Whittington_parameterised(),
+                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
+                                Melting      = SmoothMelting(MeltingParam_4thOrder())),)
+
+    Erupt_on = EruptionParams(erupt=true, ϕ_erupt=0.5, V_crit_km3=1e-6,
+                              erupt_efficiency=0.5, deflate=false)
+    _, Arrays_e, _, _, _ = MTK_GMG_3D.MTK_GeoParams_3D(Mat_e, Num_e, Sill_e; Erupt=Erupt_on)
+
+    @test Erupt_on.n_eruptions ≥ 1
+    @test Erupt_on.erupted_volume > 0
+    @test length(Erupt_on.eruption_times) == Erupt_on.n_eruptions
+    @test all(isfinite, Arrays_e.Tnew)
+
+    rm("Erupt3D", recursive=true, force=true)
+end
 
 end

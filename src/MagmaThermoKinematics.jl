@@ -21,6 +21,8 @@ using JLD2                                      # Load/save data to disk
 abstract type NumericalParameters end
 abstract type SillParameters end
 abstract type TimeDependentProperties end
+abstract type EruptionParameters end
+abstract type FreeSurfaceParameters end
 
 include("Units.jl")                             # various useful units
 
@@ -31,7 +33,7 @@ const Myr         = 1e6*SecYear
 const km³         = 1000^3
 export SecYear, kyr, Myr, km³
 
-export NumericalParameters, SillParameters, TimeDependentProperties
+export NumericalParameters, SillParameters, TimeDependentProperties, EruptionParameters, FreeSurfaceParameters
 
 struct EnvironmentConfig
     model_device::Symbol
@@ -204,10 +206,14 @@ include("Grid.jl")
 using .Grid
 export GridData, CreateGrid
 
+# Kinematic sticky-air free surface (issue 4)
+include("FreeSurface.jl")
+export init_free_surface, apply_free_surface!, advect_surface!, advect_phases!
+
 # Routines that deal with tracers
 include("Tracers.jl")
 export UpdateTracers, AdvectTracers!, InitializeTracers,PhaseRatioFromTracers, CorrectTracersForTopography!
-export RockAssemblage, update_Tvec!
+export RockAssemblage, update_Tvec!, freeze_erupted_tracers!, seed_host_tracers
 export PhaseRatioFromTracers!, PhasesFromTracers!, UpdateTracers_T_ϕ!, UpdateTracers_Field! # new routines
 export Tracer, TracersToGrid!
 
@@ -225,7 +231,7 @@ export Tracer
 #       volume_dike, InjectDike, TracersToGrid!
 
 include("InjectSills_utils.jl")
-export inject_sills, add_dike
+export inject_sills, add_dike, eruptible_volume, erupt_magma!, deflate_hostrock!, stamp_phase_inside_sill!
 
 # routines related to advection & interpolation
 include("Advection.jl")
@@ -237,7 +243,7 @@ include("Utils.jl")
 export Process_ZirconAges, simulate_zircon_growth_from_tracers, volume_averaged_age, copy_arrays_GPU2CPU!, copy_arrays_CPU2GPU!
 
 include("MTK_GMG_structs.jl")
-export NumParam, SillParams, TimeDepProps
+export NumParam, SillParams, TimeDepProps, EruptionParams, FreeSurfaceParams
 
 include("MTK_GMG.jl")
 

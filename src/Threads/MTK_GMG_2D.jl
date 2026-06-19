@@ -13,7 +13,10 @@ using GeophysicalModelGenerator
 import ..Diffusion2D: GridArray!, Nonlinear_Diffusion_step_2D!, assign!
 using ..MTK_GMG
 import ..NumericalParameters, ..SillParameters, ..TimeDependentProperties, ..TimeDepProps
+import ..EruptionParameters, ..EruptionParams
+import ..FreeSurfaceParameters, ..FreeSurfaceParams
 import ..CreateGrid, ..Tracer, ..UpdateTracers_T_ϕ!, ..InjectSills, ..m, ..NoUnits
+import ..seed_host_tracers
 
 const SecYear = 3600*24*365.25;
 
@@ -44,11 +47,13 @@ There are a few functions that you can overwrite in your user code to customize 
 - `MTK_updateTracers(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::SillParameters, time_props::TimeDependentProperties, Num::NumericalParameters)`
 - `MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::SillParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input::CartData)`
 - `MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters, Tracers::StructVector, Tnew_cpu)`
+- `MTK_erupt!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructVector, Erupt::EruptionParameters, FS::FreeSurfaceParameters)`
+- `MTK_free_surface!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Dikes::SillParameters, FS::FreeSurfaceParameters)`
 - `MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters)`
 - `MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters, CartData_input::CartData)`
 
 """
-@views function MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::SillParameters; CartData_input::Union{Nothing,CartData}=nothing, time_props::TimeDependentProperties = TimeDepProps());
+@views function MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::SillParameters; CartData_input::Union{Nothing,CartData}=nothing, time_props::TimeDependentProperties = TimeDepProps(), Erupt::EruptionParameters = EruptionParams(), FS::FreeSurfaceParameters = FreeSurfaceParams());
 
     # Change parameters based on CartData input
     Num.dim = 2;
@@ -139,6 +144,26 @@ There are a few functions that you can overwrite in your user code to customize 
     end;
     # --------------------------------------------
 
+    # Initialise the free surface (if active) ----
+    if FS.free_surface && isnothing(FS.z_surf)
+        FS.z_surf = MTK_GMG.init_free_surface(Grid; z0=FS.z0, topography=FS.topography)
+    end
+    # A moving free surface needs a deformable phase field so the surface,
+    # host rock and sills move together (injection inflation + eruption deflation).
+    Num.deform_hostrock = Num.deform_hostrock || FS.free_surface
+    # --------------------------------------------
+
+    # Optionally seed passive host-rock tracers ---
+    # They carry the initial layering and accumulate T-t paths; the existing
+    # injection/deflation advection moves them and eruptions freeze them. The
+    # phase field is still handled by advect_phases!.
+    if Num.SeedHostTracers
+        z_surf = FS.free_surface ? FS.z_surf : nothing
+        Tracers = seed_host_tracers(Grid, Array(Arrays.Phases), Array(Arrays.T), Array(Arrays.ϕ);
+                                    NumTracersDir=Num.HostTracersDir, air_phase=FS.air_phase, z_surf=z_surf)
+    end
+    # --------------------------------------------
+
     for Num.it = 1:Num.nt   # Time loop
         Num.time  += Num.dt;                                     # Keep track of evolved time
 
@@ -160,6 +185,14 @@ There are a few functions that you can overwrite in your user code to customize 
         end
 
         @parallel assign!(Arrays.T, Arrays.Tnew)
+        # --------------------------------------------
+
+        # Erupt magma when the eruptible volume reaches V_crit ----
+        MTK_GMG.MTK_erupt!(Arrays, Grid, Num, Tracers, Erupt, FS)
+        # --------------------------------------------
+
+        # Update the moving free surface (inflation + air stamping) ----
+        MTK_GMG.MTK_free_surface!(Arrays, Grid, Num, Dikes, FS)
         # --------------------------------------------
 
         # Update info on tracers ---------------------

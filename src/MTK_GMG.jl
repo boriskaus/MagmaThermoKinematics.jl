@@ -16,6 +16,9 @@ using MagmaThermoKinematics.Grid
 import MagmaThermoKinematics: NumericalParameters, SillParameters, TimeDependentProperties
 import MagmaThermoKinematics: update_Tvec!, inject_sills, km³, kyr, Myr
 import MagmaThermoKinematics: PhasesFromTracers!
+import MagmaThermoKinematics: erupt_magma!, EruptionParameters
+import MagmaThermoKinematics: FreeSurfaceParameters, init_free_surface, apply_free_surface!, advect_surface!, advect_phases!
+import MagmaThermoKinematics: stamp_phase_inside_sill!
 SecYear = 3600*24*365.25;
 
 @inline _root_module() = parentmodule(@__MODULE__)
@@ -34,7 +37,7 @@ end
 end
 
 @inline _active_sill(Dikes) = isnothing(Dikes.sill) ? error("SillParameters requires a valid `sill` object") : Dikes.sill
-@inline _sill_radius_m(sill) = sill.W.val
+@inline _sill_radius_m(sill) = sill.W.val/2   # InjectSills stores W as the full width (diameter) ⇒ radius = W/2
 
 #using CUDA
 
@@ -63,7 +66,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         sill = _active_sill(Dikes)
         copyto!(Tnew_cpu, Arrays.T)
 
-        Tracers, Tnew_cpu, Vol, poly_out, _ = inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, Float64(Dikes.T_in_Celsius), Dikes.SillPhase, Dikes.nTr_dike, dike_poly=Dikes.sill_poly);     # Add dike, move hostrocks
+        Tracers, Tnew_cpu, Vol, poly_out, Velocity = inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, Float64(Dikes.T_in_Celsius), Dikes.SillPhase, Dikes.nTr_dike, dike_poly=Dikes.sill_poly);     # Add dike, move hostrocks
         Dikes.sill_poly = poly_out
 
         if Num.flux_bottom_BC==false
@@ -88,24 +91,148 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         end
 
         if length(Mat_tup)>1
-           PhasesFromTracers!(Array(Arrays.Phases), Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant");    # update phases from grid
+           # `Array(Arrays.Phases)` is a CPU copy, so we must capture it, mutate
+           # it, and write it back — otherwise the injected SillPhase is lost.
+           Phases = Array(Arrays.Phases)                    # move to CPU (copy)
 
-           # Ensure that we keep the initial phase of the area (host rocks are not deformable)
-           if Num.keep_init_RockPhases==true
-                Phases      = Array(Arrays.Phases)          # move to CPU
-                Phases_init = Array(Arrays.Phases_init)
-                for i in eachindex(Phases)
-                    if Phases[i] != Dikes.SillPhase
-                        Phases[i] = Phases_init[i]
+           if Num.deform_hostrock
+               # Deformable host rock (used with the free surface): advect the
+               # whole material column (host rock + previously-injected sills) by
+               # the injection displacement so it moves *with* the inflating
+               # surface, then stamp the freshly-opened sill densely. No sparse-
+               # tracer rebuild ⇒ no "spotty" host-rock nodes inside the sill.
+               advect_phases!(Phases, Velocity, Grid)
+               stamp_phase_inside_sill!(Phases, Grid, sill, Dikes.SillPhase)
+           else
+               # Pinned host rock (default): reconstruct phases from the (just-
+               # injected) tracers and keep the initial host-rock phases.
+               PhasesFromTracers!(Phases, Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant");
+
+               if Num.keep_init_RockPhases==true
+                    Phases_init = Array(Arrays.Phases_init)
+                    for i in eachindex(Phases)
+                        if Phases[i] != Dikes.SillPhase
+                            Phases[i] = Phases_init[i]
+                        end
                     end
-                end
-                Arrays.Phases .= DataArray(Phases)          # move back to GPU
+               end
            end
+           Arrays.Phases .= DataArray(Phases)               # move back (always)
         end
 
     end
 
     return Tracers
+end
+
+"""
+    fired = MTK_erupt!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructVector, Erupt::EruptionParameters)
+
+Optional eruption callback, invoked once per timestep from the 2D/3D time loop.
+
+When `Erupt.erupt` is `true` it evaluates the eruptible volume and, when it reaches
+`Erupt.V_crit`, removes melt thermally — and optionally deflates the chamber — via
+[`erupt_magma!`](@ref), writing the mutated `T`, `ϕ` and `dϕdT` fields back into
+`Arrays`. It is a no-op (returns `false`) when eruptions are disabled. Returns
+`true` when an eruption occurred. Overwrite this in your own code to customize
+eruption behaviour.
+"""
+function MTK_erupt!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructVector, Erupt::EruptionParameters, FS::FreeSurfaceParameters)
+    Erupt.erupt || return false
+
+    # when a moving free surface is active, let the eruption deflation subside it
+    z_surf = FS.free_surface ? FS.z_surf : nothing
+
+    # `erupt_magma!` works on CPU `Array`s. On the CPU backend `Arrays.*` already
+    # ARE plain CPU arrays, so we hand them straight to `erupt_magma!` and let it
+    # mutate them in place — no host/device round-trip. `Array(x)` on a CPU array
+    # is NOT free: it allocates a full copy, which (run every timestep, for T, ϕ,
+    # dϕdT and Phases) was the dominant per-step cost. The copy-in/out is only
+    # needed on the GPU, where it is the actual device→host→device transfer.
+    if Num.USE_GPU
+        T_cpu    = Array(Arrays.T)
+        ϕ_cpu    = Array(Arrays.ϕ)
+        dϕdT_cpu = Array(Arrays.dϕdT)
+        Ph_cpu   = Num.deform_hostrock ? Array(Arrays.Phases) : nothing
+        fired    = erupt_magma!(T_cpu, ϕ_cpu, dϕdT_cpu, Tracers, Grid, Erupt, Num.time; z_surf=z_surf, Phases=Ph_cpu)
+        if fired
+            Arrays.T    .= DataArray(T_cpu)
+            Arrays.ϕ    .= DataArray(ϕ_cpu)
+            Arrays.dϕdT .= DataArray(dϕdT_cpu)
+            Num.deform_hostrock && (Arrays.Phases .= DataArray(Ph_cpu))
+        end
+        return fired
+    else
+        Ph = Num.deform_hostrock ? Arrays.Phases : nothing
+        return erupt_magma!(Arrays.T, Arrays.ϕ, Arrays.dϕdT, Tracers, Grid, Erupt, Num.time; z_surf=z_surf, Phases=Ph)
+    end
+end
+
+# vertical host-rock displacement field of `sill` on the full grid (used to
+# inflate the free surface at injection); non-finite core entries are zeroed
+# just like in `inject_sills`.
+function _injection_Dz(Grid::GridData, sill)
+    coord = Grid.coord1D
+    dim   = length(coord)
+    if dim == 2
+        coords = collect(Iterators.product(coord[1], coord[2]))
+        X = (c->c[1]).(coords); Z = (c->c[2]).(coords)
+        _, Dz = InjectSills.hostrock_displacement(sill, Float64.(X), Float64.(Z))
+    else
+        coords = collect(Iterators.product(coord[1], coord[2], coord[3]))
+        X = (c->c[1]).(coords); Y = (c->c[2]).(coords); Z = (c->c[3]).(coords)
+        _, _, Dz = InjectSills.hostrock_displacement(sill, Float64.(X), Float64.(Y), Float64.(Z))
+    end
+    @inbounds for i in eachindex(Dz)
+        isfinite(Dz[i]) || (Dz[i] = 0.0)
+    end
+    return Dz
+end
+
+"""
+    moved = MTK_free_surface!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Dikes::SillParameters, FS::FreeSurfaceParameters)
+
+Optional free-surface callback, invoked once per timestep from the 2D/3D time
+loop. When `FS.free_surface` is `true` it (1) inflates the surface by the
+host-rock displacement of the most recently injected sill, and (2) stamps "air"
+([`apply_free_surface!`](@ref)) onto every cell above the topography `FS.z_surf`.
+Eruption deflation lowers the surface separately, inside [`MTK_erupt!`](@ref). A
+no-op (returns `false`) when the free surface is disabled. Overwrite in your own
+code to customize the free-surface behaviour.
+"""
+function MTK_free_surface!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Dikes::SillParameters, FS::FreeSurfaceParameters)
+    FS.free_surface || return false
+    isnothing(FS.z_surf) && (FS.z_surf = init_free_surface(Grid; z0=FS.z0, topography=FS.topography))
+    z_surf = FS.z_surf
+
+    # (1) injection inflation: raise the surface once per new sill injection
+    if hasproperty(Dikes, :sill) && !isnothing(Dikes.sill) && Dikes.sill_inj > FS._last_inj
+        FS._last_inj = Dikes.sill_inj
+        advect_surface!(z_surf, _injection_Dz(Grid, Dikes.sill), Grid)
+    end
+
+    # (2) stamp air above the (possibly updated) topography — and back-fill rock
+    # below it so the air/rock interface in the phase array tracks the surface
+    # exactly (the continuous z_surf advances faster than the rounded, per-step
+    # phase advection; see apply_free_surface!). The host/background phase is the
+    # fallback fill where a column has no rock below the cell.
+    fill_phase = hasproperty(Dikes, :BackgroundPhase) ? Dikes.BackgroundPhase : nothing
+    if Num.USE_GPU
+        # GPU: round-trip host↔device (the copies are the real transfer).
+        T_cpu  = Array(Arrays.T)
+        ϕ_cpu  = Array(Arrays.ϕ)
+        Ph_cpu = Array(Arrays.Phases)
+        apply_free_surface!(T_cpu, ϕ_cpu, Ph_cpu, z_surf, Grid, FS.Tair, FS.air_phase; fill_phase=fill_phase)
+        Arrays.T      .= DataArray(T_cpu)
+        Arrays.ϕ      .= DataArray(ϕ_cpu)
+        Arrays.Phases .= DataArray(Ph_cpu)
+    else
+        # CPU: stamp air directly on the live arrays — no per-step copies (this
+        # runs every timestep; `Array(x)` here would allocate three full-grid
+        # copies in + three out for nothing).
+        apply_free_surface!(Arrays.T, Arrays.ϕ, Arrays.Phases, z_surf, Grid, FS.Tair, FS.air_phase; fill_phase=fill_phase)
+    end
+    return true
 end
 
 """

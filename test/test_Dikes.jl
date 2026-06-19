@@ -375,8 +375,10 @@ end
     @test all(isfinite, Tnew_new)
     @test maximum(Tnew_new) <= T_in + 1e-8
     @test minimum(Tnew_new) >= minimum(T) - 1e-8
-    # Injected volume: sill.W.val is the radius, so volume = 4/3*π*r²*(H/2)
-    @test InjVol ≈ 4/3*π*(Wdike/2)^2*(Hdike/2)  rtol=1e-6
+    # Injected volume is always a true 3D volume [m³] (km³ convention), even in
+    # 2D, taken straight from InjectSills.volume (W,H are diameters ⇒ semi-axes
+    # W/2,H/2 — the same convention `InjectSills.inside` uses).
+    @test InjVol ≈ ustrip(InjectSills.volume(sill2d))  rtol=1e-6
     # Tracers were added
     @test length(Tr_new) == 300
   end
@@ -413,10 +415,77 @@ end
     @test all(isfinite, Tnew_new)
     @test maximum(Tnew_new) <= T_in + 1e-8
     @test minimum(Tnew_new) >= minimum(T) - 1e-8
-    @test InjVol ≈ 4/3*π*(Wdike/2)^2*(Hdike/2)  rtol=1e-6   # Wdike/2 = sill radius
+    # 3D ⇒ the injected volume is the source's equivalent 3D volume, taken from
+    # InjectSills.volume (W,H are diameters ⇒ semi-axes W/2,H/2).
+    @test InjVol ≈ ustrip(InjectSills.volume(sill3d))  rtol=1e-6
     @test length(Tr_new) == 300
   end
 
+end
+
+@testset "inject_sills sphere sources (Mogi/McTigue)" begin
+  # Regression test for the "interior blows up" bug: a Mogi/McTigue sphere
+  # has a near-singular displacement in its core. inject_sills must (a) not
+  # produce NaN/Inf, (b) keep T bounded by [background, T_in] (no blow-up),
+  # and (c) still seed tracers inside the (W/H-less) sphere source. The grid
+  # is deliberately placed so a node coincides with the source centre (the
+  # worst case, where the analytic field is NaN/∞).
+
+  # ---- 2D : node exactly on the source centre ----
+  let
+    Nx, Nz = 101, 101
+    x = range(-5000.0, 5000.0, length=Nx)      # x=0 is a grid node
+    z = range(-10000.0, 0.0,   length=Nz)      # z=-5000 is a grid node
+    Grid  = (x, z)
+    T     = [20.0 - z[j]/1e3*20 for i in 1:Nx, j in 1:Nz]
+    T_in  = 1000.0
+
+    src = MogiSphere(Center = Point2(0.0, -5000.0)*m, r = 1500.0m,
+                     ΔP = 50e6*Pa, G = 10e9*Pa, ν = 0.25*NoUnits)
+    Tr  = StructArray{Tracer{Float32}}(undef, 1)
+    Tr, Tnew, InjVol, _, _ = inject_sills(Tr, copy(T), Grid, src, T_in, 2, 200)
+
+    @test all(isfinite, Tnew)                       # no NaN/Inf anywhere
+    @test maximum(Tnew) <= T_in + 1e-8              # interior did not blow up
+    @test minimum(Tnew) >= minimum(T) - 1e-8
+    @test InjVol > 0                                # injected volume from InjectSills
+    # M7: injected volume is the source's equivalent 3D volume (km³ convention),
+    # even in 2D (see inject_sills).
+    @test InjVol ≈ ustrip(InjectSills.volume(src))  rtol=1e-8
+    @test length(Tr) == 200                         # tracers seeded inside the sphere
+    # every seeded tracer is actually inside the sphere
+    @test all(t -> InjectSills.inside(Point2(t.coord[1], t.coord[2]), src), Tr)
+    # M4: the singular core does not leak outward. A Mogi source is long-range
+    # (∝1/r²) so the far field DOES respond — but only by a tiny, bounded amount.
+    # Domain corners (≈6 km, ≫ the 1.5 km source radius) must move ≪ 1 K, while
+    # the interior is legitimately reset to T_in (checked above). Measured corner
+    # response ≈ 0.0036 K; bound generously at 0.01 K.
+    @test abs(Tnew[1,1]     - T[1,1])     < 1e-2
+    @test abs(Tnew[end,end] - T[end,end]) < 1e-2
+    @test abs(Tnew[1,end]   - T[1,end])   < 1e-2
+  end
+
+  # ---- 3D ----
+  let
+    Nx, Ny, Nz = 51, 51, 51
+    x = range(-5000.0, 5000.0, length=Nx)
+    y = range(-5000.0, 5000.0, length=Ny)
+    z = range(-10000.0, 0.0,   length=Nz)
+    Grid = (x, y, z)
+    T    = [20.0 - z[k]/1e3*20 for i in 1:Nx, j in 1:Ny, k in 1:Nz]
+    T_in = 1000.0
+
+    src = MogiSphere(Center = Point3(0.0, 0.0, -5000.0)*m, r = 1500.0m,
+                     ΔP = 50e6*Pa, G = 10e9*Pa, ν = 0.25*NoUnits)
+    Tr  = StructArray{Tracer{Float32}}(undef, 1)
+    Tr, Tnew, InjVol, _, _ = inject_sills(Tr, copy(T), Grid, src, T_in, 2, 200)
+
+    @test all(isfinite, Tnew)
+    @test maximum(Tnew) <= T_in + 1e-8
+    @test minimum(Tnew) >= minimum(T) - 1e-8
+    @test InjVol > 0
+    @test length(Tr) == 200
+  end
 end
 
 end

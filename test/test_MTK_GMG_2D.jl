@@ -105,18 +105,18 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         println("  Added new dike; time=$(Num.time / kyr) kyrs, total injected magma volume = $(Dikes.InjectVol / km³) km³; rate Q= $(Dikes.Qrate_km3_yr) km³yr⁻¹")
 
         if length(Mat_tup) > 1
-            PhasesFromTracers!(Array(Arrays.Phases), Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant")
+            Phases = Array(Arrays.Phases)               # CPU copy — must be captured + written back
+            PhasesFromTracers!(Phases, Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant")
 
             if Num.keep_init_RockPhases == true
-                Phases = Array(Arrays.Phases)
                 Phases_init = Array(Arrays.Phases_init)
                 for i in eachindex(Phases)
                     if Phases[i] != intrusion_phase
                         Phases[i] = Phases_init[i]
                     end
                 end
-                Arrays.Phases .= DataArray(Phases)
             end
+            Arrays.Phases .= DataArray(Phases)
         end
     end
 
@@ -288,6 +288,134 @@ Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_2D.MTK_GeoParams_2D(MatParam,
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 251.58206620240594  rtol= 1e-4
 @test sum(time_props.MeltFraction)  ≈  0.2238128607809668 rtol= 1e-5
+# Regression: the injected dike's phase must actually land in the phase array.
+# (PhasesFromTracers! was being called on a throwaway copy — Array(Arrays.Phases) —
+#  so SillPhase=3 never reached Arrays.Phases.)
+@test any(Array(Arrays.Phases) .== Sill_params.SillPhase)
+
+# -----------------------------
+# Eruption time-loop integration (issue 2): erupt_magma! wired into the loop
+# via the MTK_erupt! callback. A short, self-contained run that injects hot
+# (T_in=1000°C ⇒ ϕ=1) magma and erupts it once the eruptible volume exceeds a
+# (deliberately tiny) critical volume.
+# -----------------------------
+@testset "Eruption time-loop" begin
+
+    Num_e = NumParam(Nx=65, Nz=65, W=10e3, H=10e3,
+                     SimName="Erupt2D", axisymmetric=false,
+                     maxTime_Myrs=0.001, fac_dt=0.2, ω=0.5, verbose=false,
+                     flux_bottom_BC=false, Geotherm=30/1e3, TrackTracersOnGrid=true,
+                     SaveOutput_steps=100000, CreateFig_steps=100000,
+                     plot_tracers=false, advect_polygon=false, USE_GPU=USE_GPU)
+
+    # thick sill (H=600 m ≫ dz≈156 m) so grid nodes are actually set to T_in
+    Sill_e = SillParams(
+                sill=EllipticalIntrusion(Center=Point2(5.0e3, -5.0e3) * m, W=2e3 * m, H=600.0 * m),
+                InjectionInterval_year=100, nTr_dike=100)
+
+    Mat_e  = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
+                                Density      = ConstantDensity(ρ=2700kg/m^3),
+                                LatentHeat   = ConstantLatentHeat(Q_L=3.13e5J/kg),
+                                Conductivity = T_Conductivity_Whittington_parameterised(),
+                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
+                                Melting      = SmoothMelting(MeltingParam_4thOrder())),)
+
+    # --- eruptions ENABLED: thermal extraction only (deflate=false) ---
+    Erupt_on = EruptionParams(erupt=true, ϕ_erupt=0.5, V_crit_km3=1e-6,
+                              erupt_efficiency=0.5, deflate=false)
+    _, Arrays_e, _, _, _ = MTK_GMG_2D.MTK_GeoParams_2D(Mat_e, Num_e, Sill_e; Erupt=Erupt_on)
+
+    @test Erupt_on.n_eruptions ≥ 1                                   # eruptions actually fired in the run
+    @test Erupt_on.erupted_volume > 0
+    @test length(Erupt_on.eruption_times)   == Erupt_on.n_eruptions  # bookkeeping consistent
+    @test length(Erupt_on.eruption_volumes) == Erupt_on.n_eruptions
+    @test all(isfinite, Arrays_e.Tnew)                               # state stays finite
+
+    # --- eruptions DISABLED (default): the callback is a no-op ---
+    Num_off = NumParam(Nx=65, Nz=65, W=10e3, H=10e3,
+                       SimName="Erupt2D_off", axisymmetric=false,
+                       maxTime_Myrs=0.001, fac_dt=0.2, ω=0.5, verbose=false,
+                       flux_bottom_BC=false, Geotherm=30/1e3, TrackTracersOnGrid=true,
+                       SaveOutput_steps=100000, CreateFig_steps=100000,
+                       plot_tracers=false, advect_polygon=false, USE_GPU=USE_GPU)
+    Sill_off = SillParams(
+                sill=EllipticalIntrusion(Center=Point2(5.0e3, -5.0e3) * m, W=2e3 * m, H=600.0 * m),
+                InjectionInterval_year=100, nTr_dike=100)
+    Erupt_off = EruptionParams()                                     # erupt=false by default
+    MTK_GMG_2D.MTK_GeoParams_2D(Mat_e, Num_off, Sill_off; Erupt=Erupt_off)
+    @test Erupt_off.erupt == false
+    @test Erupt_off.n_eruptions == 0 && Erupt_off.erupted_volume == 0.0
+
+    rm("Erupt2D", recursive=true, force=true)
+    rm("Erupt2D_off", recursive=true, force=true)
+end
+
+# -----------------------------
+# Free-surface time-loop integration (issue 4): the sticky-air surface is wired
+# into the loop via MTK_free_surface! (injection inflation + air stamping) and
+# MTK_erupt! (eruption deflation). The surface should be allocated, move from its
+# initial flat elevation, stay finite, and stamp air (Phase 0) above topography.
+# -----------------------------
+@testset "Free-surface time-loop" begin
+
+    # two phases: Air (0) + Crust (1), so air cells have valid material props
+    Mat_fs = (SetMaterialParams(Name="Air", Phase=0,
+                                Density      = ConstantDensity(ρ=2700kg/m^3),
+                                LatentHeat   = ConstantLatentHeat(Q_L=0.0J/kg),
+                                Conductivity = ConstantConductivity(k=3Watt/K/m),
+                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
+                                Melting      = SmoothMelting(MeltingParam_4thOrder())),
+              SetMaterialParams(Name="Crust", Phase=1,
+                                Density      = ConstantDensity(ρ=2700kg/m^3),
+                                LatentHeat   = ConstantLatentHeat(Q_L=3.13e5J/kg),
+                                Conductivity = T_Conductivity_Whittington_parameterised(),
+                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
+                                Melting      = SmoothMelting(MeltingParam_4thOrder())))
+
+    Num_fs = NumParam(Nx=65, Nz=65, W=10e3, H=10e3,
+                      SimName="FreeSurf2D", axisymmetric=false,
+                      maxTime_Myrs=0.001, fac_dt=0.2, ω=0.5, verbose=false,
+                      flux_bottom_BC=false, Geotherm=30/1e3, TrackTracersOnGrid=true,
+                      SaveOutput_steps=100000, CreateFig_steps=100000,
+                      plot_tracers=false, advect_polygon=false, USE_GPU=USE_GPU)
+    Sill_fs = SillParams(
+                sill=EllipticalIntrusion(Center=Point2(5.0e3, -5.0e3) * m, W=2e3 * m, H=600.0 * m),
+                InjectionInterval_year=100, nTr_dike=100, SillPhase=1, BackgroundPhase=1)
+
+    # eruptions (deflate=true) so the surface subsides as well as inflates
+    Erupt_fs = EruptionParams(erupt=true, ϕ_erupt=0.5, V_crit_km3=1e-6,
+                              erupt_efficiency=0.5, deflate=true)
+    FS_on = FreeSurfaceParams(free_surface=true, air_phase=0, Tair=0.0, z0=-2000.0)
+
+    _, Arrays_fs, _, _, _ = MTK_GMG_2D.MTK_GeoParams_2D(Mat_fs, Num_fs, Sill_fs;
+                                                        Erupt=Erupt_fs, FS=FS_on)
+
+    @test FS_on.z_surf !== nothing                       # surface allocated
+    @test length(FS_on.z_surf) == Num_fs.Nx
+    @test all(isfinite, FS_on.z_surf)
+    @test !all(FS_on.z_surf .≈ FS_on.z0)                 # surface moved (inflation/deflation)
+    @test all(FS_on.z_surf .>= -Num_fs.H - 1e-6) && all(FS_on.z_surf .<= 1e-6)   # within domain
+    @test any(Array(Arrays_fs.Phases) .== 0)             # air was stamped above topography
+    @test all(isfinite, Arrays_fs.Tnew)
+
+    # --- free surface DISABLED (default): callback is a no-op, no surface ---
+    Num_off = NumParam(Nx=65, Nz=65, W=10e3, H=10e3,
+                       SimName="FreeSurf2D_off", axisymmetric=false,
+                       maxTime_Myrs=0.001, fac_dt=0.2, ω=0.5, verbose=false,
+                       flux_bottom_BC=false, Geotherm=30/1e3, TrackTracersOnGrid=true,
+                       SaveOutput_steps=100000, CreateFig_steps=100000,
+                       plot_tracers=false, advect_polygon=false, USE_GPU=USE_GPU)
+    Sill_off2 = SillParams(
+                sill=EllipticalIntrusion(Center=Point2(5.0e3, -5.0e3) * m, W=2e3 * m, H=600.0 * m),
+                InjectionInterval_year=100, nTr_dike=100, SillPhase=1, BackgroundPhase=1)
+    FS_off = FreeSurfaceParams()                          # free_surface=false by default
+    MTK_GMG_2D.MTK_GeoParams_2D(Mat_fs, Num_off, Sill_off2; FS=FS_off)
+    @test FS_off.free_surface == false
+    @test FS_off.z_surf === nothing                       # never allocated when disabled
+
+    rm("FreeSurf2D", recursive=true, force=true)
+    rm("FreeSurf2D_off", recursive=true, force=true)
+end
 
 # remove directory created by this test
 rm("ZASSy_Geneva_9_1e_6", recursive=true, force=true)

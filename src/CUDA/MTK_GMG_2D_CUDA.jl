@@ -15,6 +15,8 @@ using CUDA
 import ..Diffusion2D: GridArray!, Nonlinear_Diffusion_step_2D!, assign!
 using ..MTK_GMG
 import ..NumericalParameters, ..SillParameters, ..TimeDependentProperties, ..TimeDepProps
+import ..EruptionParameters, ..EruptionParams
+import ..FreeSurfaceParameters, ..FreeSurfaceParams
 import ..CreateGrid, ..Tracer, ..UpdateTracers_T_ϕ!, ..InjectSills, ..m, ..NoUnits
 
 const SecYear = 3600*24*365.25;
@@ -50,7 +52,7 @@ There are a few functions that you can overwrite in your user code to customize 
 - `MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters, CartData_input::CartData)`
 
 """
-@views function MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::SillParameters; CartData_input::Union{Nothing,CartData}=nothing, time_props::TimeDependentProperties = TimeDepProps());
+@views function MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::SillParameters; CartData_input::Union{Nothing,CartData}=nothing, time_props::TimeDependentProperties = TimeDepProps(), Erupt::EruptionParameters = EruptionParams(), FS::FreeSurfaceParameters = FreeSurfaceParams());
 
     # Change parameters based on CartData input
     Num.dim = 2;
@@ -141,6 +143,15 @@ There are a few functions that you can overwrite in your user code to customize 
     end;
     # --------------------------------------------
 
+    # Initialise the free surface (if active) ----
+    if FS.free_surface && isnothing(FS.z_surf)
+        FS.z_surf = MTK_GMG.init_free_surface(Grid; z0=FS.z0, topography=FS.topography)
+    end
+    # A moving free surface needs a deformable phase field so the surface,
+    # host rock and sills move together (injection inflation + eruption deflation).
+    Num.deform_hostrock = Num.deform_hostrock || FS.free_surface
+    # --------------------------------------------
+
     for Num.it = 1:Num.nt   # Time loop
         Num.time  += Num.dt;                                     # Keep track of evolved time
 
@@ -162,6 +173,14 @@ There are a few functions that you can overwrite in your user code to customize 
         end
 
         @parallel assign!(Arrays.T, Arrays.Tnew)
+        # --------------------------------------------
+
+        # Erupt magma when the eruptible volume reaches V_crit ----
+        MTK_GMG.MTK_erupt!(Arrays, Grid, Num, Tracers, Erupt, FS)
+        # --------------------------------------------
+
+        # Update the moving free surface (inflation + air stamping) ----
+        MTK_GMG.MTK_free_surface!(Arrays, Grid, Num, Dikes, FS)
         # --------------------------------------------
 
         # Update info on tracers ---------------------
