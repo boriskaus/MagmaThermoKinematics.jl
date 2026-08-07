@@ -14,23 +14,56 @@ using Parameters                                # More flexible definition of pa
 using Interpolations                            # Fast interpolations
 using StaticArrays
 using JLD2                                      # Load/save data to disk
+@reexport using InjectSills                     # Re-export InjectSills API (sill constructors + helpers)
 @reexport using GeoParams                                 # Material parameters calculations
 @reexport using ParallelStencil
 
 abstract type NumericalParameters end
-abstract type DikeParameters end
+abstract type SillParameters end
 abstract type TimeDependentProperties end
+abstract type EruptionParameters end
+abstract type FreeSurfaceParameters end
+
+"""
+    mutable struct ChamberState
+
+Persistent state of the QMagma-style chamber-overpressure ODE ([`step_overpressure!`](@ref)),
+carried across timesteps on `EruptionParams.chamber`. Declared here (rather than
+alongside `EruptionParams` in `MTK_GMG_structs.jl`) so it is defined before
+`InjectSills_utils.jl`, which uses it in `step_overpressure!`'s signature.
+
+# Fields
+- `P::Float64`: chamber pressure [Pa].
+- `P_lith::Float64`: lithostatic reference pressure at the chamber (melt-weighted)
+  centroid [Pa]. Set by the caller before each `step_overpressure!` call — the
+  function does not compute it itself.
+- `T_prev::Float64`: mush-mean temperature [K] at the previous call.
+- `ϕ_prev::Float64`: mush-mean melt fraction at the previous call.
+- `inv_βm::Float64`: magma compressibility `1/β_m = (1/ρ)∂ρ/∂P` at the last call [1/Pa].
+- `init::Bool`: whether the chamber has been initialized. The first call (or any
+  call with no eruptible mush) sets `P = P_lith` and flips this to `true` rather
+  than integrating the ODE.
+"""
+@with_kw mutable struct ChamberState
+    P::Float64      = 0.0
+    P_lith::Float64 = 0.0
+    T_prev::Float64 = NaN
+    ϕ_prev::Float64 = NaN
+    inv_βm::Float64 = 0.0
+    init::Bool      = false
+end
+export ChamberState
 
 include("Units.jl")                             # various useful units
 
 # Few useful parameters
-const SecYear     = 3600*24*365.25
+const SecYear     = 3600*24*365.25  
 const kyr         = 1000*SecYear
 const Myr         = 1e6*SecYear
 const km³         = 1000^3
 export SecYear, kyr, Myr, km³
 
-export NumericalParameters, DikeParameters, TimeDependentProperties
+export NumericalParameters, SillParameters, TimeDependentProperties, EruptionParameters, FreeSurfaceParameters
 
 struct EnvironmentConfig
     model_device::Symbol
@@ -203,12 +236,16 @@ include("Grid.jl")
 using .Grid
 export GridData, CreateGrid
 
+# Kinematic sticky-air free surface (issue 4)
+include("FreeSurface.jl")
+export init_free_surface, apply_free_surface!, advect_surface!, advect_phases!, mass_budget
+
 # Routines that deal with tracers
 include("Tracers.jl")
 export UpdateTracers, AdvectTracers!, InitializeTracers,PhaseRatioFromTracers, CorrectTracersForTopography!
-export RockAssemblage, update_Tvec!
+export RockAssemblage, update_Tvec!, freeze_erupted_tracers!, seed_host_tracers
 export PhaseRatioFromTracers!, PhasesFromTracers!, UpdateTracers_T_ϕ!, UpdateTracers_Field! # new routines
-
+export Tracer, TracersToGrid!
 
 include("MeltingRelationships.jl")
 export SolidFraction, ComputeLithostaticPressure, LoadPhaseDiagrams, PhaseDiagramData, ComputeDensityAndPressure
@@ -218,10 +255,13 @@ export PhaseRatioAverage!, ComputeSeismicVelocities, SolidFraction_Parameterized
 export StructArray, LazyRow # useful
 export Tracer
 
-include("Dikes.jl")
-export Dike, DikePoly
-export Tracer, AddDike, HostRockVelocityFromDike, CreateDikePolygon, advect_dike_polygon!,
-       volume_dike, InjectDike, TracersToGrid!
+#include("Dikes.jl")
+#export Dike, DikePoly
+#export Tracer, AddDike, HostRockVelocityFromDike, CreateDikePolygon, advect_dike_polygon!,
+#       volume_dike, InjectDike, TracersToGrid!
+
+include("InjectSills_utils.jl")
+export inject_sills, add_dike, eruptible_volume, erupt_magma!, deflate_hostrock!, stamp_phase_inside_sill!, enthalpy, step_overpressure!, magma_density_fn
 
 # routines related to advection & interpolation
 include("Advection.jl")
@@ -233,7 +273,7 @@ include("Utils.jl")
 export Process_ZirconAges, simulate_zircon_growth_from_tracers, volume_averaged_age, copy_arrays_GPU2CPU!, copy_arrays_CPU2GPU!
 
 include("MTK_GMG_structs.jl")
-export NumParam, DikeParam, TimeDepProps
+export NumParam, SillParams, TimeDepProps, EruptionParams, FreeSurfaceParams
 
 include("MTK_GMG.jl")
 

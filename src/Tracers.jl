@@ -19,6 +19,11 @@
             Phi:        Melt fraction of tracer
             time_vec:   Vector with time
             T_vec :     Vector with temperature values
+            erupted:    Whether this tracer has been erupted (frozen). Erupted
+                        tracers are no longer advected and their T/ϕ and Tt-path
+                        are no longer updated — they are retained (not deleted)
+                        so their recorded history can be used as the erupted
+                        "zircon cargo" for post-hoc growth/age analysis.
 """
 mutable struct Tracer{FT<:AbstractFloat}
     num         ::  Int64
@@ -28,13 +33,15 @@ mutable struct Tracer{FT<:AbstractFloat}
     Phi         ::  Float64
     time_vec    ::  Vector{FT}
     T_vec       ::  Vector{FT}
+    erupted     ::  Bool
 end
 
 # Default constructor: Tracer(coord=[...]) or Tracer{Float32}(coord=[...])
 function Tracer{FT}(; num::Int64=0, coord::Vector{Float64}, T::Float64=900.0,
                      Phase::Int64=1, Phi::Float64=0.0,
-                     time_vec::Vector{FT}=FT[], T_vec::Vector{FT}=FT[]) where {FT<:AbstractFloat}
-    Tracer{FT}(num, coord, T, Phase, Phi, time_vec, T_vec)
+                     time_vec::Vector{FT}=FT[], T_vec::Vector{FT}=FT[],
+                     erupted::Bool=false) where {FT<:AbstractFloat}
+    Tracer{FT}(num, coord, T, Phase, Phi, time_vec, T_vec, erupted)
 end
 # Convenience constructor without type parameter: defaults to Float32
 Tracer(; kwargs...) = Tracer{Float32}(; kwargs...)
@@ -96,8 +103,9 @@ function UpdateTracers(Tracers, Grid, T, Phi, InterpolationMethod="Quadratic")
         Phi_melt_tracers    = tuple(zeros(size(x)));
         Interpolate!(Phi_melt_tracers,  Grid, tuple(1.0 .- Phi), Points_irregular, InterpolationMethod);    # 1-Phi, as Phi=solid fraction
 
-        # Update info on tracers
+        # Update info on tracers (erupted/frozen tracers are left untouched)
         for iT = 1:length(Tracers)
+            Tracers.erupted[iT] && continue
             LazyRow(Tracers, iT).T     = T_tracers[1][iT];             # Temperature
             LazyRow(Tracers, iT).Phi   = Phi_melt_tracers[1][iT];      # Melt fraction
         end
@@ -142,6 +150,7 @@ function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T,dim}, Phi
         end
         for iT = 1:length(Tracers)
             Trac = Tracers[iT];
+            Trac.erupted && continue        # erupted/frozen tracers keep their T/ϕ
             pt   = Trac.coord
 
             # correct point for bounds:
@@ -195,6 +204,7 @@ function UpdateTracers_Field!(Tracers::StructVector{TRACERS}, Grid::GridData{_T,
 
         for iT = 1:length(Tracers)
             Trac = Tracers[iT];
+            Trac.erupted && continue        # erupted/frozen tracers keep their field value
             pt   = Trac.coord
 
             # correct point for bounds:
@@ -1084,15 +1094,17 @@ function AdvectTracers!(Tracers, Grid, Velocity, dt, Method="RK2")
     # Advect
     Points_new              =   AdvectPoints(Points_irregular,  Grid,Velocity, dt,Method,  "Linear");     # Advect tracers
 
-    # function to assign properties
+    # function to assign properties (erupted/frozen tracers are not advected)
     function testnoalloc_2D(sarr, val)
         for (Tracer,x,z) in zip(LazyRows(sarr), val[1], val[2])
+            Tracer.erupted && continue
             Tracer.coord = [x;z];
         end
     end
 
     function testnoalloc_3D(sarr, val)
         for (Tracer,x,y,z) in zip(LazyRows(sarr), val[1], val[2], val[3])
+            Tracer.erupted && continue
             Tracer.coord = [x; y; z];
         end
     end
@@ -1114,6 +1126,7 @@ function update_Tvec!(Tracers::StructArray, time_val::Float64)
 
     if isassigned(Tracers,1)
         for iT = 1:length(Tracers)
+            Tracers.erupted[iT] && continue     # frozen at eruption: history no longer grows
             FT = eltype(LazyRow(Tracers, iT).time_vec)
             LazyRow(Tracers, iT).time_vec = push!(LazyRow(Tracers, iT).time_vec, FT(time_val));
             LazyRow(Tracers, iT).T_vec    = push!(LazyRow(Tracers, iT).T_vec,    FT(LazyRow(Tracers, iT).T));
@@ -1121,4 +1134,109 @@ function update_Tvec!(Tracers::StructArray, time_val::Float64)
     end
 
     return Tracers
+end
+
+"""
+    nfrozen = freeze_erupted_tracers!(Tracers, Grid::GridData, mask::AbstractArray, efficiency::Real, time::Real)
+
+Flag ("freeze") the tracers caught up in an eruption. For every tracer that is
+not already erupted and whose nearest grid cell is flagged eruptible (`mask` is
+the boolean eruptible-cell mask returned by [`eruptible_volume`](@ref), i.e.
+`ϕ > ϕ_erupt`), the tracer is frozen with probability `efficiency` — so on
+average a fraction `efficiency` of the mobile (melt-rich) tracers erupt, matching
+the `erupt_efficiency` fraction of melt withdrawn by [`erupt_magma!`](@ref).
+
+A frozen tracer (1) gets `erupted = true`, (2) receives one final history point
+`(time, T)` recording the temperature at the eruption instant, and (3) is
+thereafter skipped by tracer advection ([`AdvectTracers!`](@ref)) and by the
+T/ϕ/Tt-path updates ([`UpdateTracers_T_ϕ!`](@ref), [`update_Tvec!`](@ref), …).
+It is **not** removed from `Tracers`: its preserved `T_vec`/`time_vec` is the
+erupted "zircon cargo" used for post-hoc growth/age analysis. `time` is in the
+same units the Tt-path uses (Myr in the MTK drivers).
+
+Returns the number of tracers frozen by this call. No-op (returns 0) on an empty
+`Tracers`.
+"""
+function freeze_erupted_tracers!(Tracers, Grid::GridData{_T,dim}, mask::AbstractArray,
+                                 efficiency::Real, time::Real) where {_T, dim}
+    isassigned(Tracers,1) || return 0
+    nfrozen = 0
+    @inbounds for iT = 1:length(Tracers)
+        Tracers.erupted[iT] && continue
+        pt = Tracers[iT].coord
+        # nearest grid cell (clamped to the domain), same convention as PhaseRatioFromTracers!
+        idx = ntuple(dim) do d
+            i = round(Int, (pt[d] - Grid.min[d]) / Grid.Δ[d]) + 1
+            clamp(i, 1, Grid.N[d])
+        end
+        I = CartesianIndex(idx)
+        if mask[I] && rand() < efficiency
+            LazyRow(Tracers, iT).erupted = true
+            FT = eltype(LazyRow(Tracers, iT).time_vec)
+            LazyRow(Tracers, iT).time_vec = push!(LazyRow(Tracers, iT).time_vec, FT(time))
+            LazyRow(Tracers, iT).T_vec    = push!(LazyRow(Tracers, iT).T_vec,    FT(LazyRow(Tracers, iT).T))
+            nfrozen += 1
+        end
+    end
+    return nfrozen
+end
+
+"""
+    Tracers = seed_host_tracers(Grid::GridData, Phases, T, ϕ; NumTracersDir=2, air_phase=0, z_surf=nothing, exclude_phases=())
+
+Seed *passive* host-rock tracers across the model domain — one regular (jittered)
+cloud per cell — and tag each tracer with the **phase of the cell it lands in**,
+so the tracers carry the initial layering (e.g. crust vs. mantle vs. previously
+emplaced rock). Tracers that fall in air are dropped: a cell is "air" when its
+phase equals `air_phase` or — when a free-surface topography `z_surf` is given —
+when the cell lies above the surface. Any phase listed in `exclude_phases` is
+also skipped, so only the host rock of interest is seeded.
+
+The returned tracers slot straight into the time loop: they are advected by the
+same injection-inflation / eruption-deflation displacement that already moves the
+sill tracers ([`inject_sills`](@ref), [`deflate_hostrock!`](@ref)), they
+accumulate a T–t path ([`update_Tvec!`](@ref)), and they freeze if caught in an
+eruption ([`freeze_erupted_tracers!`](@ref)). They are intended for **Lagrangian
+host-rock history** (T–t paths, erupted cargo) — the phase *field* itself is left
+to [`advect_phases!`](@ref); these tracers do not reconstruct it.
+
+`Phases`, `T`, `ϕ` are CPU arrays sized like the grid (pass `Array(...)` copies on
+the GPU backend; seeding happens once at initialization, so the copy is cheap).
+`NumTracersDir` is the per-direction tracer count per cell.
+"""
+function seed_host_tracers(Grid::GridData{_T,dim}, Phases::AbstractArray, T::AbstractArray, ϕ::AbstractArray;
+                           NumTracersDir::Integer=2, air_phase=0, z_surf=nothing,
+                           exclude_phases=()) where {_T, dim}
+    coord = Grid.coord1D
+    if dim == 2                                                      # InitializeTracers needs the full meshgrid arrays
+        pc = collect(Iterators.product(coord[1], coord[2]))
+        FullGrid = (Float64.((c->c[1]).(pc)), Float64.((c->c[2]).(pc)))
+    else
+        pc = collect(Iterators.product(coord[1], coord[2], coord[3]))
+        FullGrid = (Float64.((c->c[1]).(pc)), Float64.((c->c[2]).(pc)), Float64.((c->c[3]).(pc)))
+    end
+    Tr = InitializeTracers(FullGrid, NumTracersDir, true)            # full-domain regular cloud
+    z  = coord[end]
+    keep = Int[]
+    @inbounds for iT in 1:length(Tr)
+        pt  = Tr.coord[iT]
+        idx = ntuple(dim) do d                                        # nearest cell (same convention as freeze_erupted_tracers!)
+            clamp(round(Int, (pt[d] - Grid.min[d]) / Grid.Δ[d]) + 1, 1, Grid.N[d])
+        end
+        I  = CartesianIndex(idx)
+        ph = Phases[I]
+        ph == air_phase && continue
+        ph in exclude_phases && continue
+        if z_surf !== nothing                                         # above the free surface ⇒ air
+            zs = dim == 2 ? z_surf[idx[1]] : z_surf[idx[1], idx[2]]
+            z[idx[end]] > zs && continue
+        end
+        Tr.Phase[iT] = ph                                            # carry the initial layer phase
+        Tr.T[iT]     = T[I]
+        Tr.Phi[iT]   = ϕ[I]
+        push!(keep, iT)
+    end
+    Tr = Tr[keep]                                                     # keep only rock tracers
+    @inbounds for iT in 1:length(Tr); Tr.num[iT] = iT; end           # renumber compactly
+    return Tr
 end

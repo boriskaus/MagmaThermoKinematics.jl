@@ -88,8 +88,13 @@ end
 makedocs(;
     sitename = "MagmaThermoKinematics.jl",
     authors = "Boris Kaus, Pascal Aellig, Albert de Montserrat",
-    modules = [MagmaThermoKinematics],
-    checkdocs = :none,
+    modules = [
+        MagmaThermoKinematics,
+        MagmaThermoKinematics.Units,
+        MagmaThermoKinematics.Grid,
+        MagmaThermoKinematics.MTK_GMG,
+    ],
+    checkdocs = :exports,
     warnonly = Documenter.except(:footnote),
     format = DocumenterVitepress.MarkdownVitepress(
         repo = "github.com/boriskaus/MagmaThermoKinematics.jl",
@@ -112,6 +117,8 @@ makedocs(;
                 "MTK_GMG 3D Examples" => "man/example_mtk_gmg_3d.md"
             ],
             "Numerics and Physics" => "man/numerics.md",
+            "Eruptions" => "man/eruptions.md",
+            "Free Surface" => "man/free_surface.md",
             "Zircon ages" => "man/zircon_growth.md",
         ],
         "API" => Any[

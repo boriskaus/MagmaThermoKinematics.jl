@@ -3,6 +3,7 @@ const USE_GPU=false;
 if USE_GPU
     using CUDA      # needs to be loaded before loading Parallkel=
 end
+using InjectSills
 
 using MagmaThermoKinematics
 @static if USE_GPU
@@ -21,10 +22,109 @@ using Random, GeoParams, GeophysicalModelGenerator
 
 const rng = Random.seed!(1234);     # same seed such that we can reproduce results
 
+function _build_injectsill_3d(Dikes)
+    center = Point3(Dikes.Center[1], Dikes.Center[2], Dikes.Center[3]) * m
+    angle = Vec2(Dikes.Angle[1], Dikes.Angle[end]) * NoUnits
+
+    if Dikes.Type == "CylindricalDike_TopAccretion"
+        return CylindricalDikeTopAccretion(Center=center, Angle=angle, W=Dikes.W_in * m, H=Dikes.H_in * m)
+    elseif Dikes.Type == "EllipticalIntrusion" || Dikes.Type == "ElasticDike"
+        return EllipticalIntrusion(Center=center, Angle=angle, W=Dikes.W_in * m, H=Dikes.H_in * m)
+    elseif Dikes.Type == "InjectSills"
+        isnothing(Dikes.sill) && error("Dikes.Type='InjectSills' requires Dikes.sill to be set")
+        return Dikes.sill
+    else
+        error("Unsupported Dikes.Type for InjectSills callback in test_MTK_GMG_3D: $(Dikes.Type)")
+    end
+end
+
+@eval MTK_GMG begin
+function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters, Tracers::StructVector, Tnew_cpu)
+    inj_counter = hasproperty(Dikes, :sill_inj) ? Dikes.sill_inj : Dikes.dike_inj
+    if floor(Num.time / Dikes.InjectionInterval) > inj_counter
+        inj_counter = floor(Num.time / Dikes.InjectionInterval)
+        if hasproperty(Dikes, :sill_inj)
+            Dikes.sill_inj = inj_counter
+        else
+            Dikes.dike_inj = inj_counter
+        end
+
+        if Num.dim == 2
+            T_bottom = Array(@view Arrays.T[:, 1])
+        else
+            T_bottom = Array(@view Arrays.T[:, :, 1])
+        end
+
+        IS = getproperty(parentmodule(@__MODULE__), :InjectSills)
+        m_unit = getproperty(parentmodule(@__MODULE__), :m)
+        no_unit = getproperty(parentmodule(@__MODULE__), :NoUnits)
+
+        if hasproperty(Dikes, :sill) && !isnothing(Dikes.sill)
+            sill = Dikes.sill
+        elseif Dikes.Type == "CylindricalDike_TopAccretion"
+            sill = IS.CylindricalDikeTopAccretion(Center=IS.Point3(Dikes.Center[1], Dikes.Center[2], Dikes.Center[3]) * m_unit,
+                                                 Angle=IS.Vec2(Dikes.Angle[1], Dikes.Angle[end]) * no_unit,
+                                                 W=Dikes.W_in * m_unit,
+                                                 H=Dikes.H_in * m_unit)
+        elseif Dikes.Type == "EllipticalIntrusion" || Dikes.Type == "ElasticDike"
+            sill = IS.EllipticalIntrusion(Center=IS.Point3(Dikes.Center[1], Dikes.Center[2], Dikes.Center[3]) * m_unit,
+                                         Angle=IS.Vec2(Dikes.Angle[1], Dikes.Angle[end]) * no_unit,
+                                         W=Dikes.W_in * m_unit,
+                                         H=Dikes.H_in * m_unit)
+        else
+            error("Unsupported Dikes.Type for InjectSills callback in test_MTK_GMG_3D: $(Dikes.Type)")
+        end
+        poly = hasproperty(Dikes, :sill_poly) ? Dikes.sill_poly : Dikes.dike_poly
+        if Num.advect_polygon == true && isempty(poly)
+            if hasproperty(Dikes, :sill_poly)
+                Dikes.sill_poly = InjectSills.dike_polygon(sill)
+            else
+                Dikes.dike_poly = InjectSills.dike_polygon(sill)
+            end
+        end
+
+        copyto!(Tnew_cpu, Arrays.T)
+        intrusion_phase = hasproperty(Dikes, :SillPhase) ? Dikes.SillPhase : Dikes.DikePhase
+        Tracers, Tnew_cpu, Vol, _, _ = getproperty(parentmodule(@__MODULE__), :inject_sills)(Tracers, Tnew_cpu, Grid.coord1D, sill, Dikes.T_in_Celsius, intrusion_phase, Dikes.nTr_dike)
+
+        if Num.flux_bottom_BC == false
+            if Num.dim == 2
+                Tnew_cpu[:, 1] .= T_bottom
+            else
+                Tnew_cpu[:, :, 1] .= T_bottom
+            end
+        end
+
+        Arrays.T .= DataArray(Tnew_cpu)
+        Dikes.InjectVol += Vol
+        Qrate = Dikes.InjectVol / Num.time
+        Dikes.Qrate_km3_yr = Qrate * SecYear / km³
+        println("  Added new dike; time=$(Num.time / kyr) kyrs, total injected magma volume = $(Dikes.InjectVol / km³) km³; rate Q= $(Dikes.Qrate_km3_yr) km³yr⁻¹")
+
+        if length(Mat_tup) > 1
+            Phases = Array(Arrays.Phases)               # CPU copy — must be captured + written back
+            PhasesFromTracers!(Phases, Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant")
+
+            if Num.keep_init_RockPhases == true
+                Phases_init = Array(Arrays.Phases_init)
+                for i in eachindex(Phases)
+                    if Phases[i] != intrusion_phase
+                        Phases[i] = Phases_init[i]
+                    end
+                end
+            end
+            Arrays.Phases .= DataArray(Phases)
+        end
+    end
+
+    return Tracers
+end
+end
+
 
 @testset "MTK_GMG_3D" begin
 
-function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
     if mod(Num.it,10) == 0
         println("$(Num.it), $(Num.time/SecYear/1e3) kyrs; max(T)=$(maximum(Arrays.Tnew))")
     end
@@ -52,15 +152,14 @@ Num         = NumParam( #Nx=269*1, Nz=269*1,
                         AddRandomSills = false, RandomSills_timestep=5
                         );
 
-Dike_params = DikeParam(Type="ElasticDike",
-                        InjectionInterval_year = 1000,
-                        W_in=5e3, H_in=200.0*4,       # note: H must be numerically resolved
-                        Dip_ran = 20.0, Strike_ran = 0.0,
-                        W_ran = 10e3; H_ran = 10e3, L_ran=10e3,
-                        nTr_dike=300*1,
-                        SillsAbove = -10e3,
-                        Center=[0.0,0.0, -7000], Angle=[0.0, 0.0],
-                )
+Sill_params = SillParams(
+            sill=EllipticalIntrusion(Center=Point3(0.0, 0.0, -7000.0) * m, Angle=Vec2(0.0, 0.0) * NoUnits, W=5e3 * m, H=200.0*4 * m),
+            InjectionInterval_year = 1000,
+            Dip_ran = 20.0, Strike_ran = 0.0,
+            W_ran = 10e3, H_ran = 10e3, L_ran=10e3,
+            nTr_dike=300*1,
+            SillsAbove = -10e3,
+        )
 
 MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
@@ -76,14 +175,14 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
                 )
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Dike_params); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Sill_params); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 299.981239425671  rtol= 1e-2
 @test sum(time_props.MeltFraction)  ≈ 0.0  rtol= 1e-5
 # -----------------------------
 
 
-Topo_cart = load_GMG("../examples/Topo_cart")       # Note: Laacher seee is around [10,20]
+Topo_cart = load_GMG(normpath(joinpath(@__DIR__, "..", "examples", "Topo_cart")))       # Note: Laacher seee is around [10,20]
 
 # Create 3D grid of the region
 Nx,Ny,Nz = 100,100,100
@@ -120,14 +219,13 @@ Num         = NumParam( SimName="Unzen2", axisymmetric=false,
                         AddRandomSills = false, RandomSills_timestep=5);
 
 # dike parameters
-Dike_params = DikeParam(Type="ElasticDike",
-                        InjectionInterval_year = 1000,       # flux= 14.9e-6 km3/km2/yr
-                        W_in=5e3, H_in=250*4,
-                        nTr_dike=300*1,
-                        H_ran = 5000, W_ran = 5000,
-                        DikePhase=3, BackgroundPhase=1,
-                        Center=[0.0,0.0, -7000], Angle=[0.0, 0.0],
-                )
+Sill_params = SillParams(
+            sill=EllipticalIntrusion(Center=Point3(0.0, 0.0, -7000.0) * m, Angle=Vec2(0.0, 0.0) * NoUnits, W=5e3 * m, H=250*4 * m),
+            InjectionInterval_year = 1000,       # flux= 14.9e-6 km3/km2/yr
+            nTr_dike=300*1,
+            H_ran = 5000, W_ran = 5000,
+            SillPhase=3, BackgroundPhase=1,
+        )
 
 # Define parameters for the different phases
 MatParam     = (SetMaterialParams(Name="Air", Phase=0,
@@ -164,12 +262,49 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Dike_params, CartData_input=Data_3D); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Sill_params, CartData_input=Data_3D); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 244.14916470514495  rtol= 1e-2
 @test sum(time_props.MeltFraction)  ≈ 0.8377621121586017 rtol= 1e-5
 
 rm("Test1", recursive=true, force=true) # remove directory created by this test
 rm("Unzen2", recursive=true, force=true) # remove directory created by this test
+
+# -----------------------------
+# Eruption time-loop integration (issue 2) in 3D: erupt_magma! wired into the
+# loop via the MTK_erupt! callback. Short, self-contained run that injects hot
+# (T_in=1000°C ⇒ ϕ=1) magma and erupts it once V_e exceeds a tiny V_crit.
+# -----------------------------
+@testset "Eruption time-loop 3D" begin
+
+    Num_e = NumParam(Nx=31, Ny=31, Nz=31, W=10e3, L=10e3, H=10e3,
+                     SimName="Erupt3D", maxTime_Myrs=0.001, fac_dt=0.2, ω=0.5,
+                     verbose=false, Geotherm=30/1e3, TrackTracersOnGrid=true,
+                     SaveOutput_steps=100000, CreateFig_steps=100000,
+                     plot_tracers=false, advect_polygon=false, USE_GPU=USE_GPU)
+
+    Sill_e = SillParams(
+                sill=EllipticalIntrusion(Center=Point3(5.0e3, 5.0e3, -5.0e3) * m,
+                                         Angle=Vec2(0.0, 0.0) * NoUnits, W=2e3 * m, H=1000.0 * m),
+                InjectionInterval_year=100, nTr_dike=100)
+
+    Mat_e  = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
+                                Density      = ConstantDensity(ρ=2700kg/m^3),
+                                LatentHeat   = ConstantLatentHeat(Q_L=3.13e5J/kg),
+                                Conductivity = T_Conductivity_Whittington_parameterised(),
+                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
+                                Melting      = SmoothMelting(MeltingParam_4thOrder())),)
+
+    Erupt_on = EruptionParams(erupt=true, ϕ_erupt=0.5, V_crit_km3=1e-6,
+                              erupt_efficiency=0.5, deflate=false)
+    _, Arrays_e, _, _, _ = MTK_GMG_3D.MTK_GeoParams_3D(Mat_e, Num_e, Sill_e; Erupt=Erupt_on)
+
+    @test Erupt_on.n_eruptions ≥ 1
+    @test Erupt_on.erupted_volume > 0
+    @test length(Erupt_on.eruption_times) == Erupt_on.n_eruptions
+    @test all(isfinite, Arrays_e.Tnew)
+
+    rm("Erupt3D", recursive=true, force=true)
+end
 
 end

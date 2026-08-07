@@ -63,36 +63,39 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     Ny::Int64                       =   0
     Nz::Int64                       =   201
     dim::Int64                      =   length([Nx, Ny, Nz].>0)
-    W::Float64                =   20e3
-    L::Float64                =   0
-    H::Float64                =   20e3
-    dx::Float64               =   W/(Nx-1)
-    dy::Float64               =   L/(Ny-1)
-    dz::Float64               =   H/(Nz-1)        # grid spacing in z
-    Tsurface_Celcius::Float64 =   0               # Surface T in celcius
-    Geotherm::Float64         =   40/1e3          # in K/m
-    maxTime_Myrs::Float64     =   1.5             # maximum timestep
-    SecYear::Float64          =   3600*24*365.25;
-    maxTime::Float64          =   maxTime_Myrs*SecYear*1e6 # maximum timestep  in seconds
+    W::Float64                      =   20e3
+    L::Float64                      =   0
+    H::Float64                      =   20e3
+    dx::Float64                     =   W/(Nx-1)
+    dy::Float64                     =   L/(Ny-1)
+    dz::Float64                     =   H/(Nz-1)        # grid spacing in z
+    Tsurface_Celcius::Float64       =   0               # Surface T in celcius
+    Geotherm::Float64               =   40/1e3          # in K/m
+    maxTime_Myrs::Float64           =   1.5             # maximum timestep
+    SecYear::Float64                =   3600*24*365.25;
+    maxTime::Float64                =   maxTime_Myrs*SecYear*1e6 # maximum timestep  in seconds
     flux_bottom_BC::Bool            =   false           # flux bottom BC?
-    flux_bottom::Float64      =   167e-3          # Flux in W/m2 in case flux_bottom_BC=true
+    flux_bottom::Float64            =   167e-3          # Flux in W/m2 in case flux_bottom_BC=true
     plot_tracers::Bool              =   true            # adds passive tracers to the plot
     advect_polygon::Bool            =   false           # adds a polygon around the intrusion area
     axisymmetric::Bool              =   false           # axisymmetric (if true) of 2D geometry?
-    κ_time::Float64           =   3.3/(1000*2700) # κ to determine the stable timestep
-    fac_dt::Float64           =   0.4;            # prefactor with which dt is multiplied
-    Δ::Vector{Float64}        =   [dx, dy, dz];                   # grid spacing
-    Δmin::Float64             =   minimum(Δ[Δ.>0]);               # minimum grid spacing
-    dt::Float64               =   fac_dt*(Δmin^2)./κ_time/4;   # timestep
-    time::Float64             =   0.0;            # current time
+    κ_time::Float64                 =   3.3/(1000*2700) # κ to determine the stable timestep
+    fac_dt::Float64                 =   0.4;            # prefactor with which dt is multiplied
+    Δ::Vector{Float64}              =   [dx, dy, dz];                   # grid spacing
+    Δmin::Float64                   =   minimum(Δ[Δ.>0]);               # minimum grid spacing
+    dt::Float64                     =   fac_dt*(Δmin^2)./κ_time/4;   # timestep
+    time::Float64                   =   0.0;            # current time
     nt::Int64                       =   floor(maxTime/dt);
     it::Int64                       =   0;              # current iteration
-    ω::Float64                =   0.8;            # relaxation parameter for nonlinear iterations
+    ω::Float64                      =   0.8;            # relaxation parameter for nonlinear iterations
     max_iter::Int64                 =   5000;           # max. number of nonlinear iterations
     verbose::Bool                   =   false;
-    convergence::Float64      =   1e-5;           # nonlinear convergence criteria
+    convergence::Float64            =   1e-5;           # nonlinear convergence criteria
     USE_GPU::Bool                   =   false;
     keep_init_RockPhases::Bool      =   true;           # keep initial rock phases (if false, all phases are initialized as Dikes.BackgroundPhase)
+    deform_hostrock::Bool           =   false;          # advect the phase field with the host-rock displacement (injection inflation + eruption deflation) instead of pinning it. Auto-enabled when a free surface is active so the surface, host rock & sills move together.
+    SeedHostTracers::Bool           =   false;          # seed passive host-rock tracers at init (carry initial layering + accumulate T-t paths; advected by injection/deflation, frozen on eruption). Opt-in; phase field still handled by advect_phases!.
+    HostTracersDir::Int64           =   2;              # per-direction host-tracer count per cell when SeedHostTracers=true
     pvd::Union{Nothing,GeophysicalModelGenerator.WriteVTK.CollectionFile}     =   nothing;             # pvd file info for paraview
     Output_VTK::Bool                =   true;           # output VTK files in case CartData is an input?
     SaveOutput_steps::Int64         =   1e3;            # saves output every x steps
@@ -103,87 +106,193 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
 
     # parts that can be removed @ some stage
     deactivate_La_at_depth::Bool    =   false           # deactivate latent heating @ the bottom of the model box?
-    deactivationDepth::Float64=   -15e3           # deactivation depth
+    deactivationDepth::Float64      =   -15e3           # deactivation depth
     AnalyticalInitialGeo::Bool      =   false;
-    qs_anal::Float64          =   170e-3;
-    qm_anal::Float64          =   167e-3;
-    hr_anal::Float64          =   10e3;
-    k_anal::Float64           =   3.35;
+    qs_anal::Float64                =   170e-3;
+    qm_anal::Float64                =   167e-3;
+    hr_anal::Float64                =   10e3;
+    k_anal::Float64                 =   3.35;
     InitialEllipse::Bool            =   false;
-    a_init::Float64           =   2.5e3;
-    b_init::Float64           =   1.5e3;
+    a_init::Float64                 =   2.5e3;
+    b_init::Float64                 =   1.5e3;
     TrackTracersOnGrid::Bool        =   true;
     TracerFloatType::DataType       =   Float32;    # float type for Tracer time_vec/T_vec (Float32 saves memory)
 end
 
 """
-    mutable struct DikeParam <: DikeParameters
+        mutable struct SillParams <: SillParameters
 
-This mutable structure represents parameters related to a dike in the simulation. It is used to store and manage values related to the dike's properties and behavior.
+This mutable structure represents parameters for sill injection in the MTK/GMG
+workflow. The geometric and mechanical definition of
+the intrusion is stored directly in `sill` as an `InjectSills.AbstractSill`
+object (for example `InjectSills.EllipticalIntrusion` or
+`InjectSills.CylindricalDikeTopAccretion`).
 
 # Fields
 
-- `Type::String`: Type of the dike.
-- `Center::Vector{Float64}`: Center of the dike.
-- `T_in_Celsius::Float64`: Temperature of the injected magma in Celsius.
-- `W_in::Float64`: Diameter of the dike.
-- `H_in::Float64`: Thickness of the dike.
-- `AspectRatio::Float64`: Aspect ratio of the dike.
-- `SillRadius::Float64`: Radius of the sill.
-- `SillArea::Float64`: Horizontal area of the sill.
+- `sill::Union{Nothing, InjectSills.AbstractSill}`: Full InjectSills object that
+    defines sill type, center, orientation, width, thickness, and any additional
+    model parameters.
+- `T_in_Celsius::Float64`: Temperature of injected magma in Celsius.
 - `InjectionInterval_year::Float64`: Injection interval in years.
 - `SecYear`: Number of seconds in a year.
 - `InjectionInterval::Float64`: Injection interval in seconds.
-- `nTr_dike::Int64`: Number of tracers in the dike.
-- `InjectVol`: Injected volume into the dike.
-- `Qrate_km3_yr`: Dike insertion rate in km^3/year.
-- `dike_poly`: Polygon representing the dike.
-- `dike_inj`: Injection into the dike.
+- `nTr_dike::Int64`: Number of tracers inserted per injection event.
+- `InjectVol::Float64`: Cumulative injected volume.
+- `Qrate_km3_yr::Float64`: Time-averaged emplacement rate in km^3/yr.
+- `BackgroundPhase::Int64`: Host-rock phase index.
+- `SillPhase::Int64`: Injected sill phase index.
+- `sill_poly::Vector`: Optional polygon representation used for advection/plotting.
+- `sill_inj::Float64`: Counter that tracks how many sill injections already occurred.
+- `H_ran::Float64`: Randomization range for vertical placement.
+- `L_ran::Float64`: Randomization range for horizontal x placement.
+- `W_ran::Float64`: Randomization range for horizontal y placement.
+- `Dip_ran::Float64`: Maximum dip perturbation for randomized injections.
+- `Strike_ran::Float64`: Maximum strike perturbation for randomized injections.
+- `SillsAbove::Float64`: Depth threshold above which intrusions are treated as sills.
 
-- `H_ran`:    Zone in which we vary the vertical location of the dike (if we add random dikes)
-- `L_ran`:    Zone in which we vary the horizontal (x) location of the dike (if we add random dikes)
-- `W_ran`:    Zone in which we vary the horizontal (y) location of the dike (if we add random dikes)
-
-- `Dip_ran`:  maximum variation of dip (if we add random dikes)
-- `Strike_ran`: maximum variation of strike (if we add random dikes)
-
-
-# Examples
+# Example
 
 ```julia
-dp = DikeParam(Type="MyDike", Center=[0., -7.0e3], ...)
+sp = SillParams(
+        sill = InjectSills.EllipticalIntrusion(...),
+        T_in_Celsius = 1000.0,
+        InjectionInterval_year = 10e3,
+)
 ```
+
 """
-@with_kw mutable struct DikeParam <: DikeParameters
-    Type::String                    =   "CylindricalDike_TopAccretion"
-    Center::Vector{Float64}         =   [0.; -7.0e3 - 0/2];     # Center of dike
-    Angle::Vector{Float64}          =   [0.0];                  # Angle of dike
+@with_kw mutable struct SillParams <: SillParameters
+    sill::Union{Nothing, InjectSills.AbstractSill} = nothing    # InjectSills.jl sill object (used when Type="InjectSills")
     T_in_Celsius::Float64           =   1000;                   # Temperature of injected magma
-    W_in::Float64                   =   20e3                    # Diameter of dike
-    H_in::Float64                   =   74.6269                 # Thickness
-    AspectRatio::Float64            =   H_in/W_in;              # Aspect ratio
-    SillRadius::Float64             =   W_in/2                  # Sill radius
-    SillArea::Float64               =   pi*SillRadius^2         # Horizontal area  of sill
     InjectionInterval_year::Float64 =   10e3;                   # Injection interval [years]
     SecYear                         =   3600*24*365.25;         # s/year
     InjectionInterval::Float64      =   InjectionInterval_year*SecYear;           # Injection interval [s]
     nTr_dike::Int64                 =   300                     # Number of tracers
     InjectVol::Float64              =   0.0;                    # injected volume
     Qrate_km3_yr::Float64           =   0.0;                    # Dikes insertion rate
-    BackgroundPhase::Int64          =   1; # Background phase  (non-dikes)
-    DikePhase::Int64                =   2; # Dike phase
-    dike_poly::Vector               =   [];                     # polygon with dike
-    dike_inj::Float64               =   0.0
+    BackgroundPhase::Int64          =   1;                      # Background phase  (non-sills)
+    SillPhase::Int64                =   2;                      # Sill phase
+    sill_poly::Vector               =   [];                     # polygon with sill
+    sill_inj::Float64               =   0.0
 
-    H_ran::Float64                  =   5000.0                    # Zone in which we vary the horizontal location of the dike
-    L_ran::Float64                  =   2000.0                    # Zone in which we vary the horizontal location of the dike
-    W_ran::Float64                  =   2000.0                   # Zone in which we vary the vertical location of the dike
-    Dip_ran::Float64                =   30.0;                     # maximum variation of dip
-    Strike_ran::Float64             =   90.0;                     # maximum variation of strike
-    SillsAbove::Float64             =   -15e3;                    # Sills above this depth
-
+    H_ran::Float64                  =   5000.0                  # Zone in which we vary the horizontal location of the sill
+    L_ran::Float64                  =   2000.0                  # Zone in which we vary the horizontal location of the dike
+    W_ran::Float64                  =   2000.0                  # Zone in which we vary the vertical location of the dike
+    Dip_ran::Float64                =   30.0;                   # maximum variation of dip
+    Strike_ran::Float64             =   90.0;                   # maximum variation of strike
+    SillsAbove::Float64             =   -15e3;                  # Sills above this depth
 end
 
+"""
+    mutable struct EruptionParams <: EruptionParameters
+
+Parameters controlling eruptions. Two trigger models are available:
+
+- **Kinematic (default, `overpressure = false`):** an eruption fires once the
+  volume of *eruptible* magma (cells whose melt fraction exceeds `ϕ_erupt`)
+  reaches the critical volume `V_crit`, then removes a fixed fraction
+  `erupt_efficiency` of that eruptible melt.
+- **Physical (`overpressure = true`):** a Degruyter & Huber (2014)
+  chamber-overpressure ODE ([`step_overpressure!`](@ref)) is integrated every
+  step; an eruption fires when `P - P_lith ≥ ΔP_crit` (rock-strength failure)
+  and drains exactly the volume its overpressure represents (volume-conserving
+  withdrawal), rather than a fixed fraction of `Ve`.
+
+Either way the eruption removes melt by *thermal extraction*: each eruptible
+cell is cooled by `ΔT = η·ϕ/(dϕ/dT)` (η = `erupt_efficiency` in the kinematic
+model, or the emergent drained-volume fraction in the physical model), and
+optionally deflates the chamber (volume-conserving either way; model selected
+by `deflation_model`), keeping a running tally of erupted volume and
+eruption times.
+
+# Fields
+- `erupt::Bool`: master switch (eruptions only happen when `true`).
+- `ϕ_erupt::Float64`: melt fraction above which magma is considered eruptible (default 0.5).
+- `EruptAbove::Float64`: depth cap on eruptibility — only cells at elevation `z ≥ EruptAbove` (i.e. shallower than this floor) can be eruptible; deeper cells are excluded even if `ϕ > ϕ_erupt`. This keeps deep background melt (e.g. partial melt of the host rock under a hot geotherm at the base of the domain) from being counted as eruptible chamber and triggering spurious eruptions. Default `-Inf` (no depth restriction). Set it to roughly the base of the magmatic system (e.g. the same value as `SillParams.SillsAbove`).
+- `V_crit::Float64`: (kinematic trigger) critical eruptible volume that triggers an eruption [m³] (in 2D this is a per-unit-depth volume = area·1 m). Unused when `overpressure = true`.
+- `erupt_efficiency::Float64`: (kinematic trigger) fraction (0–1) of the eruptible melt removed per eruption. Unused when `overpressure = true`.
+- `T_min::Float64`: floor temperature; eruptive cooling never drops a cell below this value. This guards the linearized thermal extraction `ΔT = η·ϕ/(dϕ/dT)`, which becomes unbounded where the melt curve is flat (`dϕ/dT → 0`, i.e. near melt saturation) and would otherwise push `T` to unphysical values that destabilize the diffusion solver.
+- `out_of_plane_3D::Bool`: in 2D, lift the per-unit-depth eruptible volume to a true 3D volume by assuming a Gaussian out-of-plane (y) distribution of the melt (effective out-of-plane length `√(2π)·σ`, with `σ` the melt-weighted horizontal half-width of the eruptible region). This keeps the eruptible/erupted volumes in km³ — the same convention as `V_crit` and the injected volume — so the trigger comparison is dimensionally consistent. No effect in 3D, and no effect when `overpressure = true` (the physical trigger stays in MTK's native volume convention throughout). Default `true`.
+- `deflate::Bool`: also apply chamber deflation (host-rock subsidence) in addition to the thermal melt removal, using whichever model `deflation_model` selects.
+- `deflation_model::Symbol`: `:local_mogi` (default) — a Mogi-shaped kernel per eruptible cell, evaluated only within `deflation_cutoff_factor` source-depths of its own cell horizontally (capped at `deflation_max_window_cells`, bounding the cost at `O(N_eruptible × K)` with `K` the horizontal window width), then rescaled so the total swept volume equals `η·Ve` exactly. Smooth and tracks an irregular melt distribution, at the cost of `ΔP`/`G`/`ν` being pure shape knobs rather than physical elastic parameters. `:column` — volume-conserving column subsidence: the host rock in each column sinks by the melt void withdrawn beneath it, `O(N_grid)`, no elastic parameters, but no lateral coupling between columns (the topography exactly mirrors the withdrawal mask, sharp edges included — a flat-bottomed, vertical-walled pit under repeated same-location withdrawal). See [`_local_mogi_deflation_velocity`](@ref) and `docs/src/man/free_surface.md`.
+- `deflation_cutoff_factor::Float64`: (`:local_mogi` only) horizontal cutoff radius as a multiple of each source cell's own depth below the surface, beyond which its contribution is dropped. Default `4.0`. Never applied vertically — a source's field has to reach the surface to deflate it at all, and that distance is its own depth, so the vertical reach is always full. The global rescale corrects for whatever the horizontal cutoff truncates away, so this only trades fidelity to the untruncated kernel shape against cost.
+- `deflation_max_window_cells::Int`: (`:local_mogi` only) hard cap, in grid cells, on the horizontal cutoff radius above — independent of grid resolution or domain size. Without it, `deflation_cutoff_factor × depth` can exceed the domain for realistic chamber-depth/domain-size ratios, silently degrading back toward the old `O(N_eruptible × N_grid)` cost this model exists to avoid. Default `25`.
+- `overpressure::Bool`: master switch for the physical `ΔP_crit` trigger (default `false` ⇒ the kinematic `V_crit` trigger above, existing behaviour unchanged).
+- `ΔP_crit::Float64`: rock-strength (plasticity) failure overpressure [Pa] — a fixed physical threshold (D&H: 10–40 MPa), not a tuning knob. Default `20e6`.
+- `β_r::Float64`: host-rock elastic (shell) stiffness [Pa].
+- `η_r::Float64`: wall relaxation viscosity [Pa·s] (D&H's viscoelastic shell relaxation; here a fixed constant rather than the Arrhenius wall-temperature closure QMagma also offers).
+- `ΔP_relax::Float64`: overpressure remaining immediately after a drain [Pa].
+- `ρ_melt::Float64`: melt density converting the injected-volume rate into the recharge mass rate `Ṁ_in` [kg/m³].
+- `ρ_crust::Float64`: crustal density used for the lithostatic reference `P_lith = ρ_crust·g·|z|` at the chamber centroid [kg/m³].
+- `magma_phase::Int64`: GeoParams phase index (matching a `Mat_tup` entry's `Phase`) whose `Density` (and, for a `GeoParams.ThreePhase_Density`, `Solubility`) drives the chamber ODE. Required (must be set ≥ 0) when `overpressure = true`.
+- `m_h2o_total::Float64`: total (dissolved+exsolved) H₂O content of the melt, as a **fixed** mass fraction — not a mass-conserving chamber budget (recharge/eruption do not change it). Only used when `magma_phase`'s `Density` is a `GeoParams.ThreePhase_Density` (which also requires that phase's `Solubility` to be set, e.g. `Liu2005_Solubility()`); the excess over the pressure/temperature-dependent solubility limit exsolves into the gas phase. See [`magma_density_fn`](@ref).
+- `X_co2::Float64`: CO₂ mole fraction of the exsolved gas (0 = pure H₂O), passed to `magma_phase`'s `Solubility` law.
+- `chamber::ChamberState`: persistent ODE state, mutated in place across timesteps.
+- `n_eruptions::Int64`, `erupted_volume::Float64`: cumulative bookkeeping.
+- `eruption_times::Vector{Float64}`, `eruption_volumes::Vector{Float64}`: per-event record (time [s], volume [m³]).
+"""
+@with_kw mutable struct EruptionParams <: EruptionParameters
+    erupt::Bool                       = false        # enable eruptions
+    ϕ_erupt::Float64                  = 0.5          # melt fraction above which magma is "eruptible"
+    EruptAbove::Float64               = -Inf         # depth cap: only cells with z ≥ EruptAbove are eruptible (excludes deep geotherm melt). Default -Inf = no cap.
+    V_crit_km3::Float64               = 10.0         # critical eruptible volume [km³] (convenience)
+    V_crit::Float64                   = V_crit_km3*1e9   # critical eruptible volume [m³]
+    erupt_efficiency::Float64         = 0.5          # fraction of eruptible melt removed per eruption (0–1)
+    T_min::Float64                    = 0.0          # floor T: eruptive cooling never drops a cell below this (guards ΔT = η·ϕ/dϕdT when dϕdT→0)
+    out_of_plane_3D::Bool             = true         # 2D: lift per-unit-depth eruptible volume to a 3D volume via a Gaussian out-of-plane profile (km³, comparable to V_crit). No-op in 3D.
+    deflate::Bool                     = true         # also apply chamber deflation (host-rock subsidence), model selected by deflation_model
+    deflation_model::Symbol           = :local_mogi   # :local_mogi (default, smoothed, volume-exact, cutoff-bounded) or :column (exact per-column, no lateral coupling)
+    deflation_cutoff_factor::Float64  = 4.0          # :local_mogi only: horizontal cutoff radius = this × each source cell's own depth
+    deflation_max_window_cells::Int   = 25           # :local_mogi only: hard cap (cells) on the horizontal cutoff radius, independent of Δ
+    # --- physical (ΔP_crit) trigger, opt-in ---
+    overpressure::Bool                = false        # false (default) ⇒ kinematic V_crit trigger; true ⇒ physical ΔP_crit trigger (step_overpressure!)
+    ΔP_crit::Float64                  = 20e6         # rock-strength failure overpressure [Pa] — fixed physical threshold, not a tuning knob
+    β_r::Float64                      = 1e10         # host-rock elastic stiffness [Pa]
+    η_r::Float64                      = 1e19         # wall relaxation viscosity [Pa·s]
+    ΔP_relax::Float64                 = 0.0          # overpressure left right after a drain [Pa]
+    ρ_melt::Float64                   = 2400.0       # melt density for the recharge mass rate Ṁ_in [kg/m³]
+    ρ_crust::Float64                  = 2700.0       # crustal density for P_lith = ρ_crust·g·|z_centroid| [kg/m³]
+    magma_phase::Int64                = -1           # GeoParams phase index whose Density (and Solubility) law drives the chamber ODE (required when overpressure=true)
+    m_h2o_total::Float64              = 0.0          # total (dissolved+exsolved) H2O content of the melt [mass fraction]; used together with magma_phase's Solubility
+    X_co2::Float64                    = 0.0          # CO2 mole fraction of the exsolved gas (0 = pure H2O); passed to magma_phase's Solubility law
+    chamber::ChamberState             = ChamberState()   # persistent ODE state
+    _InjectVol_prev::Float64          = 0.0          # internal: Dikes.InjectVol seen by the last overpressure step (recharge-rate delta guard)
+    # --- bookkeeping (filled during the run) ---
+    n_eruptions::Int64                = 0
+    erupted_volume::Float64           = 0.0          # cumulative erupted melt volume [m³]
+    eruption_times::Vector{Float64}   = Float64[]    # time [s] of each eruption
+    eruption_volumes::Vector{Float64} = Float64[]    # erupted volume [m³] of each eruption
+end
+
+"""
+    mutable struct FreeSurfaceParams <: FreeSurfaceParameters
+
+Parameters controlling the kinematic sticky-air free surface (issue 4). The
+surface is tracked as a topography `z_surf` on the fixed grid (one elevation per
+surface column). Cells above the topography are treated as "air" (temperature
+`Tair`, melt fraction 0, phase `air_phase`); the surface is advected vertically
+by the host-rock displacement produced by sill injection (inflation) and
+eruption deflation.
+
+# Fields
+- `free_surface::Bool`: master switch (the surface only moves / air is only stamped when `true`).
+- `air_phase::Int64`: phase index assigned to air cells.
+- `Tair::Float64`: temperature assigned to air cells [°C].
+- `z0::Float64`: initial flat surface elevation [m] used to allocate `z_surf` on the first step (when no `topography` is given).
+- `topography::Union{Nothing,Function,AbstractArray}`: optional non-flat initial topography used to build `z_surf` on the first step. Either an array of per-column elevations [m] (length `Nx` in 2D, size `Nx×Ny` in 3D) or a function of the column coordinates (`f(x)` in 2D, `f(x,y)` in 3D). When `nothing` (default) the surface starts flat at `z0`. See [`init_free_surface`](@ref).
+- `z_surf::Union{Nothing,Array{Float64}}`: topography (allocated on first use; length `Nx` in 2D, `Nx×Ny` in 3D).
+- `_last_inj::Float64`: internal — injection counter already accounted for by the surface (avoids double-counting an injection).
+"""
+@with_kw mutable struct FreeSurfaceParams <: FreeSurfaceParameters
+    free_surface::Bool                = false        # enable the moving free surface
+    air_phase::Int64                  = 0            # phase index of air cells
+    Tair::Float64                     = 0.0          # temperature of air cells [°C]
+    z0::Float64                       = 0.0          # initial flat surface elevation [m] (used when topography===nothing)
+    topography::Union{Nothing,Function,AbstractArray} = nothing  # optional non-flat initial topography (array or f(x[,y])); flat z0 when nothing
+    z_surf::Union{Nothing,Array{Float64}} = nothing  # topography (allocated on first use)
+    _last_inj::Float64                = -1.0         # internal: injection counter seen by the surface
+end
 
 """
     mutable struct TimeDepProps <: TimeDependentProperties

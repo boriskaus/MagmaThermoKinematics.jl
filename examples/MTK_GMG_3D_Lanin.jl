@@ -21,7 +21,7 @@ const rng = Random.seed!(1234);     # same seed such that we can reproduce resul
 
 
 @static if USE_GPU
-    function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+    function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
         if mod(Num.it,10) == 0
             println("$(Num.it), $(Num.time/SecYear/1e3) kyrs; max(T)=$(maximum(Arrays.Tnew))")
         end
@@ -92,15 +92,28 @@ Num         = NumParam( SimName="Lanin3D_$(Nx)^3", axisymmetric=false,
                         USE_GPU=USE_GPU,
                         AddRandomSills = true, RandomSills_timestep=5);
 
-# dike parameters
-Dike_params = DikeParam(Type="ElasticDike",
-                        InjectionInterval_year = 500,       # flux= 14.9e-6 km3/km2/yr
-                        W_in=5e3, H_in=250*4,
-                        nTr_dike=300*1,
-                        H_ran = 5000, W_ran = 5000,
-                        DikePhase=3, BackgroundPhase=1,
-                        Center=[0.0,0.0, -7000], Angle=[0.0, 0.0],
-                )
+# Default setup: ElasticDike equivalent via PennyShapedSill.
+sill = PennyShapedSill(Center=Point3(0.0, 0.0, -7.0e3) * m, Angle=Vec2(0.0, 0.0) * NoUnits, W=2.5e3 * m, H=1000 * m, E=1.5e10 * Pa, ν=0.3 * NoUnits)
+
+# Alternative sill definitions (currently unused):
+# sill = CylindricalDikeTopAccretion(Center=Point3(0.0, 0.0, -7.0e3) * m, Angle=Vec2(0.0, 0.0) * NoUnits, W=5e3 * m, H=1000 * m)
+# sill = EllipticalIntrusion(Center=Point3(0.0, 0.0, -7.0e3) * m, Angle=Vec2(0.0, 0.0) * NoUnits, W=5e3 * m, H=1000 * m)
+
+Sill_params = SillParams(
+    sill                    = sill,
+    InjectionInterval_year  = 500,
+    nTr_dike                = 300,
+    H_ran                   = 5000,
+    W_ran                   = 5000,
+    SillPhase               = 3,
+    BackgroundPhase         = 1,
+)
+
+# Keep random sill relocation and actual injection in sync.
+if Num.AddRandomSills
+    Sill_params.InjectionInterval = Num.dt * Num.RandomSills_timestep
+    Sill_params.InjectionInterval_year = Sill_params.InjectionInterval / SecYear
+end
 
 # Define parameters for the different phases
 MatParam     = (SetMaterialParams(Name="Air", Phase=0,
@@ -137,7 +150,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Dike_params, CartData_input=Data_3D); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Sill_params, CartData_input=Data_3D); # start the main code
 
 Data_set3D_out = Data_3D;
 Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Temperature[C]",  Float32.(Array(Arrays.Tnew )));   # in MPa

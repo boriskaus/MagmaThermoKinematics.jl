@@ -14,8 +14,11 @@ using CUDA
 
 import ..Diffusion2D: GridArray!, Nonlinear_Diffusion_step_2D!, assign!
 using ..MTK_GMG
-import ..NumericalParameters, ..DikeParameters, ..TimeDependentProperties, ..TimeDepProps
-import ..CreateGrid, ..Tracer, ..Dike, ..CreateDikePolygon, ..UpdateTracers_T_ϕ!
+import ..NumericalParameters, ..SillParameters, ..TimeDependentProperties, ..TimeDepProps
+import ..EruptionParameters, ..EruptionParams
+import ..FreeSurfaceParameters, ..FreeSurfaceParams
+import ..CreateGrid, ..Tracer, ..UpdateTracers_T_ϕ!, ..InjectSills, ..m, ..NoUnits
+import ..seed_host_tracers
 
 const SecYear = 3600*24*365.25;
 
@@ -23,7 +26,7 @@ export MTK_GeoParams_2D
 
 #-----------------------------------------------------------------------------------------
 """
-    Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::DikeParameters; CartData_input=nothing, time_props::TimeDependentProperties = TimeDepProps());
+    Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::SillParameters; CartData_input=nothing, time_props::TimeDependentProperties = TimeDepProps());
 
 Main routine that performs a 2D or 2D axisymmetric thermal diffusion simulation with injection of dikes.
 
@@ -31,7 +34,7 @@ Parameters
 ====
 - `Mat_tup::Tuple`: Tuple of material properties.
 - `Num::NumericalParameters`: Numerical parameters.
-- `Dikes::DikeParameters`: Dike parameters.
+- `Dikes::SillParameters`: Intrusion parameters.
 - `CartData_input::CartData`: Optional input of a CartData structure generated with GeophysicalModelGenerator.
 - `time_props::TimeDependentProperties`: Optional input of a `TimeDependentProperties` structure.
 
@@ -39,18 +42,18 @@ Customizable functions
 ====
 There are a few functions that you can overwrite in your user code to customize the simulation:
 
-- `MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)`
-- `MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)`
-- `MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)`
-- `MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input)`
-- `MTK_updateTracers(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters)`
-- `MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::DikeParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input::CartData)`
-- `MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters, Tracers::StructVector, Tnew_cpu)`
-- `MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters)`
-- `MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters, CartData_input::CartData)`
+- `MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)`
+- `MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)`
+- `MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::SillParameters, Num::NumericalParameters)`
+- `MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters, CartData_input)`
+- `MTK_updateTracers(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::SillParameters, time_props::TimeDependentProperties, Num::NumericalParameters)`
+- `MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::SillParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input::CartData)`
+- `MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters, Tracers::StructVector, Tnew_cpu)`
+- `MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters)`
+- `MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters, CartData_input::CartData)`
 
 """
-@views function MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::DikeParameters; CartData_input::Union{Nothing,CartData}=nothing, time_props::TimeDependentProperties = TimeDepProps());
+@views function MTK_GeoParams_2D(Mat_tup::Tuple, Num::NumericalParameters, Dikes::SillParameters; CartData_input::Union{Nothing,CartData}=nothing, time_props::TimeDependentProperties = TimeDepProps(), Erupt::EruptionParameters = EruptionParams(), FS::FreeSurfaceParameters = FreeSurfaceParams());
 
     # Change parameters based on CartData input
     Num.dim = 2;
@@ -118,12 +121,16 @@ There are a few functions that you can overwrite in your user code to customize 
     end
 
     # Optionally set initial sill in models ------
-    if Dikes.Type  == "CylindricalDike_TopAccretion"
-        ind = findall( (Arrays.R.<=Dikes.W_in/2) .& (abs.(Arrays.Z.-Dikes.Center[2]) .< Dikes.H_in/2) );
-        Arrays.T_init[ind] .= Dikes.T_in_Celsius;
+    if hasproperty(Dikes, :sill) && !isnothing(Dikes.sill) && Dikes.sill isa InjectSills.CylindricalDikeTopAccretion
+        c = [Dikes.sill.Center[i].val for i in 1:2]
+        ind = findall((Arrays.R .<= Dikes.sill.W.val) .& (abs.(Arrays.Z .- c[2]) .< Dikes.sill.H.val/2))
+        Arrays.T_init[ind] .= Dikes.T_in_Celsius
         if Num.advect_polygon==true
-            dike              =   Dike(W=Dikes.W_in,H=Dikes.H_in,Type=Dikes.Type,T=Dikes.T_in_Celsius, Center=Dikes.Center[:],  Angle=Dikes.Angle, Phase=Dikes.DikePhase);               # "Reference" dike with given thickness,radius and T
-            Dikes.dike_poly   =   CreateDikePolygon(dike);
+            if hasproperty(Dikes, :sill_poly)
+                Dikes.sill_poly = InjectSills.dike_polygon(Dikes.sill)
+            else
+                Dikes.dike_poly = InjectSills.dike_polygon(Dikes.sill)
+            end
         end
     end
     # --------------------------------------------
@@ -135,6 +142,26 @@ There are a few functions that you can overwrite in your user code to customize 
     if isdir(Num.SimName)==false
         mkdir(Num.SimName)          # create simulation directory if needed
     end;
+    # --------------------------------------------
+
+    # Initialise the free surface (if active) ----
+    if FS.free_surface && isnothing(FS.z_surf)
+        FS.z_surf = MTK_GMG.init_free_surface(Grid; z0=FS.z0, topography=FS.topography)
+    end
+    # A moving free surface needs a deformable phase field so the surface,
+    # host rock and sills move together (injection inflation + eruption deflation).
+    Num.deform_hostrock = Num.deform_hostrock || FS.free_surface
+    # --------------------------------------------
+
+    # Optionally seed passive host-rock tracers ---
+    # They carry the initial layering and accumulate T-t paths; the existing
+    # injection/deflation advection moves them and eruptions freeze them. The
+    # phase field is still handled by advect_phases!.
+    if Num.SeedHostTracers
+        z_surf = FS.free_surface ? FS.z_surf : nothing
+        Tracers = seed_host_tracers(Grid, Array(Arrays.Phases), Array(Arrays.T), Array(Arrays.ϕ);
+                                    NumTracersDir=Num.HostTracersDir, air_phase=FS.air_phase, z_surf=z_surf)
+    end
     # --------------------------------------------
 
     for Num.it = 1:Num.nt   # Time loop
@@ -158,6 +185,14 @@ There are a few functions that you can overwrite in your user code to customize 
         end
 
         @parallel assign!(Arrays.T, Arrays.Tnew)
+        # --------------------------------------------
+
+        # Erupt magma when the eruptible volume reaches V_crit ----
+        MTK_GMG.MTK_erupt!(Arrays, Grid, Num, Tracers, Erupt, FS, Mat_tup, Dikes)
+        # --------------------------------------------
+
+        # Update the moving free surface (inflation + air stamping) ----
+        MTK_GMG.MTK_free_surface!(Arrays, Grid, Num, Dikes, FS)
         # --------------------------------------------
 
         # Update info on tracers ---------------------

@@ -17,6 +17,7 @@ For dedicated walkthrough pages, see:
 - Example3D.jl: 3D run with VTK output for ParaView.
 - Example2D_ZASSy.jl: benchmark-style setup used in published comparisons.
 - MTK_GMG_2D_example1.jl and MTK_GMG_2D_example2.jl: workflows integrating [GeophysicalModelGenerator](https://github.com/JuliaGeodynamics/GeophysicalModelGenerator.jl) input.
+- `MTK_GMG_2D_Eruption_Kinematic.jl`, `MTK_GMG_2D_Eruption_DegruyterHuber.jl`, `MTK_GMG_3D_Eruption_DegruyterHuber_FlatTopo.jl`, `MTK_GMG_3D_Eruption_DegruyterHuber_Lanin.jl`: a 4-script eruption-trigger series (kinematic vs. physical ΔP_crit, 2D vs. 3D, flat vs. real topography) — see [Eruptions](eruptions.md) and [Free Surface](free_surface.md).
 
 ## Visual Outputs
 
