@@ -2,6 +2,18 @@
 docs/build/*
 docs/node_modules/*
 docs/Manifest.toml
+
+# Figures embedded in the docs must be tracked; a global gitignore may exclude
+# images repo-wide. docs/make.jl copies examples/movies/ into
+# docs/src/assets/movies/, so those copies stay out.
+!docs/src/assets/*.png
+!docs/src/assets/*.ico
+!docs/src/assets/*.svg
+!docs/src/assets/movies/FreeSurface*.gif
+docs/src/assets/movies/Example2D.gif
+docs/src/assets/movies/Example3D.gif
+docs/src/assets/movies/Unzen3D.gif
+docs/src/assets/movies/Lanin3D.gif
 docs/src/man/license.md
 docs/src/man/contributing.md
 docs/src/man/authors.md
@@ -9,7 +21,7 @@ docs/src/man/security.md
 docs/src/man/code_of_conduct.md
 
 #JSON
-package.json
+# package.json
 package-lock.json
 
 # VSCODE

@@ -233,8 +233,7 @@ function inject_sills(Tracers, T::Array, Grid,
     # material is (re)set to magma by `add_dike` below, so the field there is
     # irrelevant to the result — and for a Mogi/McTigue sphere the analytic
     # displacement is singular in the core (it grows like 1/r² toward the
-    # centre, where this InjectSills version returns NaN for McTigue and
-    # values up to ~1e33 m for both). Zeroing the displacement at every node
+    # centre). Zeroing the displacement at every node
     # *inside* the sill removes that singular core. This is applied ONLY to
     # sphere/point sources (Mogi/McTigue, which lack W/H): the interior there
     # is the pressurized cavity / new magma, not displaced host rock. Penny /
@@ -359,6 +358,35 @@ end
 # =====================================================================
 
 """
+    enthalpy(T, Rho, Cp, Hl, ϕ, Grid::GridData)
+
+Total thermal enthalpy of the domain [J] (in 2D a per-unit-depth energy, J/m):
+
+    Σ ρ · (Cp·T + Hl·ϕ) · Vcell
+
+i.e. the sensible heat plus the latent heat carried by the melt fraction, summed
+over cells. `T` is in °C; `Rho`, `Cp`, `Hl`, `ϕ` are the density, heat-capacity,
+latent-heat and melt-fraction arrays that the diffusion step already fills on
+`Arrays`. `Vcell` is the cell area (2D) / volume (3D), matching
+[`eruptible_volume`](@ref).
+
+Conservation diagnostic: snapshot `enthalpy` before and after an injection or an
+[`erupt_magma!`](@ref) call. Injection adds enthalpy (hot magma) and eruptive
+withdrawal removes it, so a like-for-like drift is the *residual* beyond those
+intended changes — the numerical energy drift from advecting `T` intensively
+(non-conservatively) with the kinematic host-rock displacement. Measure it before
+building any conservative energy remap. Mirrors QMagma's `column_enthalpy`.
+"""
+function enthalpy(T, Rho, Cp, Hl, ϕ, Grid::GridData)
+    Vcell = prod(filter(>(0), collect(Grid.Δ)))
+    H = 0.0
+    for i in eachindex(T, Rho, Cp, Hl, ϕ)
+        H += Rho[i] * (Cp[i]*T[i] + Hl[i]*ϕ[i])
+    end
+    return H * Vcell
+end
+
+"""
     V, mask = eruptible_volume(ϕ, Δ, ϕ_erupt; zc=nothing, EruptAbove=-Inf)
 
 Volume of *eruptible* melt: the melt contained in cells whose melt fraction `ϕ`
@@ -391,6 +419,49 @@ function eruptible_volume(ϕ::AbstractArray, Δ, ϕ_erupt::Real; zc=nothing, Eru
     return V, mask
 end
 
+# Sub-step advection of `T` and `Tracers` by a prescribed displacement field
+# `Velocity` (one array per grid dimension, matching the grid shape). Non-finite
+# entries are zeroed, then the step is split into `nsteps` so the per-sub-step
+# displacement stays ≲ half a cell (semi-Lagrangian stability). `GridFull` holds
+# the full coordinate arrays. Shared by every `deflate_hostrock!` method.
+function _advect_hostrock!(T, Tracers, Grid, GridFull, Velocity;
+                           AdvectionMethod="RK2", InterpolationMethod="Linear")
+    dim = length(Grid)
+    for V in Velocity, i in eachindex(V)
+        @inbounds if !isfinite(V[i]); V[i] = 0.0; end
+    end
+
+    Spacing  = [Grid[i][2] - Grid[i][1] for i in 1:dim]
+    d        = minimum(Spacing)*0.5
+    mag2     = reduce((s, V) -> s .+ V.^2, Velocity; init = zero(first(Velocity)))
+    max_disp = maximum(sqrt, mag2)
+    nsteps_cap = 100_000
+    ratio    = isfinite(max_disp) ? max_disp/d : Inf
+    nsteps   = clamp(isfinite(ratio) ? ceil(Int, min(ratio, Float64(nsteps_cap))) : nsteps_cap, 2, nsteps_cap)
+    dt       = 1.0/nsteps
+
+    Tnew = copy(T)
+    for _ in 1:nsteps
+        Tnew = AdvectTemperature(T, Grid, GridFull, Velocity, dt, AdvectionMethod, InterpolationMethod)
+        if isassigned(Tracers, 1)
+            AdvectTracers!(Tracers, Grid, Velocity, dt)
+        end
+        T .= Tnew
+    end
+    return T, Tracers, Velocity
+end
+
+# Build the full-coordinate arrays `(X, Z)` / `(X, Y, Z)` for a 1D-coordinate Grid.
+function _grid_full(Grid)
+    if length(Grid) == 2
+        coords = collect(Iterators.product(Grid[1], Grid[2]))
+        return (Float64.((c->c[1]).(coords)), Float64.((c->c[2]).(coords)))
+    else
+        coords = collect(Iterators.product(Grid[1], Grid[2], Grid[3]))
+        return (Float64.((c->c[1]).(coords)), Float64.((c->c[2]).(coords)), Float64.((c->c[3]).(coords)))
+    end
+end
+
 """
     deflate_hostrock!(T, Tracers, Grid, src; AdvectionMethod, InterpolationMethod)
 
@@ -402,48 +473,26 @@ near-source field cannot blow up. Mutates `T` and `Tracers` in place.
 """
 function deflate_hostrock!(T::Array, Tracers, Grid, src::InjectSills.AbstractSill;
                            AdvectionMethod="RK2", InterpolationMethod="Linear")
-    dim = length(Grid)
+    dim      = length(Grid)
+    GridFull = _grid_full(Grid)
     if dim == 2
-        coords = collect(Iterators.product(Grid[1], Grid[2]))
-        X = (c->c[1]).(coords); Z = (c->c[2]).(coords)
-        GridFull = (X, Z)
-        Dx, Dz   = InjectSills.hostrock_displacement(src, Float64.(X), Float64.(Z)); Velocity = (Dx, Dz)
+        X, Z = GridFull
+        Dx, Dz = InjectSills.hostrock_displacement(src, X, Z); Velocity = (Dx, Dz)
     else
-        coords = collect(Iterators.product(Grid[1], Grid[2], Grid[3]))
-        X = (c->c[1]).(coords); Y = (c->c[2]).(coords); Z = (c->c[3]).(coords)
-        GridFull = (X, Y, Z)
-        Dx, Dy, Dz = InjectSills.hostrock_displacement(src, Float64.(X), Float64.(Y), Float64.(Z)); Velocity = (Dx, Dy, Dz)
+        X, Y, Z = GridFull
+        Dx, Dy, Dz = InjectSills.hostrock_displacement(src, X, Y, Z); Velocity = (Dx, Dy, Dz)
     end
 
-    # interior mask (sphere source) + non-finite sanitation — see inject_sills.
-    @inbounds for ii in eachindex(X)
-        ptin = dim == 2 ? InjectSills.Point2{Float64}(X[ii], Z[ii]) :
-                          InjectSills.Point3{Float64}(X[ii], Y[ii], Z[ii])
+    # zero this source's singular interior (see inject_sills)
+    @inbounds for ii in eachindex(GridFull[1])
+        ptin = dim == 2 ? InjectSills.Point2{Float64}(GridFull[1][ii], GridFull[2][ii]) :
+                          InjectSills.Point3{Float64}(GridFull[1][ii], GridFull[2][ii], GridFull[3][ii])
         if InjectSills.inside(ptin, src)
             for V in Velocity; V[ii] = 0.0; end
         end
     end
-    for V in Velocity, i in eachindex(V)
-        @inbounds if !isfinite(V[i]); V[i] = 0.0; end
-    end
 
-    Spacing = [Grid[i][2] - Grid[i][1] for i in 1:dim]
-    d       = minimum(Spacing)*0.5
-    max_disp = dim == 2 ? maximum(@. sqrt(Dx^2 + Dz^2)) : maximum(@. sqrt(Dx^2 + Dy^2 + Dz^2))
-    nsteps_cap = 100_000
-    ratio    = isfinite(max_disp) ? max_disp/d : Inf
-    nsteps   = clamp(isfinite(ratio) ? ceil(Int, min(ratio, Float64(nsteps_cap))) : nsteps_cap, 2, nsteps_cap)
-    dt       = 1.0/nsteps
-
-    Tnew = copy(T)
-    for _ in 1:nsteps
-        Tnew = AdvectTemperature(T, Grid, GridFull, Velocity, dt, AdvectionMethod, InterpolationMethod)
-        if isassigned(Tracers, 1)
-            AdvectTracers!(Tracers, Grid, Velocity, dt)
-        end
-        T .= Tnew
-    end
-    return T, Tracers, Velocity
+    return _advect_hostrock!(T, Tracers, Grid, GridFull, Velocity; AdvectionMethod, InterpolationMethod)
 end
 
 """
@@ -455,33 +504,22 @@ source's displacement is added into the total field, with that source's own
 singular interior (the points `InjectSills.inside(pt, src)`) and any non-finite
 entries excluded from *its* contribution — exactly the per-source regularization
 the single-source method applies. The summed field is then sub-stepped and used
-to advect `T` and `Tracers` with the same CFL/`nsteps` safeguards. This is what
-gives a spatially irregular (melt-distribution-following) chamber deflation when
-`erupt_magma!` builds one source per eruptible cell. Returns `(T, Tracers, Velocity)`
-with `Velocity` the summed displacement field.
+to advect `T` and `Tracers` with the same CFL/`nsteps` safeguards. Returns
+`(T, Tracers, Velocity)` with `Velocity` the summed displacement field.
 """
 function deflate_hostrock!(T::Array, Tracers, Grid, srcs::AbstractVector;
                            AdvectionMethod="RK2", InterpolationMethod="Linear")
-    dim = length(Grid)
-    if dim == 2
-        coords = collect(Iterators.product(Grid[1], Grid[2]))
-        X = Float64.((c->c[1]).(coords)); Z = Float64.((c->c[2]).(coords))
-        GridFull = (X, Z)
-        Velocity = (zeros(size(X)), zeros(size(Z)))
-    else
-        coords = collect(Iterators.product(Grid[1], Grid[2], Grid[3]))
-        X = Float64.((c->c[1]).(coords)); Y = Float64.((c->c[2]).(coords)); Z = Float64.((c->c[3]).(coords))
-        GridFull = (X, Y, Z)
-        Velocity = (zeros(size(X)), zeros(size(Y)), zeros(size(Z)))
-    end
+    dim      = length(Grid)
+    GridFull = _grid_full(Grid)
+    Velocity = ntuple(_ -> zeros(size(GridFull[1])), dim)
 
     # superpose each source's field; skip its own singular core + non-finite entries
     for src in srcs
-        comp = dim == 2 ? InjectSills.hostrock_displacement(src, X, Z) :
-                          InjectSills.hostrock_displacement(src, X, Y, Z)
-        @inbounds for ii in eachindex(X)
-            ptin = dim == 2 ? InjectSills.Point2{Float64}(X[ii], Z[ii]) :
-                              InjectSills.Point3{Float64}(X[ii], Y[ii], Z[ii])
+        comp = dim == 2 ? InjectSills.hostrock_displacement(src, GridFull[1], GridFull[2]) :
+                          InjectSills.hostrock_displacement(src, GridFull[1], GridFull[2], GridFull[3])
+        @inbounds for ii in eachindex(GridFull[1])
+            ptin = dim == 2 ? InjectSills.Point2{Float64}(GridFull[1][ii], GridFull[2][ii]) :
+                              InjectSills.Point3{Float64}(GridFull[1][ii], GridFull[2][ii], GridFull[3][ii])
             InjectSills.inside(ptin, src) && continue        # this source's own interior
             for d in 1:dim
                 v = comp[d][ii]
@@ -489,71 +527,309 @@ function deflate_hostrock!(T::Array, Tracers, Grid, srcs::AbstractVector;
             end
         end
     end
-    for V in Velocity, i in eachindex(V)                     # final sanitation of the sum
-        @inbounds if !isfinite(V[i]); V[i] = 0.0; end
-    end
 
-    Spacing = [Grid[i][2] - Grid[i][1] for i in 1:dim]
-    d       = minimum(Spacing)*0.5
-    max_disp = dim == 2 ? maximum(@. sqrt(Velocity[1]^2 + Velocity[2]^2)) :
-                          maximum(@. sqrt(Velocity[1]^2 + Velocity[2]^2 + Velocity[3]^2))
-    nsteps_cap = 100_000
-    ratio    = isfinite(max_disp) ? max_disp/d : Inf
-    nsteps   = clamp(isfinite(ratio) ? ceil(Int, min(ratio, Float64(nsteps_cap))) : nsteps_cap, 2, nsteps_cap)
-    dt       = 1.0/nsteps
-
-    Tnew = copy(T)
-    for _ in 1:nsteps
-        Tnew = AdvectTemperature(T, Grid, GridFull, Velocity, dt, AdvectionMethod, InterpolationMethod)
-        if isassigned(Tracers, 1)
-            AdvectTracers!(Tracers, Grid, Velocity, dt)
-        end
-        T .= Tnew
-    end
-    return T, Tracers, Velocity
+    return _advect_hostrock!(T, Tracers, Grid, GridFull, Velocity; AdvectionMethod, InterpolationMethod)
 end
 
-# Build one negative-Mogi source per eruptible cell, sized to the melt withdrawn
-# from that cell (ΔV_i = η·ϕ_i·Vcell ⇒ a_i = radius of a sphere/disk of that
-# volume), centred on the cell. The summed source strength Σ ΔV_i = η·Ve, so the
-# per-cell deflation removes exactly the booked erupted volume — distributed where
-# the melt actually is. `coord` is `Grid.coord1D`; `Vcell` is the cell volume (2D:
-# area, per-unit-depth).
-function _percell_deflation_sources(ϕ, mask, coord, Vcell::Real, η::Real, Erupt::EruptionParameters, dim::Integer)
-    srcs = InjectSills.AbstractSill[]
-    @inbounds for I in CartesianIndices(ϕ)
-        mask[I] || continue
-        ΔV = η * ϕ[I] * Vcell
-        ΔV > 0 || continue
-        if dim == 2
-            a   = sqrt(ΔV/π)                                  # disk radius (per-unit-depth)
-            ctr = InjectSills.Point2{Float64}(coord[1][I[1]], coord[2][I[2]])
-        else
-            a   = cbrt(3*ΔV/(4π))                             # sphere radius
-            ctr = InjectSills.Point3{Float64}(coord[1][I[1]], coord[2][I[2]], coord[3][I[3]])
+# Vertical displacement field of a volume-conserving chamber deflation: the host
+# rock at each node sinks by the total melt void opened *beneath* it in its
+# column. Withdrawing `η·ϕ` of a cell frees a thickness `η·ϕ·Δz` (Δz = vertical
+# spacing); walking each column from the bottom up and accumulating that void
+# gives `Dz`, purely vertical (rigid overburden — no horizontal motion). The top
+# of every column (the surface) sinks by the full column void `Σ η·ϕ·Δz`, so the
+# surface-subsidence integral `Σ Dz_top·dA = Σ η·ϕ·Vcell = η·Ve` equals the
+# booked erupted volume exactly — no elastic parameters, no source geometry. `ϕ`
+# is the pre-withdrawal melt fraction; the vertical axis is the last dimension.
+function _column_subsidence_velocity(ϕ, mask, Δz::Real, η::Real, dim::Integer)
+    Velocity = ntuple(_ -> zeros(size(ϕ)), dim)
+    Dz = Velocity[end]
+    if dim == 2
+        @inbounds for i in axes(ϕ, 1)
+            cum = 0.0
+            for k in axes(ϕ, 2)                     # bottom (k=1) → top
+                Dz[i, k] = -cum
+                mask[i, k] && (cum += η*ϕ[i, k]*Δz)
+            end
         end
-        push!(srcs, MogiSphere(Center = ctr*m, r = a*m,
-                               ΔP = (-Erupt.ΔP)*Pa, G = Erupt.G*Pa, ν = Erupt.ν*NoUnits))
+    else
+        @inbounds for j in axes(ϕ, 2), i in axes(ϕ, 1)
+            cum = 0.0
+            for k in axes(ϕ, 3)
+                Dz[i, j, k] = -cum
+                mask[i, j, k] && (cum += η*ϕ[i, j, k]*Δz)
+            end
+        end
     end
-    return srcs
+    return Velocity
+end
+
+# Horizontal index window (a `lo:hi` UnitRange) within `rcut` of grid index
+# `Ik` along one horizontal dimension, capped at `max_cells` and clamped to the
+# domain — independent of `Δ`, so the cost never grows with grid resolution.
+_hwindow(Ik::Integer, rcut::Real, Δk::Real, Nk::Integer, max_cells::Integer) =
+    (n = min(ceil(Int, rcut/Δk), max_cells); max(1, Ik-n):min(Nk, Ik+n))
+
+"""
+    Vel = _local_mogi_deflation_velocity(ϕ, mask, coord, Δ, Vcell, η, dim;
+                                          cutoff_factor=4.0, max_window_cells=25)
+
+Volume-conserving, spatially-smoothed chamber deflation: superpose one
+negative-Mogi source per eruptible cell, using the same `U(R) ∝ (p-Center)/R³`
+radial shape as [`deflate_hostrock!`](@ref). The closed form is inlined here
+rather than routed through `InjectSills.hostrock_displacement`/`MogiSphere`,
+whose Unitful dispatch is ~100-500× too slow to evaluate once per eruptible
+cell.
+
+Each source is evaluated over its full vertical reach — its field has to
+reach the surface to deflate it at all — but only within `max_window_cells`
+cells *horizontally*, bounding the cost at `O(N_eruptible × K)` with `K` the
+horizontal window width, capped independently of `Δ`. `cutoff_factor` sets
+the horizontal reach as a multiple of each source's own depth before that cap
+applies.
+
+The per-source amplitude is proportional to *that cell's own* withdrawn
+volume rather than to a physical `ΔP`/`G`/`ν` through the Mogi volume
+relation: at crustal `G` and `ν`, expressing a realistic chamber volume
+change requires either `ΔP ≈ G/(3(1-ν))` ~ 4.4 GPa or a source radius larger
+than the domain. The summed field is instead rescaled so the swept volume at
+the top of the domain equals the true withdrawn volume `η·Ve` exactly, which
+also absorbs whatever the horizontal cutoff truncated away. The kernel's
+constants therefore set its relative shape only, never its final amplitude.
+"""
+function _local_mogi_deflation_velocity(ϕ, mask, coord, Δ, Vcell::Real, η::Real, dim::Integer;
+                                         cutoff_factor::Real=4.0, max_window_cells::Integer=25)
+    N        = length.(coord)
+    Velocity = ntuple(_ -> zeros(size(ϕ)), dim)
+    a2       = (0.5*minimum(Δ))^2         # guard radius, squared (shape only, not volume-derived)
+    shape    = 1 - 0.25                   # (1-ν), fixed ν=0.25 (shape only, not physical here)
+    rcut_min = 2*minimum(Δ)               # floor so very shallow melt still gets a few cells of spread
+
+    @inbounds if dim == 2
+        for I in CartesianIndices(ϕ)
+            mask[I] || continue
+            ΔV = η*ϕ[I]*Vcell
+            ΔV > 0 || continue
+            cx, cz = coord[1][I[1]], coord[2][I[2]]
+            d      = abs(cz)
+            rcut   = max(cutoff_factor*d, rcut_min)
+            K      = -ΔV*shape                        # negative ⇒ withdrawal (points move toward the source)
+            for k in axes(ϕ, 2), i in _hwindow(I[1], rcut, Δ[1], N[1], max_window_cells)
+                Δx = coord[1][i]-cx; Δz = coord[2][k]-cz
+                R2 = Δx^2+Δz^2
+                R2 < a2 && continue
+                C  = K/R2^1.5
+                Velocity[1][i,k] += C*Δx
+                Velocity[2][i,k] += C*Δz
+            end
+        end
+    else
+        for I in CartesianIndices(ϕ)
+            mask[I] || continue
+            ΔV = η*ϕ[I]*Vcell
+            ΔV > 0 || continue
+            cx, cy, cz = coord[1][I[1]], coord[2][I[2]], coord[3][I[3]]
+            d      = abs(cz)
+            rcut   = max(cutoff_factor*d, rcut_min)
+            K      = -ΔV*shape
+            jr = _hwindow(I[2], rcut, Δ[2], N[2], max_window_cells)
+            ir = _hwindow(I[1], rcut, Δ[1], N[1], max_window_cells)
+            for k in axes(ϕ, 3), j in jr, i in ir
+                Δx = coord[1][i]-cx; Δy = coord[2][j]-cy; Δz = coord[3][k]-cz
+                R2 = Δx^2+Δy^2+Δz^2
+                R2 < a2 && continue
+                C  = K/R2^1.5
+                Velocity[1][i,j,k] += C*Δx
+                Velocity[2][i,j,k] += C*Δy
+                Velocity[3][i,j,k] += C*Δz
+            end
+        end
+    end
+
+    # Rescale so the swept volume at the top of the domain equals -η·Ve exactly
+    # (negative: the surface subsides; matches _column_subsidence_velocity's sign
+    # convention and mass_budget's Δsurface = -erupted for a deflation-only event).
+    # Corrects for the cutoff truncation and the arbitrary a/shape constants.
+    if dim == 2
+        top_sum = sum(@view Velocity[end][:, N[2]]) * Δ[1]
+    else
+        top_sum = sum(@view Velocity[end][:, :, N[3]]) * Δ[1]*Δ[2]
+    end
+    target = -η * sum(Vcell*ϕ[I] for I in CartesianIndices(ϕ) if mask[I]; init=0.0)
+    scale  = (isfinite(top_sum) && top_sum != 0) ? target/top_sum : 0.0
+    for V in Velocity, i in eachindex(V)
+        V[i] *= scale
+    end
+    return Velocity
+end
+
+"""
+    ρ_fn = magma_density_fn(density, solub, Erupt::EruptionParameters)
+
+Build the `ρ(T_K, ϕ, P) -> kg/m³` density callback consumed by
+[`step_overpressure!`](@ref) from a `Mat_tup` entry's `Density` and
+`Solubility` laws (`Mat_tup[idx].Density[1]`, `Mat_tup[idx].Solubility[1]`).
+
+For a plain melt+crystal law (`ConstantDensity`, `MeltDependent_Density`, ...)
+this is `compute_density(density, (; T=T_K, P=P, ϕ=ϕ))` — `ϕ` is the melt
+fraction, unrelated to any gas phase; `solub` is unused.
+
+For `GeoParams.ThreePhase_Density` (the Degruyter & Huber 2014 melt+crystal+gas
+mixture), the exsolved gas fraction is diagnosed at each call from a
+quasi-equilibrium water mass balance: `solub` (e.g. `Liu2005_Solubility`) gives
+the dissolved H₂O mass fraction of the melt at `(P, T_K, Erupt.X_co2)`; the
+excess of `Erupt.m_h2o_total` over that solubility limit exsolves, converted to
+a volume fraction `ϕ_gas` via the gas-free (melt+crystal) density and
+`density.ρgas`. This is the `ρ(P,T,m_w)` closure the eruptions page documents
+as needed for crystallization to genuinely *pressurize* a closed chamber (E4)
+via second boiling, rather than only depressurize it.
+
+`Erupt.m_h2o_total` is a **fixed constant**, not a chamber state — this is the
+constant-`m_w` approximation, not a genuine mass-conserving water budget.
+Recharge and eruption do not add or remove water from it, so second-boiling
+strength does not respond to how much wet magma has actually accumulated or
+erupted. A real water budget needs `m_w` (or the exsolved-gas fraction itself)
+as its own state on `ChamberState`, integrated through `Ṁ_in` and the erupted
+mass, alongside `P` — not rederived from a fixed total at every call.
+
+!!! warning "`density.ρgas` is also evaluated outside this function"
+    A `Mat_tup` entry's `Density` law is not exclusive to this callback — the
+    main solver's `compute_density_ps!` evaluates it every cell/iteration too,
+    with only `(T, P)` (`ϕ_gas`/`ϕ_x` default to 0). `ThreePhase_Density` still
+    *evaluates* `ρgas` there to form the (zero-weighted) mixture sum, so a
+    `ρgas` law with a narrow validity window — e.g. `RedlichKwong_Density`,
+    fitted for ~30-400 MPa/873-1173 K — can return `NaN` at an out-of-range
+    cell and poison the field even at zero weight (`0*NaN = NaN`). Prefer
+    `IdealGas_Density` (finite for any `T>0`, `P≥0`) unless every cell of the
+    phase using this `Density` law is guaranteed to stay within `ρgas`'s
+    validity range for its whole thermal history.
+"""
+function magma_density_fn(density, solub, Erupt::EruptionParameters)
+    if !(density isa ThreePhase_Density)
+        return (T_K, ϕ, P) -> GeoParams.compute_density(density, (; T = T_K, P = P, ϕ = ϕ))
+    end
+
+    solub === nothing && error("magma_density_fn: a ThreePhase_Density magma phase requires its Mat_tup entry's Solubility to be set (a GeoParams AbstractSolubility, e.g. Liu2005_Solubility())")
+    m_h2o_total, X_co2 = Erupt.m_h2o_total, Erupt.X_co2
+
+    return function (T_K, ϕ, P)
+        m_exsolved = max(m_h2o_total - compute_dissolved(solub, P, T_K, X_co2)[1], 0.0)
+
+        ρ_melt = GeoParams.compute_density(density.ρmelt, (; T = T_K, P = P))
+        ρ_x    = GeoParams.compute_density(density.ρx, (; T = T_K, P = P))
+        ρ_gas  = GeoParams.compute_density(density.ρgas, (; T = T_K, P = P))
+        ρ_lc   = ϕ*ρ_melt + (1 - ϕ)*ρ_x                    # gas-free melt+crystal density
+
+        ϕ_gas = (m_exsolved/ρ_gas) / (m_exsolved/ρ_gas + (1 - m_exsolved)/ρ_lc)
+        return (1 - ϕ_gas)*ρ_lc + ϕ_gas*ρ_gas
+    end
+end
+
+"""
+    V_out = step_overpressure!(state, Erupt, T_mush_K, ϕ_mush, ρ, V_e, Ṁ_in, Δt)
+
+Integrate the QMagma (Degruyter & Huber 2014) chamber-overpressure ODE over one
+thermal step and drain the chamber when it crosses the failure threshold. Port
+of QMagma's `step_overpressure!` (`ThermalCode_1D.jl`), generalized from a 1D
+column to MTK's native (2D per-unit-depth / 3D true) volume convention:
+
+    (1/β_r + 1/β_m) dP/dt = Ṁ_in/(ρV_e) − (1/ρ)dρ/dt|_{T,ϕ} − (P−P_lith)/η_r
+
+`ρ(T_K, ϕ, P)` computes the magma density [kg/m³] — build it with
+[`magma_density_fn`](@ref); `1/β_m = (1/ρ)∂ρ/∂P` is a finite difference at
+fixed `(T_mush_K, ϕ_mush)`, and the crystallization source `-(1/ρ)dρ/dt|_{T,ϕ}`
+is a finite difference against the previous call's mush state at fixed `P`.
+With a plain melt+crystal density law this source term reflects only the
+melt/crystal density contrast: for the usual case `ρ_solid > ρ_melt`,
+cooling-driven crystallization at fixed mass needs *less* chamber volume and so
+*depressurizes*. Genuine second-boiling pressurization needs an exsolving gas
+phase (QMagma's `ϕg < ϕ_g_crit` lock-up check is not modelled here) — supply a
+`ThreePhase_Density` magma phase with `Erupt.Solub` set to get it via
+`magma_density_fn`. `Ṁ_in` is a mass recharge rate [kg/s, 2D: per-unit-depth].
+`state.P_lith` must be set by the caller (from the mush centroid depth) before
+calling — this function does not compute it.
+
+The step is sub-divided so `|ΔP|` moves ≲¼·`ΔP_crit` per sub-step (a single
+Euler step can overshoot far past `ΔP_crit` when recharge is stiff relative to
+`Δt`, over-counting the drained volume); every sub-step that crosses `ΔP_crit`
+drains `V_e·(ΔP−ΔP_relax)·(1/β_r+1/β_m)` and resets `P = P_lith + ΔP_relax`.
+Returns the volume drained over the whole step (`0.0` if the chamber only
+charged), in the same convention `V_e` was given in. The first call (`!state.init`)
+or any call with `V_e ≤ 0` only initializes `state` (`P = P_lith`, `T_prev`,
+`ϕ_prev`) and returns `0.0`.
+"""
+function step_overpressure!(state::ChamberState, Erupt::EruptionParameters,
+                            T_mush_K::Real, ϕ_mush::Real, ρ, V_e::Real, Ṁ_in::Real, Δt::Real)
+    if !state.init || V_e <= 0
+        state.P      = state.P_lith
+        state.T_prev = T_mush_K
+        state.ϕ_prev = ϕ_mush
+        state.init   = true
+        return 0.0
+    end
+
+    ρ0 = ρ(T_mush_K, ϕ_mush, state.P)
+
+    # magma compressibility 1/β_m = (1/ρ)∂ρ/∂P (finite difference at fixed T,ϕ)
+    dP     = max(1e3, 1e-4*max(state.P, 1e5))
+    ρp     = ρ(T_mush_K, ϕ_mush, state.P + dP)
+    inv_βm = (ρp - ρ0)/(ρ0*dP)
+    state.inv_βm = inv_βm
+
+    # thermodynamic source -(1/ρ)dρ/dt at fixed P (T,ϕ evolve on the thermal Δt)
+    ρ_old   = ρ(state.T_prev, state.ϕ_prev, state.P)
+    dρdt_TP = (ρ0 - ρ_old)/Δt
+    S       = Ṁ_in/(ρ0*V_e) - dρdt_TP/ρ0
+
+    inv_βr = 1.0/Erupt.β_r
+    invβ   = inv_βr + inv_βm
+
+    # sub-step count: keep |ΔP| change per sub-step ≲ ¼·ΔP_crit so the drain
+    # doesn't overshoot. Clamp in float space BEFORE the Int cast: a soft
+    # (floored) η_r can make |dPdt0| huge, and ceil(Int, >typemax(Int)) would
+    # overflow before a post-hoc clamp could cap it.
+    dPdt0 = (S - (state.P - state.P_lith)/Erupt.η_r) / invβ
+    nsub   = round(Int, clamp(ceil(abs(dPdt0)*Δt / (0.25*Erupt.ΔP_crit)), 1.0, 10_000.0))
+    dt_sub = Δt/nsub
+
+    V_out = 0.0
+    for _ in 1:nsub
+        dPdt      = (S - (state.P - state.P_lith)/Erupt.η_r) / invβ
+        state.P  += dPdt*dt_sub
+        if (state.P - state.P_lith) >= Erupt.ΔP_crit
+            V_out   += V_e*(state.P - state.P_lith - Erupt.ΔP_relax)*invβ
+            state.P  = state.P_lith + Erupt.ΔP_relax
+        end
+    end
+
+    state.T_prev = T_mush_K
+    state.ϕ_prev = ϕ_mush
+    return V_out
 end
 
 """
     erupted = erupt_magma!(T, ϕ, dϕdT, Tracers, Grid, Erupt, time)
 
-Erupt magma when the eruptible volume reaches the critical volume. Steps:
+Erupt magma once the eruption trigger fires. Steps:
 1. Compute the eruptible volume `Ve` (melt in cells with `ϕ > Erupt.ϕ_erupt`). In
-   2D this is per-unit-depth; when `Erupt.out_of_plane_3D` it is lifted to a true
-   3D volume via a Gaussian out-of-plane profile so it is comparable (in km³) to
-   `V_crit` and the injected volume.
-2. If `Ve < Erupt.V_crit`, do nothing and return `false`.
-3. Otherwise remove a fraction `Erupt.erupt_efficiency` of the eruptible melt by
-   *thermal extraction*: each eruptible cell is cooled by
-   `ΔT = efficiency·(ϕ - ϕ_erupt)/(dϕ/dT)`, the linearized temperature drop that
-   removes the extracted melt (uses the locally-available `dϕ/dT`).
-4. If `Erupt.deflate`, also deflate the chamber with a negative-ΔP Mogi source
-   centred on the melt-weighted centroid of the eruptible region (host-rock
-   subsidence; this is what a moving free surface will track — see issue 4).
+   2D this is per-unit-depth; in 3D a true volume.
+2. Decide whether an eruption fires, and the withdrawal fraction `η`:
+   - `Erupt.overpressure = false` (default, kinematic trigger): `Ve` is lifted to
+     a true 3D volume (km³, comparable to `V_crit`) when `Erupt.out_of_plane_3D`;
+     if `Ve < Erupt.V_crit`, do nothing and return `false`. Otherwise
+     `η = Erupt.erupt_efficiency` (fixed).
+   - `Erupt.overpressure = true` (physical trigger): the mush-mean temperature
+     and melt fraction are stepped through the chamber-overpressure ODE
+     ([`step_overpressure!`](@ref), using `Erupt.chamber`); if it does not drain
+     this step, do nothing and return `false`. Otherwise `η` is the emergent
+     drained-volume fraction `V_out/Ve` (volume-conserving withdrawal), and the
+     `Δt`, `ρ`, `Ṁ_in` keywords are required.
+3. Remove `η` of the eruptible melt by *thermal extraction*: each eruptible cell
+   is cooled by `ΔT = η·ϕ/(dϕ/dT)`, the linearized temperature drop that removes
+   `η·ϕ` of melt (uses the locally-available `dϕ/dT`).
+4. If `Erupt.deflate`, also deflate the chamber by volume-conserving column
+   subsidence: the host rock in each column sinks by the melt void withdrawn
+   beneath it (purely vertical), so the surface-subsidence integral equals the
+   booked erupted volume `η·Ve`. This is what a moving free surface tracks.
 5. Update the bookkeeping on `Erupt` (count, cumulative + per-event volume/time).
 
 `T`, `ϕ`, `dϕdT` are the (CPU) temperature, melt-fraction and dϕ/dT arrays; they
@@ -565,8 +841,14 @@ tracks the chamber deflation (issue 4). Likewise, if a phase field `Phases` is
 supplied (keyword), it is advected by the same subsidence so the material column
 moves with the deflation. Both are only used on the deflation path
 (`Erupt.deflate == true`).
+
+`Δt` (the caller's timestep [s]), `ρ` (a `ρ(T_K, ϕ, P) -> kg/m³` density
+callback) and `Ṁ_in` (the recharge mass rate [kg/s]) are only used when
+`Erupt.overpressure == true`; `Ṁ_in` defaults to `0.0` (pure cooling, no
+recharge).
 """
-function erupt_magma!(T::Array, ϕ::Array, dϕdT::Array, Tracers, Grid, Erupt::EruptionParameters, time::Real; z_surf=nothing, Phases=nothing)
+function erupt_magma!(T::Array, ϕ::Array, dϕdT::Array, Tracers, Grid, Erupt::EruptionParameters, time::Real;
+                       z_surf=nothing, Phases=nothing, Δt::Real=NaN, ρ=nothing, Ṁ_in::Real=0.0)
     Erupt.erupt || return false
     Δ      = Grid.Δ
     coord  = Grid.coord1D
@@ -577,65 +859,93 @@ function erupt_magma!(T::Array, ϕ::Array, dϕdT::Array, Tracers, Grid, Erupt::E
     Vcell   = prod(filter(>(0), collect(Δ)))
 
     # melt-weighted centroid + bulk volume of the eruptible region (used for the
-    # deflation source and, in 2D, for the out-of-plane Gaussian volume). `sx2` is
+    # deflation source and, in 2D, for the out-of-plane Gaussian volume), and the
+    # melt-weighted mean temperature (used by the overpressure trigger). `sx2` is
     # the weighted Σx² needed for the horizontal standard deviation in 2D.
-    sx = sy = sz = 0.0; sx2 = 0.0; wsum = 0.0; Vbulk = 0.0
+    sx = sy = sz = sT = 0.0; sx2 = 0.0; wsum = 0.0; Vbulk = 0.0
     if dim == 2
         @inbounds for j in axes(ϕ,2), i in axes(ϕ,1)
             if mask[i,j]
                 x = coord[1][i]
                 w = ϕ[i,j]; wsum += w; Vbulk += Vcell
-                sx += w*x; sx2 += w*x^2; sz += w*coord[2][j]
+                sx += w*x; sx2 += w*x^2; sz += w*coord[2][j]; sT += w*T[i,j]
             end
         end
     else
         @inbounds for k in axes(ϕ,3), j in axes(ϕ,2), i in axes(ϕ,1)
             if mask[i,j,k]
                 w = ϕ[i,j,k]; wsum += w; Vbulk += Vcell
-                sx += w*coord[1][i]; sy += w*coord[2][j]; sz += w*coord[3][k]
+                sx += w*coord[1][i]; sy += w*coord[2][j]; sz += w*coord[3][k]; sT += w*T[i,j,k]
             end
         end
     end
     wsum == 0 && return false                   # no eruptible melt ⇒ nothing to do
     cx = sx/wsum
 
-    # (1→3D) In 2D, lift the per-unit-depth eruptible volume to a true 3D volume
-    # by assuming a Gaussian out-of-plane (y) melt profile: the effective out-of-
-    # plane length is √(2π)·σ, with σ the melt-weighted horizontal half-width of
-    # the eruptible region (floored at the in-plane spacing so even a single cell
-    # gets a sensible thickness). This keeps `Ve` in km³ — directly comparable to
-    # `V_crit` and the (3D) injected volume. No-op in 3D, where `Ve` is already a
-    # volume.
-    if dim == 2 && Erupt.out_of_plane_3D
-        σx  = sqrt(max(sx2/wsum - cx^2, 0.0))
-        Ve *= sqrt(2π) * max(σx, Δ[1])
+    if Erupt.overpressure
+        # Physical ΔP_crit trigger: step the chamber ODE on the mush-mean state
+        # of the eruptible region: MTK's native volume convention throughout
+        # (no out-of-plane km³ lift — that lift exists only for the V_crit
+        # comparison below, and Ve here must stay dimensionally consistent with
+        # Ṁ_in, which is derived from the same convention as Dikes.InjectVol).
+        isnan(Δt)      && error("erupt_magma!: Erupt.overpressure=true requires the `Δt` keyword")
+        ρ === nothing  && error("erupt_magma!: Erupt.overpressure=true requires the `ρ` density-callback keyword")
+        T_mush_K   = sT/wsum + 273.15
+        ϕ_mush     = Ve/Vbulk
+        z_centroid = sz/wsum
+        Erupt.chamber.P_lith = Erupt.ρ_crust*9.81*abs(z_centroid)
+        V_out = step_overpressure!(Erupt.chamber, Erupt, T_mush_K, ϕ_mush, ρ, Ve, Ṁ_in, Δt)
+        V_out <= 0 && return false               # chamber charged but did not drain
+        η       = clamp(V_out/Ve, 0.0, 1.0)
+        V_erupt = V_out
+    else
+        # (1→3D) In 2D, lift the per-unit-depth eruptible volume to a true 3D
+        # volume by assuming a Gaussian out-of-plane (y) melt profile: the
+        # effective out-of-plane length is √(2π)·σ, with σ the melt-weighted
+        # horizontal half-width of the eruptible region (floored at the in-plane
+        # spacing so even a single cell gets a sensible thickness). This keeps
+        # `Ve` in km³ — directly comparable to `V_crit` and the (3D) injected
+        # volume. No-op in 3D, where `Ve` is already a volume.
+        if dim == 2 && Erupt.out_of_plane_3D
+            σx  = sqrt(max(sx2/wsum - cx^2, 0.0))
+            Ve *= sqrt(2π) * max(σx, Δ[1])
+        end
+
+        Ve < Erupt.V_crit && return false        # trigger on the (3D) eruptible volume
+        η       = Erupt.erupt_efficiency
+        V_erupt = η * Ve
     end
 
-    Ve < Erupt.V_crit && return false           # trigger on the (3D) eruptible volume
-    V_erupt = Erupt.erupt_efficiency * Ve
+    # Freeze the tracers caught up in the eruption — a random fraction `η` of the
+    # melt-rich (eruptible-cell) tracers — *before* any deflation advection below,
+    # so they keep their eruption-instant position and Tt-path. Their preserved
+    # history is the erupted "zircon cargo". The final history point is recorded
+    # in Myr to match the tracer time convention used by the drivers (see
+    # `update_Tvec!`).
+    freeze_erupted_tracers!(Tracers, Grid, mask, η, time/SecYear*1e-6)
 
-    # Freeze the tracers caught up in the eruption — a random fraction
-    # `erupt_efficiency` of the melt-rich (eruptible-cell) tracers — *before* any
-    # deflation advection below, so they keep their eruption-instant position and
-    # Tt-path. Their preserved history is the erupted "zircon cargo". The final
-    # history point is recorded in Myr to match the tracer time convention used by
-    # the drivers (see `update_Tvec!`).
-    freeze_erupted_tracers!(Tracers, Grid, mask, Erupt.erupt_efficiency, time/SecYear*1e-6)
-
-    # deflation-source geometry (melt-weighted centroid + characteristic radius)
-    if dim == 2
-        a = sqrt(Vbulk/π)                       # characteristic radius (2D: area→radius)
-        center = InjectSills.Point2{Float64}(cx, sz/wsum)
+    # Deflation field, captured from the *pre-withdrawal* melt so the host rock
+    # sinks by exactly the void the withdrawal opens below it. Model selected by
+    # Erupt.deflation_model: :column (exact per-column, no lateral coupling) or
+    # :local_mogi (smoothed, volume-exact, cutoff-bounded Mogi superposition).
+    Vel = if !Erupt.deflate
+        nothing
+    elseif Erupt.deflation_model === :column
+        _column_subsidence_velocity(ϕ, mask, Δ[end], η, dim)
+    elseif Erupt.deflation_model === :local_mogi
+        _local_mogi_deflation_velocity(ϕ, mask, coord, Δ, Vcell, η, dim;
+                                       cutoff_factor=Erupt.deflation_cutoff_factor,
+                                       max_window_cells=Erupt.deflation_max_window_cells)
     else
-        a = cbrt(3*Vbulk/(4π))                  # characteristic radius (3D)
-        center = InjectSills.Point3{Float64}(cx, sy/wsum, sz/wsum)
+        error("erupt_magma!: unknown Erupt.deflation_model = $(Erupt.deflation_model) (expected :column or :local_mogi)")
     end
 
     # (3) withdraw a fraction η of the mobile melt from each eruptible cell:
     #     ϕ → (1-η)·ϕ, realized thermally by cooling the cell by ΔT = η·ϕ/(dϕ/dT)
     #     (the local linearized drop that removes η·ϕ of melt). Booked volume
-    #     (below) = Σ η·ϕ·Vcell = η·Ve, exactly the melt removed here.
-    η = Erupt.erupt_efficiency
+    #     (below) = Σ η·ϕ·Vcell = η·Ve, exactly the melt removed here (η is fixed
+    #     `erupt_efficiency` for the kinematic trigger, or the emergent
+    #     drained-volume fraction for the physical trigger — set above).
     @inbounds for i in eachindex(ϕ)
         if mask[i]
             if dϕdT[i] > 0
@@ -648,27 +958,14 @@ function erupt_magma!(T::Array, ϕ::Array, dϕdT::Array, Tracers, Grid, Erupt::E
         end
     end
 
-    # (4) optional kinematic chamber deflation (negative-Mogi withdrawal)
+    # (4) optional volume-conserving chamber deflation: advect the host rock,
+    #     free surface, and phase field by the column-subsidence field. The
+    #     surface-subsidence integral equals the booked erupted volume η·Ve.
     if Erupt.deflate
-        if Erupt.deflate_percell
-            # per-cell superposition (default): one negative-Mogi source per
-            # eruptible cell, sized to the melt withdrawn there (ΔV_i = η·ϕ_i·Vcell),
-            # so the subsidence follows the irregular melt distribution and the total
-            # subsidence volume = Σ ΔV_i = η·Ve (the booked erupted volume).
-            srcs = _percell_deflation_sources(ϕ, mask, coord, Vcell, η, Erupt, dim)
-            _, _, Vel = deflate_hostrock!(T, Tracers, coord, srcs)
-        else
-            # region-scale (opt-out): a single source at the melt-weighted centroid,
-            # radius from the bulk eruptible volume — spatially symmetric, cheaper.
-            src = MogiSphere(Center = center*m, r = a*m,
-                             ΔP = (-Erupt.ΔP)*Pa, G = Erupt.G*Pa, ν = Erupt.ν*NoUnits)
-            _, _, Vel = deflate_hostrock!(T, Tracers, coord, src)
-        end
-        # track the host-rock subsidence on the free surface, if one is supplied
+        _advect_hostrock!(T, Tracers, coord, _grid_full(coord), Vel)
         if !isnothing(z_surf)
             advect_surface!(z_surf, Vel[end], Grid)
         end
-        # advect the phase field with the same subsidence, if one is supplied
         if !isnothing(Phases)
             advect_phases!(Phases, Vel, Grid)
         end

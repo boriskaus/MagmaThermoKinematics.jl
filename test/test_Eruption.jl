@@ -38,7 +38,8 @@
 #
 using Test, Random
 using MagmaThermoKinematics
-using MagmaThermoKinematics: erupt_magma!, eruptible_volume, Tracer, CreateGrid, deflate_hostrock!
+using MagmaThermoKinematics: erupt_magma!, eruptible_volume, Tracer, CreateGrid, deflate_hostrock!, enthalpy,
+                              step_overpressure!, ChamberState, init_free_surface, mass_budget
 using InjectSills
 using StructArrays
 
@@ -172,8 +173,7 @@ end
         Ve, _ = eruptible_volume(ϕ, Grid.Δ, 0.5)
         Tr = StructArray{Tracer{Float32}}(undef,1)
         E  = EruptionParams(erupt=true, ϕ_erupt=0.5, V_crit=Ve*0.5,
-                            erupt_efficiency=0.5, deflate=true,
-                            ΔP=20e6, G=10e9, ν=0.25, out_of_plane_3D=false)
+                            erupt_efficiency=0.5, deflate=true, out_of_plane_3D=false)
         T2 = copy(T)
         fired = erupt_magma!(T2, copy(ϕ), copy(dϕdT), Tr, Grid, E, 0.0)
         @test fired == true
@@ -354,27 +354,25 @@ end
         @test Vsum[2] ≈ V1[2] .+ V2[2]
         @test !isapprox(Vsum[2], reverse(Vsum[2], dims=1); atol=1e-9)   # asymmetric in x
 
-        # (b) integration: the per-cell path is opt-in (deflate_percell=true);
-        #     fires, stays finite, keeps tracer coords finite (frozen or advected).
-        #     NB: per-cell deflation is O(N_eruptible × N_grid) per eruption and
-        #     stalls at production resolution — region-scale is the default (c).
+        # (b) volume conservation: the column-subsidence deflation is prescribed so
+        #     the surface-subsidence integral Σ(z_surf−z_surf0)·dA equals the booked
+        #     erupted volume η·Ve exactly (no half-space factor — the surface drop is
+        #     imposed directly). Free surface at the top of the domain.
         Ve, _ = eruptible_volume(ϕ, Grid.Δ, 0.5)
-        E = EruptionParams(erupt=true, ϕ_erupt=0.5, V_crit=Ve*0.5, erupt_efficiency=0.5,
-                           deflate=true, deflate_percell=true, out_of_plane_3D=false)
+        η     = 0.5
+        E = EruptionParams(erupt=true, ϕ_erupt=0.5, V_crit=Ve*0.5, erupt_efficiency=η,
+                           deflate=true, out_of_plane_3D=false)
+        z0 = init_free_surface(Grid; z0=0.0)
+        zs = copy(z0)
         Tr = StructArray([Tracer(num=1, coord=[(x[1]+x[end])/2, cz], T=950.0)])
         T2 = copy(T)
-        fired = erupt_magma!(T2, copy(ϕ), copy(dϕdT), Tr, Grid, E, 0.0)
+        fired = erupt_magma!(T2, copy(ϕ), copy(dϕdT), Tr, Grid, E, 0.0; z_surf=zs)
         @test fired && all(isfinite, T2) && E.n_eruptions == 1
         @test all(isfinite, Tr[1].coord)
-
-        # (c) region-scale is the DEFAULT (deflate_percell=false): cheap O(N_grid)
-        Ereg = EruptionParams(erupt=true, ϕ_erupt=0.5, V_crit=Ve*0.5, erupt_efficiency=0.5,
-                              deflate=true, out_of_plane_3D=false)
-        @test Ereg.deflate_percell == false                   # default is region-scale
-        Treg = StructArray{Tracer{Float32}}(undef,1)
-        T3 = copy(T)
-        @test erupt_magma!(T3, copy(ϕ), copy(dϕdT), Treg, Grid, Ereg, 0.0) == true
-        @test all(isfinite, T3)
+        booked = E.eruption_volumes[end]                        # η·Ve (per-unit-depth)
+        b = mass_budget(0.0, booked, zs, z0, Grid)
+        @test all(zs .<= z0)                                    # surface only subsides
+        @test -b.Δsurface ≈ booked  rtol=1e-6                   # subsidence = withdrawn volume
     end
 
     # ---- E15: depth-capped eruptibility (EruptAbove) -----------------------
@@ -407,6 +405,224 @@ end
         Eok = EruptionParams(erupt=true, ϕ_erupt=0.5, V_crit=Ve0*0.5, erupt_efficiency=0.5,
                              deflate=false, out_of_plane_3D=false, EruptAbove=z[1]-1.0)
         @test erupt_magma!(copy(T), copy(ϕ), copy(dϕdT), Tr, Grid, Eok, 0.0) == true
+    end
+
+    # ---- E15: enthalpy conservation diagnostic --------------------------
+    # H = Σ ρ·(Cp·T + Hl·ϕ)·Vcell, integrated on constant arrays where the
+    # answer is exact (pins the integrand and the 2D/3D Vcell).
+    @testset "E15 enthalpy" begin
+        G   = CreateGrid(size=(4,5,3), extent=(3e3,4e3,2e3))
+        Vc  = prod(filter(>(0), collect(G.Δ)))
+        N   = length(G.coord1D[1])*length(G.coord1D[2])*length(G.coord1D[3])
+        ones3(v) = fill(v, length(G.coord1D[1]), length(G.coord1D[2]), length(G.coord1D[3]))
+        T, Rho, Cp, Hl, ϕ = ones3(800.0), ones3(2700.0), ones3(1000.0), ones3(4e5), ones3(0.5)
+        @test enthalpy(T, Rho, Cp, Hl, ϕ, G) ≈ N*2700.0*(1000.0*800.0 + 4e5*0.5)*Vc
+        # zero latent + zero melt ⇒ pure sensible heat
+        @test enthalpy(T, Rho, Cp, ones3(0.0), ones3(0.0), G) ≈ N*2700.0*1000.0*800.0*Vc
+        # 2D per-unit-depth Vcell
+        G2  = CreateGrid(size=(6,7), extent=(5e3,6e3))
+        Vc2 = prod(filter(>(0), collect(G2.Δ)))
+        N2  = length(G2.coord1D[1])*length(G2.coord1D[2])
+        f2(v) = fill(v, length(G2.coord1D[1]), length(G2.coord1D[2]))
+        @test enthalpy(f2(700.0), f2(3000.0), f2(1200.0), f2(0.0), f2(0.0), G2) ≈
+              N2*3000.0*1200.0*700.0*Vc2
+    end
+
+    # ---- E16: step_overpressure! (physical ΔP_crit trigger) --------------
+    # QMagma-style chamber ODE; tested standalone (no GeoParams / erupt_magma!
+    # wiring) with synthetic `ρ(T,ϕ,P)` callbacks.
+    @testset "E16a step_overpressure! recharge pressurizes then drains" begin
+        ρ0    = 2600.0
+        ρ_fn  = (T, ϕ, P) -> ρ0                        # constant ⇒ inv_βm ≡ 0 exactly
+        Erupt = EruptionParams(β_r=1e10, η_r=1e30, ΔP_crit=20e6, ΔP_relax=2e6)
+        st    = ChamberState(P_lith=1e8)
+        V_e, Δt = 1e9, 1e7
+
+        # first call only initializes: P = P_lith, no drain
+        @test step_overpressure!(st, Erupt, 1473.15, 0.6, ρ_fn, V_e, 0.0, Δt) == 0.0
+        @test st.P == st.P_lith && st.init
+
+        # sub-critical recharge: exact linear-ODE match (constant ρ ⇒ inv_βm=0;
+        # η_r huge ⇒ the relaxation term is negligible at ΔP≈0)
+        invβ = 1/Erupt.β_r
+        Ṁ_in = 5.0
+        S    = Ṁ_in/(ρ0*V_e)
+        V1   = step_overpressure!(st, Erupt, 1473.15, 0.6, ρ_fn, V_e, Ṁ_in, Δt)
+        @test V1 == 0.0
+        @test st.inv_βm ≈ 0.0 atol=1e-20
+        @test (st.P - st.P_lith) ≈ S/invβ*Δt   rtol=1e-8
+
+        # force a single-sub-step crossing: park ΔP just below ΔP_crit, then
+        # push it across by a known increment (small enough that dPdt0·Δt stays
+        # under the ¼·ΔP_crit sub-stepping threshold ⇒ nsub == 1, so the step is
+        # exactly predictable)
+        st.P = st.P_lith + Erupt.ΔP_crit - 3e6         # ΔP = 17e6
+        ΔP_step = 4e6                                  # ⇒ ΔP = 21e6 ≥ ΔP_crit=20e6
+        Ṁ_in2   = ΔP_step/Δt * invβ * ρ0*V_e
+        V_out   = step_overpressure!(st, Erupt, 1473.15, 0.6, ρ_fn, V_e, Ṁ_in2, Δt)
+        ΔP_at_cross = (Erupt.ΔP_crit - 3e6) + ΔP_step   # = 21e6
+        @test V_out ≈ V_e*(ΔP_at_cross - Erupt.ΔP_relax)*invβ   rtol=1e-6   # drained volume ≈ Ve·ΔP·invβ
+        @test st.P ≈ st.P_lith + Erupt.ΔP_relax          rtol=1e-10        # reset after drain
+    end
+
+    @testset "E16b step_overpressure! sub-stepping avoids overshoot" begin
+        # A single huge-Δt call must sub-step internally and track a
+        # finely-stepped reference covering the same total recharge, rather
+        # than over-booking one giant drain.
+        ρ0    = 2600.0
+        ρ_fn  = (T, ϕ, P) -> ρ0
+        Erupt = EruptionParams(β_r=1e10, η_r=1e30, ΔP_crit=20e6, ΔP_relax=0.0)
+        V_e   = 1e9
+        Ṁ_in, Δt_big, nsteps_fine = 5000.0, 1e9, 1000
+
+        st_big = ChamberState(P_lith=1e8)
+        step_overpressure!(st_big, Erupt, 1473.15, 0.6, ρ_fn, V_e, 0.0, 1.0)     # init
+        Vout_big = step_overpressure!(st_big, Erupt, 1473.15, 0.6, ρ_fn, V_e, Ṁ_in, Δt_big)
+        @test Vout_big > 0                                                       # this forcing does drain
+
+        st_fine = ChamberState(P_lith=1e8)
+        step_overpressure!(st_fine, Erupt, 1473.15, 0.6, ρ_fn, V_e, 0.0, 1.0)    # init
+        Vout_fine = 0.0
+        for _ in 1:nsteps_fine
+            Vout_fine += step_overpressure!(st_fine, Erupt, 1473.15, 0.6, ρ_fn, V_e, Ṁ_in, Δt_big/nsteps_fine)
+        end
+        @test Vout_big ≈ Vout_fine   rtol=0.05
+    end
+
+    @testset "E16c step_overpressure! cooling pressurizes via ρ(T) (second-boiling sign)" begin
+        # Synthetic ρ(T) increasing with T (so cooling lowers ρ at fixed P) —
+        # exercises the S = -(1/ρ)dρ/dt|_{T,ϕ} sign convention. NOT a real
+        # melt/crystal density law: there ρ_solid > ρ_melt, so without an
+        # exsolving gas phase plain crystallization actually *depressurizes* a
+        # closed chamber (see step_overpressure!'s docstring). `k` is kept
+        # small enough that the resulting ΔP stays sub-critical (no drain),
+        # so the pressurization is checked exactly rather than just its sign.
+        ρ_ref, k = 2600.0, 0.05
+        ρ_fn = (T, ϕ, P) -> ρ_ref + k*(T - 1473.15)
+        Erupt = EruptionParams(β_r=1e10, η_r=1e30, ΔP_crit=20e6)
+        st    = ChamberState(P_lith=1e8)
+        V_e, Δt = 1e9, 1e9
+
+        step_overpressure!(st, Erupt, 1473.15, 0.6, ρ_fn, V_e, 0.0, Δt)   # init at T=1200°C
+        @test st.P == st.P_lith
+
+        V_out = step_overpressure!(st, Erupt, 1423.15, 0.6, ρ_fn, V_e, 0.0, Δt)   # cool 50 K, no recharge
+        ρ0    = ρ_fn(1423.15, 0.6, st.P_lith)              # S = -(1/ρ)dρ/dt uses the current ρ
+        Δρ    = k*(1423.15 - 1473.15)                       # < 0: density drops on cooling
+        invβ  = 1/Erupt.β_r                                # inv_βm ≡ 0 (ρ_fn is P-independent)
+        @test V_out == 0.0                                 # stays sub-critical
+        @test st.P > st.P_lith
+        @test (st.P - st.P_lith) ≈ -Δρ/(ρ0*invβ)   rtol=1e-8
+    end
+
+    @testset "E16d step_overpressure! guards the nsub Int cast" begin
+        # A pathologically soft η_r plus a large pre-existing ΔP makes the
+        # uncapped sub-step count exceed typemax(Int); the clamp before the
+        # Int cast must keep this finite rather than throwing InexactError.
+        ρ_fn  = (T, ϕ, P) -> 2600.0
+        Erupt = EruptionParams(β_r=1e10, η_r=1e-10, ΔP_crit=20e6)
+        st    = ChamberState(P_lith=1e8, P=1e8 + 1e9, init=true, T_prev=1473.15, ϕ_prev=0.6)
+        V_out = step_overpressure!(st, Erupt, 1473.15, 0.6, ρ_fn, 1e9, 0.0, 1.0)
+        @test isfinite(V_out) && isfinite(st.P)
+    end
+
+    # ---- E17: :local_mogi deflation — volume-exact, shape-tracking, bounded cost ----
+    # Smoothed alternative to column subsidence: one Mogi-shaped kernel per
+    # eruptible cell, horizontally cutoff-bounded, rescaled to the exact
+    # withdrawn volume. See docs/src/man/free_surface.md.
+    @testset "E17 local Mogi deflation" begin
+        Nx, Nz = 81, 81
+        Grid = CreateGrid(size=(Nx,Nz), extent=(10e3,10e3))
+        x, z = Grid.coord1D
+        ϕ = zeros(Nx,Nz)
+        # two irregular, unequal, well-separated melt lobes (unlike disk_setup's
+        # single symmetric disk) — the case a single centroid-only source misses.
+        for j in 1:Nz, i in 1:Nx
+            r1 = sqrt((x[i]-3.0e3)^2 + (z[j]+5.0e3)^2)
+            r2 = sqrt((x[i]-7.0e3)^2 + (z[j]+4.5e3)^2)
+            if r1 < 1.3e3; ϕ[i,j] = 0.9; elseif r2 < 0.8e3; ϕ[i,j] = 0.7; end
+        end
+        Ve, mask = eruptible_volume(ϕ, Grid.Δ, 0.5)
+        Vcell = prod(Grid.Δ)
+        η = 0.5
+
+        # (a) direct unit test: volume-exact and finite, at default and tight cutoffs
+        for cutoff_factor in (4.0, 1.0)
+            Vel = MagmaThermoKinematics._local_mogi_deflation_velocity(
+                ϕ, mask, Grid.coord1D, Grid.Δ, Vcell, η, 2; cutoff_factor)
+            @test all(all(isfinite, V) for V in Vel)
+            top_sum = sum(@view Vel[end][:, Nz]) * Grid.Δ[1]
+            @test top_sum ≈ -η*Ve   rtol=1e-8
+            @test all(<=(0), @view Vel[end][:, Nz])              # subsides, never uplifts
+        end
+
+        # (b) shape fidelity: unlike a single region-scale source at the melt
+        #     centroid (one symmetric bump), the per-cell field tracks the two
+        #     separate lobes — the surface minimum sits near each lobe's own x,
+        #     not only at the volume-weighted centroid between them, and the
+        #     profile is not flat/boxy (column subsidence's signature).
+        Vel = MagmaThermoKinematics._local_mogi_deflation_velocity(
+            ϕ, mask, Grid.coord1D, Grid.Δ, Vcell, η, 2; cutoff_factor=4.0)
+        top = @view Vel[end][:, Nz]
+        # bigger lobe (r1, centered x=3km) subsides more than the smaller one (r2, x=7km)
+        i3 = argmin(abs.(x .- 3.0e3)); i7 = argmin(abs.(x .- 7.0e3))
+        @test top[i3] < top[i7] < 0
+        # column subsidence, for contrast, is boxy: a handful of plateaus (one
+        # per distinct ϕ level actually reached by a disk's varying chord
+        # length), vs the Mogi field's near-continuous per-column variation.
+        Velcol = MagmaThermoKinematics._column_subsidence_velocity(ϕ, mask, Grid.Δ[end], η, 2)
+        n_mogi = length(unique(round.(top, digits=6)))
+        n_col  = length(unique(round.(@view(Velcol[end][:, Nz]), digits=6)))
+        @test n_mogi > 3*n_col                                       # strictly smoother, not just different
+
+        # (c) cost stays bounded: horizontal window capped independent of Δ, so
+        #     embedding the *same* melt geometry (~same N_eruptible) in a much
+        #     larger surrounding domain costs about the same, not O(N_grid) more.
+        Nx2, Nz2 = 4*Nx, 4*Nz
+        Grid2 = CreateGrid(size=(Nx2,Nz2), extent=(40e3,40e3))       # 4× domain, same disks
+        x2, z2 = Grid2.coord1D
+        ϕ2 = zeros(Nx2,Nz2)
+        for j in 1:Nz2, i in 1:Nx2
+            r1 = sqrt((x2[i]-3.0e3)^2 + (z2[j]+5.0e3)^2)
+            r2 = sqrt((x2[i]-7.0e3)^2 + (z2[j]+4.5e3)^2)
+            if r1 < 1.3e3; ϕ2[i,j] = 0.9; elseif r2 < 0.8e3; ϕ2[i,j] = 0.7; end
+        end
+        Ve2, mask2 = eruptible_volume(ϕ2, Grid2.Δ, 0.5)
+        Vcell2 = prod(Grid2.Δ)
+        @test isapprox(count(mask2), count(mask); rtol=0.3)          # ~same N_eruptible
+        MagmaThermoKinematics._local_mogi_deflation_velocity(         # warm up (JIT)
+            ϕ, mask, Grid.coord1D, Grid.Δ, Vcell, η, 2; cutoff_factor=4.0)
+        t1 = @elapsed MagmaThermoKinematics._local_mogi_deflation_velocity(
+            ϕ, mask, Grid.coord1D, Grid.Δ, Vcell, η, 2; cutoff_factor=4.0)
+        t2 = @elapsed MagmaThermoKinematics._local_mogi_deflation_velocity(
+            ϕ2, mask2, Grid2.coord1D, Grid2.Δ, Vcell2, η, 2; cutoff_factor=4.0)
+        # grid grew 16×; an O(N_grid)-per-source cost (the old per-cell path)
+        # would grow at least that much. Bounded windowing should stay well
+        # under it (loose bound: <6×, generous headroom for CI noise while
+        # still catching a real O(N_grid) regression).
+        @test t2 < 6*max(t1, 1e-6)
+
+        # (d) end-to-end via erupt_magma!, wired through EruptionParams.deflation_model,
+        #     with a free surface: mass_budget's surface integral matches the booked
+        #     erupted volume to the same tight tolerance E14(b) requires of :column.
+        E = EruptionParams(erupt=true, ϕ_erupt=0.5, V_crit=Ve*0.5, erupt_efficiency=η,
+                           deflate=true, deflation_model=:local_mogi, out_of_plane_3D=false)
+        z0 = init_free_surface(Grid; z0=0.0)
+        zs = copy(z0)
+        Tr = StructArray{Tracer{Float32}}(undef,1)
+        T2, dϕdT2 = fill(700.0,Nx,Nz), fill(1e-3,Nx,Nz)
+        fired = erupt_magma!(T2, copy(ϕ), dϕdT2, Tr, Grid, E, 0.0; z_surf=zs)
+        @test fired && all(isfinite, T2) && E.n_eruptions == 1
+        booked = E.eruption_volumes[end]
+        b = mass_budget(0.0, booked, zs, z0, Grid)
+        @test all(zs .<= z0)
+        @test -b.Δsurface ≈ booked   rtol=1e-6
+
+        # (e) unknown deflation_model fails fast rather than silently no-op'ing
+        Ebad = EruptionParams(erupt=true, ϕ_erupt=0.5, V_crit=Ve*0.5, erupt_efficiency=η,
+                              deflate=true, deflation_model=:bogus, out_of_plane_3D=false)
+        @test_throws "unknown Erupt.deflation_model" erupt_magma!(
+            copy(T2), copy(ϕ), copy(dϕdT2), Tr, Grid, Ebad, 0.0)
     end
 
 end

@@ -417,6 +417,79 @@ end
     rm("FreeSurf2D_off", recursive=true, force=true)
 end
 
+# -----------------------------
+# Overpressure time-loop integration: the physical ΔP_crit trigger
+# (step_overpressure!) wired into the loop via MTK_erupt!, in place of the
+# kinematic V_crit trigger. A short, self-contained run (deflate + free
+# surface enabled) that injects hot magma until the chamber overpressure
+# reaches ΔP_crit and drains. mass_budget and enthalpy (P0 conservation
+# diagnostics) are re-measured on this run, as they were for the kinematic
+# trigger.
+# -----------------------------
+@testset "Overpressure time-loop" begin
+    Mat_op = (SetMaterialParams(Name="Air", Phase=0,
+                                Density      = ConstantDensity(ρ=2700kg/m^3),
+                                LatentHeat   = ConstantLatentHeat(Q_L=0.0J/kg),
+                                Conductivity = ConstantConductivity(k=3Watt/K/m),
+                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
+                                Melting      = SmoothMelting(MeltingParam_4thOrder())),
+              SetMaterialParams(Name="Crust", Phase=1,
+                                Density      = ConstantDensity(ρ=2700kg/m^3),
+                                LatentHeat   = ConstantLatentHeat(Q_L=3.13e5J/kg),
+                                Conductivity = T_Conductivity_Whittington_parameterised(),
+                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
+                                Melting      = SmoothMelting(MeltingParam_4thOrder())))
+
+    Num_op = NumParam(Nx=65, Nz=65, W=10e3, H=10e3,
+                      SimName="ErruptOP2D", axisymmetric=false,
+                      maxTime_Myrs=0.001, fac_dt=0.2, ω=0.5, verbose=false,
+                      flux_bottom_BC=false, Geotherm=30/1e3, TrackTracersOnGrid=true,
+                      SaveOutput_steps=100000, CreateFig_steps=100000,
+                      plot_tracers=false, advect_polygon=false, USE_GPU=USE_GPU)
+    Sill_op = SillParams(
+                sill=EllipticalIntrusion(Center=Point2(5.0e3, -5.0e3) * m, W=2e3 * m, H=600.0 * m),
+                InjectionInterval_year=100, nTr_dike=100, SillPhase=1, BackgroundPhase=1)
+
+    # β_r is deliberately soft (a stiffer, more realistic β_r~1e10 would need a
+    # much longer run to reach ΔP_crit=20e6 from this tiny domain's recharge).
+    Erupt_op = EruptionParams(erupt=true, ϕ_erupt=0.5, overpressure=true, magma_phase=1,
+                              deflate=true, β_r=1e8, η_r=1e15, ΔP_crit=20e6, ρ_melt=2600.0)
+    FS_op = FreeSurfaceParams(free_surface=true, air_phase=0, Tair=0.0, z0=-2000.0)
+
+    H_before = enthalpy(zeros(Num_op.Nx,Num_op.Nz).+700.0, fill(2700.0,Num_op.Nx,Num_op.Nz),
+                        fill(1000.0,Num_op.Nx,Num_op.Nz), fill(3.13e5,Num_op.Nx,Num_op.Nz),
+                        zeros(Num_op.Nx,Num_op.Nz), CreateGrid(size=(Num_op.Nx,Num_op.Nz), extent=(Num_op.W,Num_op.H)))
+
+    Grid, Arrays_op, _, Dikes_op, _ = MTK_GMG_2D.MTK_GeoParams_2D(Mat_op, Num_op, Sill_op;
+                                                                  Erupt=Erupt_op, FS=FS_op)
+
+    @test Erupt_op.overpressure == true
+    @test Erupt_op.n_eruptions ≥ 1                                    # the ΔP_crit trigger actually fired
+    @test Erupt_op.erupted_volume > 0
+    @test length(Erupt_op.eruption_times)   == Erupt_op.n_eruptions
+    @test length(Erupt_op.eruption_volumes) == Erupt_op.n_eruptions
+    @test all(isfinite, Arrays_op.Tnew)
+    @test Erupt_op.chamber.init                                       # chamber ODE ran
+
+    # mass_budget: injected/erupted/Δsurface are only like-for-like volumes in
+    # 3D (see mass_budget's docstring); in this 2D run they merely bound the
+    # scale of the conservation gap, so the tolerance is loose (order-1, not a
+    # tight zero) — it catches a broken/blown-up run, not a small residual.
+    mb = mass_budget(Dikes_op.InjectVol, Erupt_op.erupted_volume, FS_op.z_surf, FS_op.z0, Grid)
+    @test all(isfinite, (mb.injected, mb.erupted, mb.Δsurface, mb.residual))
+    @test abs(mb.rel_residual) < 1.0
+
+    # enthalpy drift: compare the pre-run background state (uniform T=700°C,
+    # no melt) against the final state. A finite, moderate drift is expected
+    # (hot magma is injected and only partly erupted); this is a measurement,
+    # not a conservative-remap correctness claim (see enthalpy's docstring).
+    H_after = enthalpy(Arrays_op.Tnew, Arrays_op.Rho, Arrays_op.Cp, Arrays_op.Hl, Arrays_op.ϕ, Grid)
+    @test isfinite(H_after)
+    @test abs(H_after - H_before)/abs(H_before) < 1.0
+
+    rm("ErruptOP2D", recursive=true, force=true)
+end
+
 # remove directory created by this test
 rm("ZASSy_Geneva_9_1e_6", recursive=true, force=true)
 rm("Unzen1", recursive=true, force=true)

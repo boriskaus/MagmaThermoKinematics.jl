@@ -16,7 +16,7 @@ using MagmaThermoKinematics.Grid
 import MagmaThermoKinematics: NumericalParameters, SillParameters, TimeDependentProperties
 import MagmaThermoKinematics: update_Tvec!, inject_sills, km³, kyr, Myr
 import MagmaThermoKinematics: PhasesFromTracers!
-import MagmaThermoKinematics: erupt_magma!, EruptionParameters
+import MagmaThermoKinematics: erupt_magma!, EruptionParameters, magma_density_fn
 import MagmaThermoKinematics: FreeSurfaceParameters, init_free_surface, apply_free_surface!, advect_surface!, advect_phases!
 import MagmaThermoKinematics: stamp_phase_inside_sill!
 SecYear = 3600*24*365.25;
@@ -126,22 +126,44 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
 end
 
 """
-    fired = MTK_erupt!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructVector, Erupt::EruptionParameters)
+    fired = MTK_erupt!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructVector, Erupt::EruptionParameters, FS::FreeSurfaceParameters, Mat_tup::Tuple, Dikes::SillParameters)
 
 Optional eruption callback, invoked once per timestep from the 2D/3D time loop.
 
-When `Erupt.erupt` is `true` it evaluates the eruptible volume and, when it reaches
-`Erupt.V_crit`, removes melt thermally — and optionally deflates the chamber — via
+When `Erupt.erupt` is `true` it evaluates the eruption trigger and, once it
+fires, removes melt thermally — and optionally deflates the chamber — via
 [`erupt_magma!`](@ref), writing the mutated `T`, `ϕ` and `dϕdT` fields back into
 `Arrays`. It is a no-op (returns `false`) when eruptions are disabled. Returns
 `true` when an eruption occurred. Overwrite this in your own code to customize
 eruption behaviour.
+
+When `Erupt.overpressure` is also `true`, this callback additionally builds the
+`ρ(T_K, ϕ, P)` density callback ([`magma_density_fn`](@ref)) from
+`Mat_tup[Erupt.magma_phase]`'s `Density` and `Solubility` laws, and the
+recharge mass rate `Ṁ_in` from the change in `Dikes.InjectVol` since the last
+step (× `Erupt.ρ_melt`, guarded by `Erupt._InjectVol_prev` against
+double-counting), then passes them through to `erupt_magma!` along with
+`Num.dt`.
 """
-function MTK_erupt!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructVector, Erupt::EruptionParameters, FS::FreeSurfaceParameters)
+function MTK_erupt!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructVector, Erupt::EruptionParameters, FS::FreeSurfaceParameters, Mat_tup::Tuple, Dikes::SillParameters)
     Erupt.erupt || return false
 
     # when a moving free surface is active, let the eruption deflation subside it
     z_surf = FS.free_surface ? FS.z_surf : nothing
+
+    Δt   = Num.dt
+    ρ_fn = nothing
+    Ṁ_in = 0.0
+    if Erupt.overpressure
+        Erupt.magma_phase < 0 && error("MTK_erupt!: Erupt.overpressure=true requires Erupt.magma_phase to be set to a valid Mat_tup phase index")
+        idx = findfirst(mp -> mp.Phase == Erupt.magma_phase, Mat_tup)
+        idx === nothing && error("MTK_erupt!: no Mat_tup entry has Phase == Erupt.magma_phase = $(Erupt.magma_phase)")
+        density = Mat_tup[idx].Density[1]
+        solub   = isempty(Mat_tup[idx].Solubility) ? nothing : Mat_tup[idx].Solubility[1]
+        ρ_fn    = magma_density_fn(density, solub, Erupt)
+        Ṁ_in    = (Dikes.InjectVol - Erupt._InjectVol_prev)/Δt * Erupt.ρ_melt
+        Erupt._InjectVol_prev = Dikes.InjectVol
+    end
 
     # `erupt_magma!` works on CPU `Array`s. On the CPU backend `Arrays.*` already
     # ARE plain CPU arrays, so we hand them straight to `erupt_magma!` and let it
@@ -154,7 +176,8 @@ function MTK_erupt!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters
         ϕ_cpu    = Array(Arrays.ϕ)
         dϕdT_cpu = Array(Arrays.dϕdT)
         Ph_cpu   = Num.deform_hostrock ? Array(Arrays.Phases) : nothing
-        fired    = erupt_magma!(T_cpu, ϕ_cpu, dϕdT_cpu, Tracers, Grid, Erupt, Num.time; z_surf=z_surf, Phases=Ph_cpu)
+        fired    = erupt_magma!(T_cpu, ϕ_cpu, dϕdT_cpu, Tracers, Grid, Erupt, Num.time;
+                                 z_surf=z_surf, Phases=Ph_cpu, Δt=Δt, ρ=ρ_fn, Ṁ_in=Ṁ_in)
         if fired
             Arrays.T    .= DataArray(T_cpu)
             Arrays.ϕ    .= DataArray(ϕ_cpu)
@@ -164,7 +187,8 @@ function MTK_erupt!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters
         return fired
     else
         Ph = Num.deform_hostrock ? Arrays.Phases : nothing
-        return erupt_magma!(Arrays.T, Arrays.ϕ, Arrays.dϕdT, Tracers, Grid, Erupt, Num.time; z_surf=z_surf, Phases=Ph)
+        return erupt_magma!(Arrays.T, Arrays.ϕ, Arrays.dϕdT, Tracers, Grid, Erupt, Num.time;
+                             z_surf=z_surf, Phases=Ph, Δt=Δt, ρ=ρ_fn, Ṁ_in=Ṁ_in)
     end
 end
 
@@ -205,10 +229,18 @@ function MTK_free_surface!(Arrays::NamedTuple, Grid::GridData, Num::NumericalPar
     isnothing(FS.z_surf) && (FS.z_surf = init_free_surface(Grid; z0=FS.z0, topography=FS.topography))
     z_surf = FS.z_surf
 
-    # (1) injection inflation: raise the surface once per new sill injection
+    # (1) injection inflation: raise the surface once per new sill injection, by
+    # exactly the injected volume. The InjectSills displacement field is
+    # full-space (symmetric about the sill plane), so only part of the injected
+    # volume expresses at the surface; `conserve_volume` rescales it so the
+    # surface rises by the whole injected amount (free-surface correction). The
+    # target is the sill's 3D volume in 3D, and its per-unit-depth cross-section
+    # (`area`) in 2D, matching the dimension of the surface integral.
     if hasproperty(Dikes, :sill) && !isnothing(Dikes.sill) && Dikes.sill_inj > FS._last_inj
         FS._last_inj = Dikes.sill_inj
-        advect_surface!(z_surf, _injection_Dz(Grid, Dikes.sill), Grid)
+        injected = length(Grid.coord1D) == 2 ? ustrip(InjectSills.area(Dikes.sill)) :
+                                               ustrip(InjectSills.volume(Dikes.sill))
+        advect_surface!(z_surf, _injection_Dz(Grid, Dikes.sill), Grid; conserve_volume = injected)
     end
 
     # (2) stamp air above the (possibly updated) topography — and back-fill rock

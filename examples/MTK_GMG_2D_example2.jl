@@ -21,7 +21,7 @@ using GeophysicalModelGenerator
 using GeoParams, Random
 using Plots                             # plots
 using MagmaThermoKinematics.MTK_GMG     # Allow overwriting user routines
-
+using InjectSills
 
 # Model setup
 println(" --- Generating Setup --- ")
@@ -39,7 +39,8 @@ if false
 
     save_GMG("Topo_cart", Topo_cart)
 end
-Topo_cart = load_GMG("Topo_cart")
+# Topo_cart = load_GMG("Topo_cart")
+Topo_cart = load_GMG("examples/Topo_cart")
 
 # Create 3D grid of the region
 X,Y,Z       =   xyz_grid(-23:.1:23,-19:.1:19,-20:.1:5)
@@ -145,6 +146,8 @@ end
 
 # Define numerical parameters
 Num         = NumParam( SimName             =   "Unzen1",
+                        # Nx                  =   64,
+                        Nz                  =   64,
                         dim                 =   2,
                         maxTime_Myrs        =   0.005,
                         SaveOutput_steps    =   25,
@@ -152,7 +155,8 @@ Num         = NumParam( SimName             =   "Unzen1",
                         USE_GPU             =   USE_GPU,
                         ω                   =   0.5,
                         AddRandomSills      =   true,
-                        RandomSills_timestep=   5);
+                        RandomSills_timestep=   5,
+                        deform_hostrock=   false);
 
 # Default setup: ElasticDike equivalent via PennyShapedSill.
 sill = PennyShapedSill(Center=Point2(0.0, -7.0e3) * m, W=2.5e3 * m, H=250 * m, E=1.5e10 * Pa, ν=0.3 * NoUnits)
@@ -173,6 +177,48 @@ Sill_params = SillParams(
     SillsAbove              = -10e3,
 )
 
+Erupt = EruptionParams(
+    erupt            = true,
+    ϕ_erupt          = 0.5,        # mobile-melt threshold
+    V_crit_km3       = 10e0,       # critical eruptible volume [km³, 3D]
+    erupt_efficiency = 0.5,        # fraction of mobile melt withdrawn per event
+    deflate          = true,       # also subside the chamber (deflation_model defaults to :local_mogi)
+    out_of_plane_3D  = true,       # 2D eruptible volume → 3D via Gaussian out-of-plane (km³)
+    T_min            = 0.0,        # floor for the thermal-extraction cooling
+)
+
+# --- topography along the cross-section, as a *function* f(x) [m, z up] ---------------
+# Built at Data_2D's own resolution (size(Ph)), NOT at Num.Nx/Num.Nz: at this point
+# Num.Nx/Nz are still the NumParam defaults — Setup_Model_CartData only sets them to the
+# real model size *inside* MTK_GeoParams_2D. Passing a function (instead of a length-Nx
+# array) keeps this Nx/Ny-agnostic: init_free_surface evaluates f at the actual model
+# grid coordinates, so the same topography works at 810×540, 201×201 or 64×64 without
+# allocating a resolution-sized array or having to match lengths.
+Ph        = Data_2D.fields.Phases
+Nxd, Nzd  = size(Ph)
+xprof     = reshape(Data_2D.x.val, Nxd, Nzd)[:, 1] .* 1e3        # section x [m] (same frame as the model grid: CreateGrid uses extrema(x))
+zcol      = reshape(Data_2D.z.val, Nxd, Nzd)[1, :] .* 1e3        # z down a column [m], increasing up
+Bmat      = reshape(Below,         Nxd, Nzd)                     # below-surface mask, same (Nx,Nz) grid
+zprof     = map(1:Nxd) do i
+    k = findlast(@view Bmat[i, :])                              # topmost below-surface cell
+    isnothing(k) ? zcol[1] : zcol[k]                            # fallback: domain floor
+end
+
+# linear-interpolation closure over the (small, 1D) surface profile
+topography_fun(x) = let xs = xprof, zs = zprof
+    x <= xs[1]   ? zs[1]   :
+    x >= xs[end] ? zs[end] :
+    let j = searchsortedlast(xs, x), t = (x - xs[j]) / (xs[j+1] - xs[j])
+        zs[j] * (1 - t) + zs[j+1] * t
+    end
+end
+
+FS = FreeSurfaceParams(
+    free_surface = true,
+    air_phase    = 0,
+    Tair         = 0.0,
+    topography   = topography_fun,                           # f(x) [m, z up]; evaluated at the real model grid
+)
 # Keep random sill relocation and actual injection in sync.
 if Num.AddRandomSills
     Sill_params.InjectionInterval = Num.dt * Num.RandomSills_timestep
@@ -206,4 +252,76 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
                 )
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Sill_params, CartData_input=Data_2D, time_props=TimeDepProps1()); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Sill_params, CartData_input=Data_2D, time_props=TimeDepProps1();  Erupt=Erupt, FS=FS); # start the main code
+
+println("Done: $(Erupt.n_eruptions) eruptions, total erupted melt = " *
+        "$(round(Erupt.erupted_volume/1e9, digits=3)) km³; " *
+        "final surface min/max = $(round(minimum(FS.z_surf)/1e3,digits=3)) / " *
+        "$(round(maximum(FS.z_surf)/1e3,digits=3)) km")
+
+
+using ZirconGrowth
+cargo = Tracers[Tracers.erupted];
+age_years, zircon_radius_um = simulate_zircon_growth_from_tracers(cargo)
+
+
+# age_years_full, zircon_radius_um_full, results_full = simulate_zircon_growth_from_tracers(
+    # cargo; return_results = true)
+
+# ---------------------------------------------------------------------------
+# Summary figure: erupted volume, eruption times, and the erupted-zircon age
+# distribution.
+#   • Erupt.eruption_times   — eruption time of each event [s]
+#   • Erupt.eruption_volumes — erupted melt volume of each event [m³]
+#   • age_years              — volume-averaged crystallisation age (years before
+#                              the END of the run) of each successfully grown
+#                              cargo zircon. `simulate_zircon_growth_from_tracers`
+#                              skips tracers with <2 Tt-points, so age_years can
+#                              be shorter than `cargo`; we rebuild the matching
+#                              per-tracer eruption time with the SAME rule so the
+#                              two arrays stay aligned.
+# ---------------------------------------------------------------------------
+if Erupt.n_eruptions == 0
+    println("No eruptions occurred — nothing to plot.")
+else
+    t_erupt_kyr = Erupt.eruption_times   ./ SecYear ./ 1e3      # eruption time [kyr]
+    V_erupt_km3 = Erupt.eruption_volumes ./ 1e9                 # per-event erupted V [km³]
+    V_cum_km3   = cumsum(V_erupt_km3)                           # cumulative erupted V [km³]
+
+    cargo_ok = [tr for tr in cargo if length(tr.time_vec) >= 2] # same skip rule as the ext
+    t_zr_kyr = Float64[tr.time_vec[end]*1e3 for tr in cargo_ok] # eruption time of each zircon [kyr]
+    age_kyr  = age_years ./ 1e3                                 # zircon age [kyr]
+
+    psum = plot(layout=(3,1), size=(820,920), left_margin=8Plots.mm)
+
+    # (1) erupted volume over time — per-event sticks + cumulative on a twin axis
+    plot!(psum[1], t_erupt_kyr, V_erupt_km3, seriestype=:sticks, lw=2, c=:steelblue,
+          marker=:circle, ms=5, label="per eruption", legend=:topleft,
+          xlabel="time [kyr]", ylabel="erupted V [km³]", title="Erupted volume over time")
+    pcum = twinx(psum[1])
+    plot!(pcum, t_erupt_kyr, V_cum_km3, lw=2, c=:firebrick, marker=:diamond, ms=4,
+          ylabel="cumulative V [km³]", label="cumulative", legend=:bottomright)
+
+    # (2) erupted-zircon age distribution
+    if isempty(age_kyr)
+        plot!(psum[2], framestyle=:none, title="No grown zircons (cargo Tt-paths too short)")
+    else
+        histogram!(psum[2], age_kyr, bins=25, c=:darkorange, alpha=0.85, label="",
+                   xlabel="zircon age [kyr] (before end of run)", ylabel="count",
+                   title="Erupted-zircon age distribution (n=$(length(age_kyr)))")
+        vline!(psum[2], [sum(age_kyr)/length(age_kyr)], lw=2, c=:black, ls=:dash, label="mean")
+    end
+
+    # (3) zircon age vs the time it erupted
+    if !isempty(age_kyr)
+        scatter!(psum[3], t_zr_kyr, age_kyr, ms=3, alpha=0.4, c=:purple, label="",
+                 xlabel="eruption time [kyr]", ylabel="zircon age [kyr]",
+                 title="Zircon age vs eruption time")
+    end
+
+    figpath = joinpath(Num.SimName, "eruption_zircon_summary.png")
+    savefig(psum, figpath)
+    display(psum)
+    println("Saved summary figure to: $figpath  " *
+            "($(Erupt.n_eruptions) eruptions, $(length(age_kyr)) zircons grown)")
+end

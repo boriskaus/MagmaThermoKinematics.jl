@@ -2,6 +2,7 @@
 
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://boriskaus.github.io/MagmaThermoKinematics.jl/dev/)
 [![Build Status](https://github.com/boriskaus/MagmaThermoKinematics.jl/workflows/CI/badge.svg)](https://github.com/boriskaus/MagmaThermoKinematics.jl/actions)
+[![version](https://juliahub.com/docs/General/MagmaThermoKinematics/stable/version.svg)](https://juliahub.com/ui/Packages/General/MagmaThermoKinematics)
 [![DOI](https://zenodo.org/badge/337510164.svg)](https://zenodo.org/badge/latestdoi/337510164)
 [![codecov](https://codecov.io/gh/boriskaus/MagmaThermoKinematics.jl/graph/badge.svg?token=RHOL3SU2YE)](https://codecov.io/gh/boriskaus/MagmaThermoKinematics.jl)
 
@@ -9,13 +10,17 @@ Understanding how magmatic systems work is of interest to a wide range of Earth 
 
 This easy to use and versatile package simulates the thermal evolution of magmatic systems following the intrusion of dikes and sills. It can take 2D, 2D axisymmetric and 3D geometries into account, and works on both parallel CPU's and GPU's. A finite difference discretization is employed for the energy equation, combined with semi-Lagrangian advection and tracers to track the thermal evolution of emplaced magma. Dikes are emplaced kinematically and the host rock is shifted to accommodate space for the intruding dikes/sills, in a number of ways including by using analytical models for penny-shaped cracks in elastic media. Cooling, crystallizing and latent heat effects are taken into account, and the thermal evolution of tracers can be used to simulate zircon age distributions.
 
-Below we give a number of example scripts that show how it can be used to simulate a number of scenarios.
+Magma can also be *removed* from the system: eruptions fire either on a kinematic eruptible-volume criterion or on a physical chamber-overpressure balance following [Degruyter & Huber (2014)](https://doi.org/10.1016/j.epsl.2014.06.047), and optionally deflate the chamber with a volume-conserving displacement field. A kinematic free surface, initialized flat or from real topography, is advected by the same host-rock displacements, so both intrusion and eruption deform the ground surface.
+
+Below we give a number of example scripts that show how it can be used to simulate a number of scenarios. The [documentation](https://boriskaus.github.io/MagmaThermoKinematics.jl/dev/) describes the governing equations and the numerical scheme, the eruption and free-surface models, and the full API.
 
 ## Contents
 - [MagmaThermoKinematics.jl](#magmathermokinematicsjl)
   - [Contents](#contents)
   - [100-lines 2D example](#100-lines-2d-example)
   - [100-lines 3D example](#100-lines-3d-example)
+  - [Eruptions and free surface](#eruptions-and-free-surface)
+  - [Zircon ages](#zircon-ages)
   - [Dependencies](#dependencies)
   - [Installation](#installation)
   - [Ongoing development](#ongoing-development)
@@ -275,6 +280,30 @@ Time_vec, Melt_Time, Tracers, Grid, Arrays = MainCode_3D(); # start the main cod
 ```
 The result of the script are a range of VTK files, which can be visualized with the 3D software [Paraview](https://www.paraview.org). The full code example can be downloaded [here](./examples/Example3D.jl), and the paraview statefile (to reproduce the movie) is available [here](./examples/movies/Example3D_Paraview.pvsm).
 
+## Eruptions and free surface
+Once a chamber becomes eruptible — melt fraction above a threshold `ϕ_erupt` — melt can be withdrawn from the domain. Two trigger models are available through `EruptionParams`:
+
+- **Kinematic**: an eruption fires once the eruptible volume reaches `V_crit`, removing a fixed fraction `erupt_efficiency` of the eruptible melt.
+- **Physical**: the chamber overpressure `ΔP` is integrated every timestep from a recharge / crystallization / wall-relaxation balance following Degruyter & Huber (2014), and the chamber drains when `ΔP` reaches `ΔP_crit`. The erupted volume is then set by the elastic and thermodynamic storage the crossed overpressure represents, rather than by a tuned efficiency.
+
+Either trigger optionally deflates the chamber with a volume-conserving displacement field (column subsidence, or a superposition of local Mogi kernels), and freezes a corresponding fraction of tracers so their T-t paths record the eruption instant.
+
+The top of the domain can be tracked as a kinematic free surface, initialized flat or from a topography array or function, and advected by the same host-rock displacements that emplace sills and deflate the chamber. Injection therefore uplifts and eruption subsides the ground surface. `mass_budget` and `enthalpy` are provided as conservation diagnostics.
+
+Four self-contained example scripts cover both triggers in 2D and 3D, including a run on real downloaded topography:
+
+```
+examples/MTK_GMG_2D_Eruption_Kinematic.jl
+examples/MTK_GMG_2D_Eruption_DegruyterHuber.jl
+examples/MTK_GMG_3D_Eruption_DegruyterHuber_FlatTopo.jl
+examples/MTK_GMG_3D_Eruption_DegruyterHuber_Lanin.jl
+```
+
+See the [Eruptions](https://boriskaus.github.io/MagmaThermoKinematics.jl/dev/man/eruptions) and [Free Surface](https://boriskaus.github.io/MagmaThermoKinematics.jl/dev/man/free_surface) documentation for the governing equations.
+
+## Zircon ages
+The temperature-time path recorded by every tracer can be converted into zircon age distributions in three ways: the "UCLA" method of Oscar Lovera, the "Geneva" method of Gregor Weber and coworkers (both benchmarked in Schmitt et al., 2023, and implemented in `examples/Plot_ZirconAgeStatistics.jl`), and an explicit 1D radially-symmetric crystal-growth model provided by [ZirconGrowth.jl](https://github.com/JuliaGeodynamics/ZirconGrowth.jl). The last is loaded automatically as a package extension when you do `using ZirconGrowth`; see the [Zircon ages](https://boriskaus.github.io/MagmaThermoKinematics.jl/dev/man/zircon_growth) documentation.
+
 ## Dependencies
 We rely on [ParallelStencil.jl](https://github.com/omlins/ParallelStencil.jl) for the energy solver, [GeoParams.jl](https://github.com/JuliaGeodynamics/GeoParams.jl) to define material properties (such as nonlinear conductivity, melting, etc.), [InjectSills.jl](https://github.com/JuliaGeodynamics/InjectSills.jl) to kinematically emplace dikes and sills (penny-shaped cracks, elliptical intrusions, cylindrical top-accreting bodies), [StructArrays.jl](https://github.com/JuliaArrays/StructArrays.jl) to generate an array of tracer structures, [Random.jl](https://docs.julialang.org/en/v1/stdlib/Random/) for random number generation, [Parameters.jl](https://github.com/mauro3/Parameters.jl) to simplify setting parameters, [Interpolations.jl](https://github.com/JuliaMath/Interpolations.jl) to interpolate properties such as temperature from a fixed grid to tracers, and [StaticArrays.jl](https://github.com/JuliaArrays/StaticArrays.jl) for speed. All these dependencies should be installed automatically if you install `MagmaThermoKinematics.jl`.
 
@@ -327,7 +356,7 @@ MagmaThermoKinematics was benchmarked versus the code of the UCLA group (Oscar L
 Note that quite large differences in the thermal structure can occur, even for the same magma flux, depending on the *assumption* you make on where and how magma is intruded (underplating, central injection, injection through dikes). Often, but not always, this difference is larger than the effect of using different material parameters.
 
 ## Related work
-Thermal-kinematic codes such as the ones presented here have been around for some time with various degrees of sophistication (e.g., [1],[2],[3],[4],[5]). A recent effort in Julia, similar to what we do here, is described in [6].
+Thermal-kinematic codes such as the ones presented here have been around for some time with various degrees of sophistication (e.g., [1],[2],[3],[4]). A recent effort in Julia, similar to what we do here, is described in [5].
 
 Yet, as far as we are aware, the source code of these other packages is currently not openly available (at least not in a non-binary format), which makes it often non-straightforward to understand what is actually done under the hood. No existing code works in 3D and can take advantage of GPU's.
 
@@ -335,11 +364,11 @@ Yet, as far as we are aware, the source code of these other packages is currentl
 
 [2] Annen, C., Blundy, J. D., & Sparks, R. S. J. (2006). The genesis of intermediate and silicic magmas in deep crustal hot zones. *Journal of Petrology*. 47(3), 505–539. [https://doi.org/10.1093/petrology/egi084](https://doi.org/10.1093/petrology/egi084)
 
-[4] Caricchi, L., Annen, C., Blundy, J., Simpson, G., & Pinel, V. (2014). Frequency and magnitude of volcanic eruptions controlled by magma injection and buoyancy. *Nature Geoscience*, 7, 126–130. [https://doi.org/10.1038/NGEO2041](https://doi.org/10.1038/NGEO2041)
+[3] Caricchi, L., Annen, C., Blundy, J., Simpson, G., & Pinel, V. (2014). Frequency and magnitude of volcanic eruptions controlled by magma injection and buoyancy. *Nature Geoscience*, 7, 126–130. [https://doi.org/10.1038/NGEO2041](https://doi.org/10.1038/NGEO2041)
 
-[5] Tierney, C. R., Schmitt, A. K., Lovera, O. M., & de Silva, S. L. (2016). Voluminous plutonism during a period of volcanic quiescence revealed by thermochemical modeling of zircon. *Geology*, 44, 683–686. [https://doi.org/10.1130/G37968.1](https://doi.org/10.1130/G37968.1)
+[4] Tierney, C. R., Schmitt, A. K., Lovera, O. M., & de Silva, S. L. (2016). Voluminous plutonism during a period of volcanic quiescence revealed by thermochemical modeling of zircon. *Geology*, 44, 683–686. [https://doi.org/10.1130/G37968.1](https://doi.org/10.1130/G37968.1)
 
-[6] Melnik, O.E., Utkin, I.S., Bindeman, I.N., 2021. Magma Chamber Formation by Dike Accretion and Crustal Melting: 2D Thermo‐Compositional Model With Emphasis on Eruptions and Implication for Zircon Records. *J Geophys Res Solid Earth* 126. [https://doi.org/10.1029/2021JB023008](https://doi.org/10.1029/2021JB023008). A preprint of their work is available [here](https://www.essoar.org/doi/10.1002/essoar.10505594.1).
+[5] Melnik, O.E., Utkin, I.S., Bindeman, I.N., 2021. Magma Chamber Formation by Dike Accretion and Crustal Melting: 2D Thermo‐Compositional Model With Emphasis on Eruptions and Implication for Zircon Records. *J Geophys Res Solid Earth* 126. [https://doi.org/10.1029/2021JB023008](https://doi.org/10.1029/2021JB023008). A preprint of their work is available [here](https://www.essoar.org/doi/10.1002/essoar.10505594.1).
 
 
 ## Citing MagmaThermoKinematics.jl

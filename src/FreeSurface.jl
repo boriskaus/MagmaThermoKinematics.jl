@@ -186,7 +186,43 @@ end
 end
 
 """
-    advect_surface!(z_surf, Dz, Grid::GridData; clamp_to_domain=true)
+    mass_budget(injected, erupted, z_surf, z_surf0, Grid::GridData)
+
+Conservation diagnostic for the kinematic free surface. If the host-rock
+displacement that opens sills (inflation) and deflates the chamber (eruption)
+conserves volume, the net magma added underground equals the volume swept by the
+ground surface:
+
+    injected − erupted == Σ (z_surf − z_surf0) · dA
+
+with `dA = Δx` in 2D (per-unit-depth) and `dA = Δx·Δy` in 3D. `injected` is the
+cumulative injected volume (`SillParams.InjectVol`), `erupted` the cumulative
+erupted volume (`EruptionParams.erupted_volume`), and `z_surf0` a copy of the
+surface taken before the run (scalar or array).
+
+Returns `(; injected, erupted, Δsurface, residual, rel_residual)` where
+`residual = injected − erupted − Δsurface` and `rel_residual` normalizes by the
+largest term. **The residual is a like-for-like conservation error only in 3D**,
+where all three terms are volumes [m³]. In 2D `injected`/`erupted` are 3D volumes
+while `Δsurface` is a per-unit-depth area [m²], so the terms are not dimensionally
+comparable — use the 3D check to test conservation.
+"""
+function mass_budget(injected::Real, erupted::Real,
+                     z_surf::AbstractArray, z_surf0, Grid::GridData)
+    Δ  = Grid.Δ
+    dA = length(Grid.N) == 2 ? Δ[1] : Δ[1] * Δ[2]
+    Δsurface = 0.0
+    @inbounds for i in eachindex(z_surf)
+        z0 = z_surf0 isa AbstractArray ? z_surf0[i] : z_surf0
+        Δsurface += (z_surf[i] - z0) * dA
+    end
+    residual = injected - erupted - Δsurface
+    scale = max(abs(injected), abs(erupted), abs(Δsurface), eps())
+    return (; injected, erupted, Δsurface, residual, rel_residual = residual / scale)
+end
+
+"""
+    advect_surface!(z_surf, Dz, Grid::GridData; clamp_to_domain=true, conserve_volume=nothing)
 
 Advect the free surface vertically by the host-rock displacement field `Dz`
 (same shape as the temperature field), sampled at the current surface elevation
@@ -194,26 +230,47 @@ of each column (nearest vertical node). Injection inflation (`Dz>0`) raises the
 surface; eruption deflation (`Dz<0`) lowers it. With `clamp_to_domain=true` the
 surface is kept within the grid's vertical extent `[z₁, zₙ]`. Mutates and
 returns `z_surf`.
+
+`conserve_volume` (a target volume, or `nothing`) rescales the per-column surface
+displacement so that `Σ (z_surf−z_surf0)·dA` equals that target (`dA = Δx` in 2D
+per-unit-depth, `Δx·Δy` in 3D). This is needed for **injection inflation**: the
+`InjectSills` sill displacement fields are evaluated symmetrically about the sill
+plane (full-space), so only *half* the injected volume expresses as surface
+uplift; normalizing to the injected volume makes the surface rise by exactly the
+injected volume — the free-surface (method-of-images) correction — and closes the
+`mass_budget`. Eruption deflation is already volume-exact (`erupt_magma!`
+prescribes the subsidence directly) and passes `nothing`.
 """
-function advect_surface!(z_surf::AbstractArray, Dz::AbstractArray, Grid::GridData; clamp_to_domain::Bool=true)
+function advect_surface!(z_surf::AbstractArray, Dz::AbstractArray, Grid::GridData;
+                         clamp_to_domain::Bool=true, conserve_volume::Union{Nothing,Real}=nothing)
     coord = Grid.coord1D
     dim   = length(coord)
+    dim in (2, 3) || error("advect_surface!: only 2D and 3D grids are supported (got $(dim)D)")
     z     = coord[end]
     zlo, zhi = min(z[1], z[end]), max(z[1], z[end])
+
+    # per-column surface displacement, sampled at the node nearest the surface
+    disp = similar(z_surf, float(eltype(z_surf)))
     if dim == 2
         @inbounds for i in eachindex(z_surf)
-            k          = _znearest(z_surf[i], z)
-            z_surf[i] += Dz[i,k]
-            clamp_to_domain && (z_surf[i] = clamp(z_surf[i], zlo, zhi))
-        end
-    elseif dim == 3
-        @inbounds for j in axes(z_surf, 2), i in axes(z_surf, 1)
-            k            = _znearest(z_surf[i,j], z)
-            z_surf[i,j] += Dz[i,j,k]
-            clamp_to_domain && (z_surf[i,j] = clamp(z_surf[i,j], zlo, zhi))
+            disp[i] = Dz[i, _znearest(z_surf[i], z)]
         end
     else
-        error("advect_surface!: only 2D and 3D grids are supported (got $(dim)D)")
+        @inbounds for j in axes(z_surf, 2), i in axes(z_surf, 1)
+            disp[i,j] = Dz[i,j, _znearest(z_surf[i,j], z)]
+        end
+    end
+
+    if conserve_volume !== nothing
+        dA = dim == 2 ? (coord[1][2]-coord[1][1]) :
+                        (coord[1][2]-coord[1][1])*(coord[2][2]-coord[2][1])
+        V  = sum(disp)*dA
+        (isfinite(V) && V != 0) && (disp .*= conserve_volume / V)
+    end
+
+    @inbounds for i in eachindex(z_surf)
+        z_surf[i] += disp[i]
+        clamp_to_domain && (z_surf[i] = clamp(z_surf[i], zlo, zhi))
     end
     return z_surf
 end

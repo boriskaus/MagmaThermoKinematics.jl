@@ -35,7 +35,7 @@
 using Test
 using MagmaThermoKinematics
 using MagmaThermoKinematics: init_free_surface, apply_free_surface!, advect_surface!,
-                             advect_phases!, eruptible_volume, CreateGrid
+                             advect_phases!, eruptible_volume, mass_budget, CreateGrid
 
 @testset "FreeSurface" begin
 
@@ -271,6 +271,37 @@ using MagmaThermoKinematics: init_free_surface, apply_free_surface!, advect_surf
         @test all(zf3 .≈ [-3000.0 + 1e-4*(x3[i]^2 - y3[j]^2) for i in 1:9, j in 1:7])
         @test init_free_surface(G3; topography=collect(zf3)) == zf3
         @test_throws ErrorException init_free_surface(G3; topography=zeros(9,6))
+    end
+
+    # ---- F13: mass_budget conservation diagnostic -----------------------
+    # `mass_budget` reports  residual = injected − erupted − Σ(z_surf−z_surf0)·dA,
+    # with dA = Δx (2D, per-unit-depth) or Δx·Δy (3D). F13 pins the arithmetic and
+    # the 2D/3D area element on a synthetic surface where the answer is exact.
+    @testset "F13 mass_budget" begin
+        # 3D: dA = Δx·Δy, uniform uplift ⇒ Δsurface = uplift·area
+        G   = CreateGrid(size=(5,4,3), extent=(4e3,3e3,2e3))
+        dA  = G.Δ[1]*G.Δ[2]
+        z0  = init_free_surface(G; z0=-1000.0)          # 5×4 flat
+        zs  = z0 .+ 50.0                                # uniform 50 m uplift
+        area = length(z0)*dA
+        b = mass_budget(1.0e9, 4.0e8, zs, z0, G)
+        @test b.Δsurface  ≈ 50.0*area
+        @test b.injected  == 1.0e9
+        @test b.erupted   == 4.0e8
+        @test b.residual  ≈ 1.0e9 - 4.0e8 - 50.0*area
+        @test b.rel_residual ≈ b.residual / max(1.0e9, 4.0e8, 50.0*area)
+        # scalar z_surf0 reference matches an equivalent array reference
+        @test mass_budget(1.0e9, 4.0e8, zs, -1000.0, G).Δsurface ≈ b.Δsurface
+
+        # exact closure: pick erupted so injected−erupted equals Δsurface ⇒ residual 0
+        @test mass_budget(50.0*area, 0.0, zs, z0, G).residual ≈ 0.0 atol=1e-3
+
+        # 2D: dA = Δx (per-unit-depth); non-uniform surface integrated correctly
+        G2  = CreateGrid(size=(6,11), extent=(5e3,10e3))
+        z02 = init_free_surface(G2; z0=-2000.0)         # length-6
+        Δz  = collect(range(0.0, 100.0; length=6))      # sloped uplift
+        zs2 = z02 .+ Δz
+        @test mass_budget(0.0, 0.0, zs2, z02, G2).Δsurface ≈ sum(Δz)*G2.Δ[1]
     end
 
 end

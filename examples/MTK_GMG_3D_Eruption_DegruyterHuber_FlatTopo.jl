@@ -1,18 +1,19 @@
-# Example: a 3D MTK – GMG run with the two newer capabilities wired into the
-# time loop (the 3D analogue of examples/MTK_GMG_2D_FreeSurface_Eruption.jl):
+# Example: a 3D MTK – GMG run with eruption + free-surface evolution, using
+# the *physical* Degruyter & Huber (2014) chamber-overpressure trigger
+# (`EruptionParams.overpressure = true`) and a flat initial free-surface
+# topography (no real terrain — see MTK_GMG_3D_Eruption_DegruyterHuber_Lanin.jl
+# for a version that starts from a downloaded GMT topography).
 #
-#   • Eruptions      (issue 2) — `erupt_magma!` via the `MTK_erupt!` callback:
-#       once the eruptible melt volume reaches `V_crit`, a fraction of the mobile
-#       melt is withdrawn (thermally) and the chamber deflates (column subsidence).
-#       In 3D the eruptible volume is already a true volume, so `V_crit_km3` is a
-#       genuine km³ (the 2D Gaussian out-of-plane lift, `out_of_plane_3D`, is a
-#       no-op here).
-#   • Free surface   (issue 4) — a kinematic sticky-air topography via the
-#       `MTK_free_surface!` callback: sill injection inflates the ground surface,
-#       eruption deflation subsides it, and cells above the topography are
-#       stamped as "air". A moving free surface auto-enables `deform_hostrock`,
-#       so the phase column (host rock + sills) moves with the surface and the
-#       air/rock interface tracks the topography.
+# 3D analogue of MTK_GMG_2D_Eruption_DegruyterHuber.jl. In 3D the eruptible
+# volume is already a true volume, so `V_crit_km3` (unused by the physical
+# trigger) would be a genuine km³ and the 2D Gaussian out-of-plane lift,
+# `out_of_plane_3D`, is a no-op.
+#
+# Part of a 4-script eruption-trigger series:
+#   - MTK_GMG_2D_Eruption_Kinematic.jl                (2D, kinematic V_crit trigger)
+#   - MTK_GMG_2D_Eruption_DegruyterHuber.jl            (2D, physical ΔP_crit trigger)
+#   - MTK_GMG_3D_Eruption_DegruyterHuber_FlatTopo.jl   (this file)
+#   - MTK_GMG_3D_Eruption_DegruyterHuber_Lanin.jl      (3D, physical trigger, real GMT topography)
 
 const USE_GPU=false;
 if USE_GPU
@@ -39,20 +40,22 @@ using MagmaThermoKinematics.MTK_GMG     # Allow overwriting user routines
 
 Random.seed!(1234);     # use the same random seed, such that we can reproduce results
 
-println("Free-surface + eruption example of the MTK - GMG integration (3D)")
+println("Eruption (Degruyter & Huber ΔP_crit trigger) + free-surface example of the MTK - GMG integration (3D, flat topography)")
 
 # ------------------------------------------------------------------
 # Overwrite some of the MTK user callbacks
 # ------------------------------------------------------------------
 
-# Print a short status line, including eruption + surface diagnostics.
+# Print a short status line, including eruption + surface + chamber diagnostics.
 # (Erupt / FS are visible here because this script closes over them below.)
 function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
     if mod(Num.it, 50) == 0
         zmin = isnothing(FS.z_surf) ? NaN : minimum(FS.z_surf)
+        ΔP   = Erupt.chamber.P - Erupt.chamber.P_lith
         println("$(Num.it), t=$(round(Num.time/Num.SecYear/1e3,digits=2)) kyr; " *
                 "max(T)=$(round(maximum(Arrays.Tnew))) °C; " *
                 "n_eruptions=$(Erupt.n_eruptions), erupted=$(round(Erupt.erupted_volume/1e9,digits=3)) km³; " *
+                "ΔP=$(round(ΔP/1e6,digits=2)) MPa (crit=$(Erupt.ΔP_crit/1e6) MPa); " *
                 "min(z_surf)=$(round(zmin/1e3,digits=3)) km")
     end
     return nothing
@@ -106,7 +109,7 @@ Num = NumParam( Nx                   = 100,
                 W                    = 20e3,
                 L                    = 20e3,
                 H                    = 20e3,
-                SimName              = "FreeSurface_Eruption_3D",
+                SimName              = "Eruption3D_DegruyterHuber_FlatTopo",
                 maxTime_Myrs         = 0.02,
                 fac_dt               = 0.2,
                 ω                    = 0.5,
@@ -114,15 +117,7 @@ Num = NumParam( Nx                   = 100,
                 SaveOutput_steps     = 200,
                 USE_GPU              = USE_GPU)
 
-# Sill: a penny-shaped crack at 7 km depth, centred at x = y = 0.
-# NOTE: this uses `PennyShapedSill` (the Sun-1969 penny-crack solution, like
-# examples/MTK_GMG_3D_example.jl) as the well-behaved 3D source (max host-rock
-# displacement ≈ H/2). In InjectSills ≥0.2.1, `W` is a radius and `H` the full
-# thickness: volume = (4/3)π·W²·(H/2). The 3D `EllipticalIntrusion.hostrock_displacement`
-# was grossly oversized in InjectSills 0.2.0 (≫ the H/2 opening it should
-# produce, inflating the free surface by kilometres per injection); this is
-# fixed in InjectSills ≥0.2.1, where EllipticalIntrusion is a usable 3D source
-# once MTK's compat is bumped.
+# Sill: a penny-shaped crack (Sun 1969 solution) at 7 km depth, centred at x = y = 0.
 sill = PennyShapedSill(Center=Point3(0.0e3, 0.0e3, -7.0e3)m, Angle=Vec2(0.0, 0.0)*NoUnits,
                        W=2.5e3m, H=1000m, E=1.5e10Pa, ν=0.3NoUnits)
 
@@ -136,17 +131,31 @@ Sill_params = SillParams(
     SillsAbove             = -12e3,
 )
 
-# Eruption parameters: erupt + deflate once the eruptible volume is reached.
-# Volumes are in km³ (3D). `out_of_plane_3D` is irrelevant in 3D (the eruptible
-# volume is already a true volume) — it only matters for 2D runs.
+# Eruption parameters: physical ΔP_crit trigger. `β_r`/`η_r` are chosen soft
+# (not physically calibrated) so the chamber reaches ΔP_crit within this
+# short demo run — for a real study, calibrate them against the host-rock
+# elastic modulus and a wall-relaxation timescale for your system.
+# `magma_phase` must match a `MatParam` phase whose `Density` drives the
+# chamber-overpressure ODE — here phase 2 ("Intruded rocks"), whose `Density`
+# is a `ThreePhase_Density` (melt+crystal+gas) and `Solubility` a
+# `Liu2005_Solubility`. `m_h2o_total`/`X_co2` combine with that phase's
+# `Solubility` (magma_density_fn) to diagnose the exsolved gas fraction from a
+# 3 wt% total H₂O content, giving the second-boiling pressurization (E4) that
+# a melt+crystal-only density law cannot produce.
 Erupt = EruptionParams(
     erupt            = true,
     ϕ_erupt          = 0.5,        # mobile-melt threshold
     EruptAbove       = -12e3,      # only melt shallower than this is eruptible (excludes deep geotherm melt)
-    V_crit_km3       = 5.0,        # critical eruptible volume [km³]
-    erupt_efficiency = 0.5,        # fraction of mobile melt withdrawn per event
     deflate          = true,       # also subside the chamber (deflation_model defaults to :local_mogi)
     T_min            = 0.0,        # floor for the thermal-extraction cooling
+    overpressure     = true,       # physical ΔP_crit trigger instead of kinematic V_crit
+    magma_phase      = 2,          # Mat_tup phase whose Density/Solubility laws drive the ODE ("Intruded rocks")
+    m_h2o_total      = 0.03,       # total dissolved+exsolved H2O content of the melt [mass fraction]
+    ΔP_crit          = 20e6,       # rock-strength failure overpressure [Pa]
+    β_r              = 1e9,        # host-rock elastic stiffness [Pa] (soft demo value)
+    η_r              = 1e17,       # wall relaxation viscosity [Pa·s] (soft demo value)
+    ΔP_relax         = 2e6,        # overpressure left right after a drain [Pa]
+    ρ_melt           = 2400.0,     # melt density for the recharge mass rate [kg/m³]
 )
 
 # Free-surface parameters: sticky-air topography, starts flat at -2 km
@@ -162,8 +171,7 @@ MatParam = (SetMaterialParams(Name="Air", Phase=0,
                               Density      = ConstantDensity(ρ=2700kg/m^3),
                               LatentHeat   = ConstantLatentHeat(Q_L=0.0J/kg),
                               Conductivity = ConstantConductivity(k=3Watt/K/m),
-                              HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
-                              ),
+                              HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K)),
             SetMaterialParams(Name="Host rock", Phase=1,
                               Density      = ConstantDensity(ρ=2700kg/m^3),
                               LatentHeat   = ConstantLatentHeat(Q_L=2.55e5J/kg),
@@ -171,7 +179,16 @@ MatParam = (SetMaterialParams(Name="Air", Phase=0,
                               HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
                               Melting      = SmoothMelting(MeltingParam_4thOrder())),
             SetMaterialParams(Name="Intruded rocks", Phase=2,
-                              Density      = ConstantDensity(ρ=2700kg/m^3),
+                              # ρgas uses IdealGas_Density, not RedlichKwong_Density: the main
+                              # solver's compute_density_ps! evaluates this Density law at every
+                              # cell/iteration with just (T,P), unconditionally weighting all three
+                              # sub-densities even where ϕ_gas=0 — RedlichKwong_Density is only
+                              # fitted for 873-1173K/30-400MPa and returns NaN outside that window,
+                              # which poisons the mixture even at zero weight (0*NaN = NaN).
+                              Density      = ThreePhase_Density(ρmelt=ConstantDensity(ρ=2300kg/m^3),
+                                                                 ρx=ConstantDensity(ρ=2700kg/m^3),
+                                                                 ρgas=IdealGas_Density()),
+                              Solubility   = Liu2005_Solubility(),  # H2O(-CO2) solubility law (Degruyter & Huber 2014)
                               LatentHeat   = ConstantLatentHeat(Q_L=2.67e5J/kg),
                               Conductivity = T_Conductivity_Whittington_parameterised(),
                               HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),

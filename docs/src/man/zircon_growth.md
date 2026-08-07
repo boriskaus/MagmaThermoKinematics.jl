@@ -1,6 +1,6 @@
 # Compute zircon ages
 
-MagmaThermoKinematics has 3 ways to cpmpute zircon ages:
+MagmaThermoKinematics has 3 ways to compute zircon ages:
 
 1. Following the method of Oscar Lovera ("UCLA" method)
 2. Following the method of Gregor Weber & coworkers ("Geneva" method)
@@ -11,7 +11,7 @@ Method 3 grows a zircon crystal following the temporal cooling history of every 
 
 ## Growing zircon crystals with ZirconGrowth.jl
 
-MagmaThermoKinematics has an optional integration with [ZirconGrowth.jl](https://github.com/JuliaGeodynamics/ZirconGrowth.jl), a package that simulates zircon crystal growth along a magma Tt-path using an implicit finite-difference scheme on a 1-D spherical grid. The integration is implemented as a [Julia package extension](https://pkgdocs.julialang.org/v1/creating-packages/#Conditional-loading-of-code-in-packages-(Extensions)) and is loaded automatically when you do `using ZirconGrowth` in your session.
+MagmaThermoKinematics has an optional integration with [ZirconGrowth.jl](https://github.com/JuliaGeodynamics/ZirconGrowth.jl), a package that simulates zircon crystal growth along a magma $T$–$t$ path using an implicit finite-difference scheme on a 1-D spherical grid. The integration is implemented as a [Julia package extension](https://pkgdocs.julialang.org/v1/creating-packages/#Conditional-loading-of-code-in-packages-(Extensions)) and is loaded automatically when you do `using ZirconGrowth` in your session.
 
 #### Installation
 
@@ -41,7 +41,7 @@ age_years, zircon_radius_um = simulate_zircon_growth_from_tracers(Tracers)
 # Option 3 — single tracer
 result = simulate_zircon_growth_from_tracers(Tracers[1])
 ```
-Note that `ZirconGrowth` simulates how a single zircon crystal grows with with time. `age_years` is a volume-averaged age of the crystal (with age is in years), which one would obtain if measuring the age using the full zircon crystal,
+`ZirconGrowth` simulates how a single zircon crystal grows with time. `age_years` is the volume-averaged age of the crystal, in years — the age one would measure on the whole zircon crystal rather than on a single growth zone.
 
 #### Return values
 

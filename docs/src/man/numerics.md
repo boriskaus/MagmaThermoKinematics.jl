@@ -117,6 +117,12 @@ Three distinct emplacement modes are available for adding new melt to the system
 
 All three modes inject a `Dike` object, update the velocity field $\mathbf{v}$ for one time step (used in the semi-Lagrangian advection step A2a), and add tracer particles at the new melt location.
 
+## Melt Withdrawal and Surface Deformation
+
+The reverse process — removing melt once a chamber becomes eruptible — is handled by the eruption machinery, which offers a kinematic volume trigger and a physical chamber-overpressure trigger, and optionally deflates the chamber with a volume-conserving displacement field. See [Eruptions](eruptions.md).
+
+The top of the domain can be tracked as a kinematic free surface, advected by the same host-rock displacement fields that emplace sills and deflate the chamber, so injection and eruption deform the ground surface. See [Free Surface](free_surface.md).
+
 ## Tracers and Temperature–Time Paths
 
 Passive tracer particles are advected with the host-rock velocity field using the same semi-Lagrangian scheme as the temperature field.  At each time step each tracer records its current temperature, producing a continuous $T$–$t$ path.  These paths are the primary input to the [ZirconGrowth integration](zircon_growth.md).
@@ -135,7 +141,7 @@ Supported configurations include:
 
 Material properties are integrated through GeoParams-based parameterizations and package-level helper routines for conductivity, density, heat capacity, melt fraction, and related quantities.
 
-One of the highlights is that melting parameterizations and material properties can be changed very easily by using GeoParams (see ).
+Melting parameterizations and material properties can be exchanged without touching solver internals; see [Melting Parameterizations](MeltingParameterisations.md) and [Conductivity](ConductivityParameterisations.md) for the available laws.
 
 ### Changing Melting Parameterizations
 
@@ -180,6 +186,6 @@ When your own script uses ParallelStencil macros directly (for example `@zeros` 
 
 If you run this on a CPU, you can run it in parallel by starting julia in multi-threading mode:
 
-```julia
-$julia -t auto
+```bash
+julia -t auto
 ```

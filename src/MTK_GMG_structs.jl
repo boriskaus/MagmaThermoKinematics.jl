@@ -187,25 +187,48 @@ end
 """
     mutable struct EruptionParams <: EruptionParameters
 
-Parameters controlling eruptions. An eruption is triggered when the volume of
-*eruptible* magma (cells whose melt fraction exceeds `ϕ_erupt`) reaches the
-critical volume `V_crit`. The eruption then removes a fraction
-`erupt_efficiency` of that eruptible melt and deflates the chamber with a
-negative ("withdrawal") Mogi source, keeping a running tally of erupted volume
-and eruption times.
+Parameters controlling eruptions. Two trigger models are available:
+
+- **Kinematic (default, `overpressure = false`):** an eruption fires once the
+  volume of *eruptible* magma (cells whose melt fraction exceeds `ϕ_erupt`)
+  reaches the critical volume `V_crit`, then removes a fixed fraction
+  `erupt_efficiency` of that eruptible melt.
+- **Physical (`overpressure = true`):** a Degruyter & Huber (2014)
+  chamber-overpressure ODE ([`step_overpressure!`](@ref)) is integrated every
+  step; an eruption fires when `P - P_lith ≥ ΔP_crit` (rock-strength failure)
+  and drains exactly the volume its overpressure represents (volume-conserving
+  withdrawal), rather than a fixed fraction of `Ve`.
+
+Either way the eruption removes melt by *thermal extraction*: each eruptible
+cell is cooled by `ΔT = η·ϕ/(dϕ/dT)` (η = `erupt_efficiency` in the kinematic
+model, or the emergent drained-volume fraction in the physical model), and
+optionally deflates the chamber (volume-conserving either way; model selected
+by `deflation_model`), keeping a running tally of erupted volume and
+eruption times.
 
 # Fields
 - `erupt::Bool`: master switch (eruptions only happen when `true`).
 - `ϕ_erupt::Float64`: melt fraction above which magma is considered eruptible (default 0.5).
 - `EruptAbove::Float64`: depth cap on eruptibility — only cells at elevation `z ≥ EruptAbove` (i.e. shallower than this floor) can be eruptible; deeper cells are excluded even if `ϕ > ϕ_erupt`. This keeps deep background melt (e.g. partial melt of the host rock under a hot geotherm at the base of the domain) from being counted as eruptible chamber and triggering spurious eruptions. Default `-Inf` (no depth restriction). Set it to roughly the base of the magmatic system (e.g. the same value as `SillParams.SillsAbove`).
-- `V_crit::Float64`: critical eruptible volume that triggers an eruption [m³] (in 2D this is a per-unit-depth volume = area·1 m).
-- `erupt_efficiency::Float64`: fraction (0–1) of the eruptible melt removed per eruption.
-- `ΔP::Float64`: magnitude of the deflation overpressure for the negative-Mogi source [Pa] (applied with a negative sign).
-- `G::Float64`, `ν::Float64`: elastic moduli of the host rock for the deflation source.
+- `V_crit::Float64`: (kinematic trigger) critical eruptible volume that triggers an eruption [m³] (in 2D this is a per-unit-depth volume = area·1 m). Unused when `overpressure = true`.
+- `erupt_efficiency::Float64`: (kinematic trigger) fraction (0–1) of the eruptible melt removed per eruption. Unused when `overpressure = true`.
 - `T_min::Float64`: floor temperature; eruptive cooling never drops a cell below this value. This guards the linearized thermal extraction `ΔT = η·ϕ/(dϕ/dT)`, which becomes unbounded where the melt curve is flat (`dϕ/dT → 0`, i.e. near melt saturation) and would otherwise push `T` to unphysical values that destabilize the diffusion solver.
-- `out_of_plane_3D::Bool`: in 2D, lift the per-unit-depth eruptible volume to a true 3D volume by assuming a Gaussian out-of-plane (y) distribution of the melt (effective out-of-plane length `√(2π)·σ`, with `σ` the melt-weighted horizontal half-width of the eruptible region). This keeps the eruptible/erupted volumes in km³ — the same convention as `V_crit` and the injected volume — so the trigger comparison is dimensionally consistent. No effect in 3D. Default `true`.
-- `deflate::Bool`: also apply the kinematic chamber deflation (host-rock subsidence) in addition to the thermal melt removal.
-- `deflate_percell::Bool`: deflation source model. When `false` (default) a single region-scale negative-Mogi source is used (melt-weighted centroid, radius from the bulk eruptible volume) — `O(N_grid)` per eruption and spatially symmetric. When `true`, the chamber deflation is instead a **superposition of one negative-Mogi source per eruptible cell**, each sized to the melt withdrawn from that cell (`ΔV_i = erupt_efficiency·ϕ_i·V_cell`), so the subsidence follows the (irregular) melt distribution and the total subsidence volume equals the booked erupted volume `η·Ve`. The per-cell path costs `N_eruptible × N_grid` source evaluations per eruption (`O(N²)` as the chamber grows with the grid), so it is only viable on small grids — at production resolution it stalls; prefer the default region-scale source there.
+- `out_of_plane_3D::Bool`: in 2D, lift the per-unit-depth eruptible volume to a true 3D volume by assuming a Gaussian out-of-plane (y) distribution of the melt (effective out-of-plane length `√(2π)·σ`, with `σ` the melt-weighted horizontal half-width of the eruptible region). This keeps the eruptible/erupted volumes in km³ — the same convention as `V_crit` and the injected volume — so the trigger comparison is dimensionally consistent. No effect in 3D, and no effect when `overpressure = true` (the physical trigger stays in MTK's native volume convention throughout). Default `true`.
+- `deflate::Bool`: also apply chamber deflation (host-rock subsidence) in addition to the thermal melt removal, using whichever model `deflation_model` selects.
+- `deflation_model::Symbol`: `:local_mogi` (default) — a Mogi-shaped kernel per eruptible cell, evaluated only within `deflation_cutoff_factor` source-depths of its own cell horizontally (capped at `deflation_max_window_cells`, bounding the cost at `O(N_eruptible × K)` with `K` the horizontal window width), then rescaled so the total swept volume equals `η·Ve` exactly. Smooth and tracks an irregular melt distribution, at the cost of `ΔP`/`G`/`ν` being pure shape knobs rather than physical elastic parameters. `:column` — volume-conserving column subsidence: the host rock in each column sinks by the melt void withdrawn beneath it, `O(N_grid)`, no elastic parameters, but no lateral coupling between columns (the topography exactly mirrors the withdrawal mask, sharp edges included — a flat-bottomed, vertical-walled pit under repeated same-location withdrawal). See [`_local_mogi_deflation_velocity`](@ref) and `docs/src/man/free_surface.md`.
+- `deflation_cutoff_factor::Float64`: (`:local_mogi` only) horizontal cutoff radius as a multiple of each source cell's own depth below the surface, beyond which its contribution is dropped. Default `4.0`. Never applied vertically — a source's field has to reach the surface to deflate it at all, and that distance is its own depth, so the vertical reach is always full. The global rescale corrects for whatever the horizontal cutoff truncates away, so this only trades fidelity to the untruncated kernel shape against cost.
+- `deflation_max_window_cells::Int`: (`:local_mogi` only) hard cap, in grid cells, on the horizontal cutoff radius above — independent of grid resolution or domain size. Without it, `deflation_cutoff_factor × depth` can exceed the domain for realistic chamber-depth/domain-size ratios, silently degrading back toward the old `O(N_eruptible × N_grid)` cost this model exists to avoid. Default `25`.
+- `overpressure::Bool`: master switch for the physical `ΔP_crit` trigger (default `false` ⇒ the kinematic `V_crit` trigger above, existing behaviour unchanged).
+- `ΔP_crit::Float64`: rock-strength (plasticity) failure overpressure [Pa] — a fixed physical threshold (D&H: 10–40 MPa), not a tuning knob. Default `20e6`.
+- `β_r::Float64`: host-rock elastic (shell) stiffness [Pa].
+- `η_r::Float64`: wall relaxation viscosity [Pa·s] (D&H's viscoelastic shell relaxation; here a fixed constant rather than the Arrhenius wall-temperature closure QMagma also offers).
+- `ΔP_relax::Float64`: overpressure remaining immediately after a drain [Pa].
+- `ρ_melt::Float64`: melt density converting the injected-volume rate into the recharge mass rate `Ṁ_in` [kg/m³].
+- `ρ_crust::Float64`: crustal density used for the lithostatic reference `P_lith = ρ_crust·g·|z|` at the chamber centroid [kg/m³].
+- `magma_phase::Int64`: GeoParams phase index (matching a `Mat_tup` entry's `Phase`) whose `Density` (and, for a `GeoParams.ThreePhase_Density`, `Solubility`) drives the chamber ODE. Required (must be set ≥ 0) when `overpressure = true`.
+- `m_h2o_total::Float64`: total (dissolved+exsolved) H₂O content of the melt, as a **fixed** mass fraction — not a mass-conserving chamber budget (recharge/eruption do not change it). Only used when `magma_phase`'s `Density` is a `GeoParams.ThreePhase_Density` (which also requires that phase's `Solubility` to be set, e.g. `Liu2005_Solubility()`); the excess over the pressure/temperature-dependent solubility limit exsolves into the gas phase. See [`magma_density_fn`](@ref).
+- `X_co2::Float64`: CO₂ mole fraction of the exsolved gas (0 = pure H₂O), passed to `magma_phase`'s `Solubility` law.
+- `chamber::ChamberState`: persistent ODE state, mutated in place across timesteps.
 - `n_eruptions::Int64`, `erupted_volume::Float64`: cumulative bookkeeping.
 - `eruption_times::Vector{Float64}`, `eruption_volumes::Vector{Float64}`: per-event record (time [s], volume [m³]).
 """
@@ -216,13 +239,25 @@ and eruption times.
     V_crit_km3::Float64               = 10.0         # critical eruptible volume [km³] (convenience)
     V_crit::Float64                   = V_crit_km3*1e9   # critical eruptible volume [m³]
     erupt_efficiency::Float64         = 0.5          # fraction of eruptible melt removed per eruption (0–1)
-    ΔP::Float64                       = 20e6         # deflation overpressure magnitude [Pa] (negative-Mogi)
-    G::Float64                        = 10e9         # host-rock shear modulus [Pa]
-    ν::Float64                        = 0.25         # host-rock Poisson ratio
     T_min::Float64                    = 0.0          # floor T: eruptive cooling never drops a cell below this (guards ΔT = η·ϕ/dϕdT when dϕdT→0)
     out_of_plane_3D::Bool             = true         # 2D: lift per-unit-depth eruptible volume to a 3D volume via a Gaussian out-of-plane profile (km³, comparable to V_crit). No-op in 3D.
-    deflate::Bool                     = true         # also apply the kinematic chamber deflation (host-rock subsidence)
-    deflate_percell::Bool             = false        # deflation source: false (default) ⇒ single region-scale negative-Mogi source (O(N_grid), spatially symmetric); true ⇒ per-cell superposition (irregular, ΔV_i=η·ϕ_i·Vcell) but O(N_eruptible × N_grid) per eruption — only viable on small grids
+    deflate::Bool                     = true         # also apply chamber deflation (host-rock subsidence), model selected by deflation_model
+    deflation_model::Symbol           = :local_mogi   # :local_mogi (default, smoothed, volume-exact, cutoff-bounded) or :column (exact per-column, no lateral coupling)
+    deflation_cutoff_factor::Float64  = 4.0          # :local_mogi only: horizontal cutoff radius = this × each source cell's own depth
+    deflation_max_window_cells::Int   = 25           # :local_mogi only: hard cap (cells) on the horizontal cutoff radius, independent of Δ
+    # --- physical (ΔP_crit) trigger, opt-in ---
+    overpressure::Bool                = false        # false (default) ⇒ kinematic V_crit trigger; true ⇒ physical ΔP_crit trigger (step_overpressure!)
+    ΔP_crit::Float64                  = 20e6         # rock-strength failure overpressure [Pa] — fixed physical threshold, not a tuning knob
+    β_r::Float64                      = 1e10         # host-rock elastic stiffness [Pa]
+    η_r::Float64                      = 1e19         # wall relaxation viscosity [Pa·s]
+    ΔP_relax::Float64                 = 0.0          # overpressure left right after a drain [Pa]
+    ρ_melt::Float64                   = 2400.0       # melt density for the recharge mass rate Ṁ_in [kg/m³]
+    ρ_crust::Float64                  = 2700.0       # crustal density for P_lith = ρ_crust·g·|z_centroid| [kg/m³]
+    magma_phase::Int64                = -1           # GeoParams phase index whose Density (and Solubility) law drives the chamber ODE (required when overpressure=true)
+    m_h2o_total::Float64              = 0.0          # total (dissolved+exsolved) H2O content of the melt [mass fraction]; used together with magma_phase's Solubility
+    X_co2::Float64                    = 0.0          # CO2 mole fraction of the exsolved gas (0 = pure H2O); passed to magma_phase's Solubility law
+    chamber::ChamberState             = ChamberState()   # persistent ODE state
+    _InjectVol_prev::Float64          = 0.0          # internal: Dikes.InjectVol seen by the last overpressure step (recharge-rate delta guard)
     # --- bookkeeping (filled during the run) ---
     n_eruptions::Int64                = 0
     erupted_volume::Float64           = 0.0          # cumulative erupted melt volume [m³]

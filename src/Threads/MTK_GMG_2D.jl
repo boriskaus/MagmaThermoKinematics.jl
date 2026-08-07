@@ -47,7 +47,7 @@ There are a few functions that you can overwrite in your user code to customize 
 - `MTK_updateTracers(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::SillParameters, time_props::TimeDependentProperties, Num::NumericalParameters)`
 - `MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::SillParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input::CartData)`
 - `MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters, Tracers::StructVector, Tnew_cpu)`
-- `MTK_erupt!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructVector, Erupt::EruptionParameters, FS::FreeSurfaceParameters)`
+- `MTK_erupt!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructVector, Erupt::EruptionParameters, FS::FreeSurfaceParameters, Mat_tup::Tuple, Dikes::SillParameters)`
 - `MTK_free_surface!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Dikes::SillParameters, FS::FreeSurfaceParameters)`
 - `MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters)`
 - `MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters, CartData_input::CartData)`
@@ -188,7 +188,7 @@ There are a few functions that you can overwrite in your user code to customize 
         # --------------------------------------------
 
         # Erupt magma when the eruptible volume reaches V_crit ----
-        MTK_GMG.MTK_erupt!(Arrays, Grid, Num, Tracers, Erupt, FS)
+        MTK_GMG.MTK_erupt!(Arrays, Grid, Num, Tracers, Erupt, FS, Mat_tup, Dikes)
         # --------------------------------------------
 
         # Update the moving free surface (inflation + air stamping) ----

@@ -18,6 +18,7 @@ import ..NumericalParameters, ..SillParameters, ..TimeDependentProperties, ..Tim
 import ..EruptionParameters, ..EruptionParams
 import ..FreeSurfaceParameters, ..FreeSurfaceParams
 import ..CreateGrid, ..Tracer, ..UpdateTracers_T_ϕ!, ..InjectSills, ..m, ..NoUnits
+import ..seed_host_tracers
 
 
 const SecYear = 3600*24*365.25;
@@ -145,6 +146,17 @@ There are a few functions that you can overwrite in your user code to customize 
     Num.deform_hostrock = Num.deform_hostrock || FS.free_surface
     # --------------------------------------------
 
+    # Optionally seed passive host-rock tracers ---
+    # They carry the initial layering and accumulate T-t paths; the existing
+    # injection/deflation advection moves them and eruptions freeze them. The
+    # phase field is still handled by advect_phases!.
+    if Num.SeedHostTracers
+        z_surf = FS.free_surface ? FS.z_surf : nothing
+        Tracers = seed_host_tracers(Grid, Array(Arrays.Phases), Array(Arrays.T), Array(Arrays.ϕ);
+                                    NumTracersDir=Num.HostTracersDir, air_phase=FS.air_phase, z_surf=z_surf)
+    end
+    # --------------------------------------------
+
     for Num.it = 1:Num.nt   # Time loop
         Num.time  += Num.dt;                                     # Keep track of evolved time
 
@@ -169,7 +181,7 @@ There are a few functions that you can overwrite in your user code to customize 
         # --------------------------------------------
 
         # Erupt magma when the eruptible volume reaches V_crit ----
-        MTK_GMG.MTK_erupt!(Arrays, Grid, Num, Tracers, Erupt, FS)
+        MTK_GMG.MTK_erupt!(Arrays, Grid, Num, Tracers, Erupt, FS, Mat_tup, Dikes)
         # --------------------------------------------
 
         # Update the moving free surface (inflation + air stamping) ----
