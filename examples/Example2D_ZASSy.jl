@@ -578,7 +578,7 @@ if 1==0
                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=3e-7Watt/m^3),
                                  Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
                                  HeatCapacity = T_HeatCapacity_Whittington(),     # T-dependent cp
-                                Melting = MeltingParam_Assimilation()
+                                Melting = SmoothMelting(MeltingParam_Assimilation())
                                  ),       # Quadratic parameterization as in Tierney et al.
                     SetMaterialParams(Name="Intruded rocks", Phase=2,
                                     Density    = ConstantDensity(ρ=2700.0kg/m^3),                    # used in the parameterisation of Whittington
@@ -674,7 +674,7 @@ if 1==1
                                   HeatCapacity = T_HeatCapacity_Whittington(),                      # T-dependent cp
                                  # Conductivity = ConstantConductivity(k=3.3Watt/K/m),               # in case we use constant k
                                  # HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
-                                 Melting = MeltingParam_Assimilation()                              # Quadratic parameterization as in Tierney et al.
+                                 Melting = SmoothMelting(MeltingParam_Assimilation())                              # Quadratic parameterization as in Tierney et al.
                                  #Melting = MeltingParam_Caricchi()
                                   ),
                      SetMaterialParams(Name="Intruded rocks", Phase=2,
