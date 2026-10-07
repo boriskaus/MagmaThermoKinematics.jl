@@ -54,7 +54,6 @@ using WriteVTK
     InjectionInterval       =   0.1kyr;                     # Inject a new dike every X kyrs
     maxTime                 =   15kyr;                      # Maximum simulation time in kyrs
     H_ran, W_ran            =   Grid.L[1]*0.3,Grid.L[3]*0.4;# Size of domain in which we randomly place dikes and range of angles
-    DikeType                =   "ElasticDike"               # Type to be injected ("ElasticDike","SquareDike")
     κ                       =   1.2/(2800*1050);            # thermal diffusivity
     dt                      =   minimum(Grid.Δ.^2)/κ/10;    # stable timestep (required for explicit FD)
     nt                      =   floor(Int64,maxTime/dt);    # number of required timesteps
@@ -71,7 +70,6 @@ using WriteVTK
 
     @parallel (1:Nx,1:Ny,1:Nz) GridArray!(Arrays.X,Arrays.Y,Arrays.Z, Grid.coord1D[1], Grid.coord1D[2], Grid.coord1D[3])
     Tracers                 =   StructArray{Tracer{Float32}}(undef, 1)                   # Initialize tracers
-    dike                    =   Dike(W=W_in,H=H_in,Type=DikeType,T=T_in);               # "Reference" dike with given thickness,radius and T
     Arrays.T               .=   -Arrays.Z.*GeoT;                                        # Initial (linear) temperature profile
 
     # Preparation of VTK/Paraview output
@@ -85,9 +83,9 @@ using WriteVTK
             cen       =     (Grid.max .+ Grid.min)./2 .+ rand(-0.5:1e-3:0.5, 3).*[W_ran;W_ran;H_ran];   # Randomly vary center of dike
             if cen[end]<-12e3;  Angle_rand = [rand(80.0:0.1:100.0); rand(0:360)]                        # Dikes at depth
             else                Angle_rand = [rand(-10.0:0.1:10.0); rand(0:360)] end                    # Sills at shallower depth
-            dike      =     Dike(dike, Center=cen[:],Angle=Angle_rand);                                 # Specify dike with random location/angle but fixed size/T
+            sill      =     EllipticalIntrusion(Center=Point3(cen[1],cen[2],cen[3])*m, Angle=Vec2(Angle_rand[1],Angle_rand[2])*NoUnits, W=W_in*m, H=H_in*m)
             Tnew_cpu .=     Array(Arrays.T)
-            Tracers, Tnew_cpu, Vol   =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, nTr_dike);   # Add dike, move hostrocks
+            Tracers, Tnew_cpu, Vol, _, _   =   inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, T_in, 2, nTr_dike);   # Add dike, move hostrocks
             Arrays.T .=     Data.Array(Tnew_cpu)
             InjectVol +=    Vol                                                                 # Keep track of injected volume
             println("Added new dike; total injected magma volume = $(round(InjectVol/km³,digits=2)) km³; rate Q=$(round(InjectVol/(time),digits=2)) m³/s")

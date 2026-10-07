@@ -1,8 +1,6 @@
 # InjectSills_utils.jl
 #
-# Thin wrappers around the InjectSills.jl package that give the same
-# workflow as InjectDike / AddDike in Dikes.jl, but rely entirely on
-# the InjectSills API:
+# Sill emplacement on top of the InjectSills.jl API:
 #
 #   • hostrock_displacement  – displacement / velocity field
 #   • inside                 – point-in-sill predicate
@@ -28,7 +26,6 @@ Set the temperature to `T_in` at every grid point that lies inside `sill`, and
 seed `nTr_dike` new tracers (with temperature `T_in` and phase `Phase_in`)
 randomly distributed inside the sill.
 
-This is the InjectSills-based replacement for `AddDike` in `Dikes.jl`.
 The sill's center and orientation are encoded in the `sill` object itself;
 no external rotation is required here.
 """
@@ -200,7 +197,6 @@ function inject_sills(Tracers, T::Array, Grid,
     # Optionally advect a plotting polygon
     # ------------------------------------------------------------------
     if !isempty(dike_poly)
-        # Keep polygon tracking local to InjectSills to avoid depending on legacy Dikes.jl symbols.
         poly_vel = AdvectPoints((dike_poly[1], dike_poly[2]), Grid, Velocity, 1.0)
         for i in eachindex(dike_poly)
             dike_poly[i] .+= poly_vel[i]

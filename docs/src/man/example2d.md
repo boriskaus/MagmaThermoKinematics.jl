@@ -51,7 +51,6 @@ T_in                    =   900;                        # Intrusion temperature
 InjectionInterval       =   0.1kyr;                     # Inject a new dike every X kyrs
 maxTime                 =   25kyr;                      # Maximum simulation time in kyrs
 H_ran, W_ran            =   Grid.L.*[0.3; 0.4];         # Size of domain in which we randomly place dikes and range of angles
-DikeType                =   "ElasticDike"               # Type to be injected ("ElasticDike","SquareDike")
 κ                       =   1.2/(2800*1050);            # thermal diffusivity
 dt                      =   minimum(Grid.Δ.^2)/κ/10;    # stable timestep (required for explicit FD)
 nt                      =   floor(Int64,maxTime/dt);    # number of required timesteps
@@ -71,7 +70,6 @@ end
 
 @parallel (1:Nx, 1:Nz) GridArray!(Arrays.X,  Arrays.Z, Grid.coord1D[1], Grid.coord1D[2])
 Tracers                 =   StructArray{Tracer{Float32}}(undef, 1)                   # Initialize tracers
-dike                    =   Dike(W=W_in,H=H_in,Type=DikeType,T=T_in);               # "Reference" dike with given thickness,radius and T
 Arrays.T               .=   -Arrays.Z.*GeoT;                                        # Initial (linear) temperature profile
 
 # Preparation of visualisation
@@ -88,9 +86,9 @@ for it = 1:nt   # Time loop
         else
             Angle_rand = rand(-10.0:0.1:10.0);
         end                                  # Orientation: near-vertical @ shallower depth
-        dike      =     Dike(dike, Center=cen[:],Angle=[Angle_rand]);                               # Specify dike with random location/angle but fixed size/T
+        sill      =     EllipticalIntrusion(Center=Point2(cen[1],cen[2])*m, Angle=Vec1(Angle_rand)*NoUnits, W=W_in*m, H=H_in*m)
         Tnew_cpu .=     Array(Arrays.T)
-        Tracers, Tnew_cpu, Vol   =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, nTr_dike);   # Add dike, move hostrocks
+        Tracers, Tnew_cpu, Vol, _, _   =   inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, T_in, 2, nTr_dike);   # Add dike, move hostrocks
         Arrays.T .=     Data.Array(Tnew_cpu)
         InjectVol +=    Vol                                                                 # Keep track of injected volume
         println("Added new dike; total injected magma volume = $(round(InjectVol/km³,digits=2)) km³; rate Q=$(round(InjectVol/(time),digits=2)) m³/s")
@@ -123,7 +121,7 @@ Time_vec, Melt_Time, Tracers, Grid, Arrays = MainCode_2D(); # start the main cod
 plot(Time_vec/kyr, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example2D") # Create plot
 ```
 
-The main routines are thus InjectDike(..), which inserts a new dike (of given dimensions and orientation) into the domain, and Nonlinear_Diffusion_step_2D!(...), which computes thermal diffusion. Variable thermal conductivity and latent heat are taken into account.
+The main routines are thus `inject_sills(..)`, which inserts a new dike or sill (of given dimensions and orientation) into the domain using [InjectSills.jl](https://github.com/JuliaGeodynamics/InjectSills.jl), and Nonlinear_Diffusion_step_2D!(...), which computes thermal diffusion. Variable thermal conductivity and latent heat are taken into account.
 
 The full code example is available at:
 

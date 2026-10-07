@@ -160,7 +160,7 @@ sp = SillParams(
 
 """
 @with_kw mutable struct SillParams <: SillParameters
-    sill::Union{Nothing, InjectSills.AbstractSill} = nothing    # InjectSills.jl sill object (used when Type="InjectSills")
+    sill::Union{Nothing, InjectSills.AbstractSill} = nothing    # InjectSills.jl sill object
     T_in_Celsius::Float64           =   1000;                   # Temperature of injected magma
     InjectionInterval_year::Float64 =   10e3;                   # Injection interval [years]
     SecYear                         =   3600*24*365.25;         # s/year

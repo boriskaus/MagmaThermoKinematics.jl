@@ -25,7 +25,7 @@ abstract type TimeDependentProperties end
 include("Units.jl")                             # various useful units
 
 # Few useful parameters
-const SecYear     = 3600*24*365.25  
+const SecYear     = 3600*24*365.25
 const kyr         = 1000*SecYear
 const Myr         = 1e6*SecYear
 const km³         = 1000^3
@@ -218,11 +218,6 @@ export PhaseRatioAverage!, ComputeSeismicVelocities, SolidFraction_Parameterized
 # Export functions that will be available outside this module
 export StructArray, LazyRow # useful
 export Tracer
-
-#include("Dikes.jl")
-#export Dike, DikePoly
-#export Tracer, AddDike, HostRockVelocityFromDike, CreateDikePolygon, advect_dike_polygon!,
-#       volume_dike, InjectDike, TracersToGrid!
 
 include("InjectSills_utils.jl")
 export inject_sills, add_dike

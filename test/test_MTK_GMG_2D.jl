@@ -22,35 +22,10 @@ const rng = Random.seed!(1234);     # same seed such that we can reproduce resul
 import MagmaThermoKinematics.MTK_GMG
 import MagmaThermoKinematics: inject_sills, km³, kyr, PhasesFromTracers!
 
-function _build_injectsill(Dikes)
-    if Dikes.Type == "CylindricalDike_TopAccretion"
-        return CylindricalDikeTopAccretion(Center=Point2(Dikes.Center[1], Dikes.Center[2]) * m,
-                                           Angle=Vec1(Dikes.Angle[1]) * NoUnits,
-                                           W=Dikes.W_in * m,
-                                           H=Dikes.H_in * m)
-    elseif Dikes.Type == "EllipticalIntrusion" || Dikes.Type == "ElasticDike"
-        return EllipticalIntrusion(Center=Point2(Dikes.Center[1], Dikes.Center[2]) * m,
-                                   Angle=Vec1(Dikes.Angle[1]) * NoUnits,
-                                   W=Dikes.W_in * m,
-                                   H=Dikes.H_in * m)
-    elseif Dikes.Type == "InjectSills"
-        isnothing(Dikes.sill) && error("Dikes.Type='InjectSills' requires Dikes.sill to be set")
-        return Dikes.sill
-    else
-        error("Unsupported Dikes.Type for InjectSills callback in test_MTK_GMG_2D: $(Dikes.Type)")
-    end
-end
-
 @eval MTK_GMG begin
 function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters, Tracers::StructVector, Tnew_cpu)
-    inj_counter = hasproperty(Dikes, :sill_inj) ? Dikes.sill_inj : Dikes.dike_inj
-    if floor(Num.time / Dikes.InjectionInterval) > inj_counter
-        inj_counter = floor(Num.time / Dikes.InjectionInterval)
-        if hasproperty(Dikes, :sill_inj)
-            Dikes.sill_inj = inj_counter
-        else
-            Dikes.dike_inj = inj_counter
-        end
+    if floor(Num.time / Dikes.InjectionInterval) > Dikes.sill_inj
+        Dikes.sill_inj = floor(Num.time / Dikes.InjectionInterval)
 
         if Num.dim == 2
             T_bottom = Array(@view Arrays.T[:, 1])
@@ -58,37 +33,13 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
             T_bottom = Array(@view Arrays.T[:, :, 1])
         end
 
-        IS = getproperty(parentmodule(@__MODULE__), :InjectSills)
-        m_unit = getproperty(parentmodule(@__MODULE__), :m)
-        no_unit = getproperty(parentmodule(@__MODULE__), :NoUnits)
-
-        if hasproperty(Dikes, :sill) && !isnothing(Dikes.sill)
-            sill = Dikes.sill
-        elseif Dikes.Type == "CylindricalDike_TopAccretion"
-            sill = IS.CylindricalDikeTopAccretion(Center=IS.Point2(Dikes.Center[1], Dikes.Center[2]) * m_unit,
-                                                 Angle=IS.Vec1(Dikes.Angle[1]) * no_unit,
-                                                 W=Dikes.W_in * m_unit,
-                                                 H=Dikes.H_in * m_unit)
-        elseif Dikes.Type == "EllipticalIntrusion" || Dikes.Type == "ElasticDike"
-            sill = IS.EllipticalIntrusion(Center=IS.Point2(Dikes.Center[1], Dikes.Center[2]) * m_unit,
-                                         Angle=IS.Vec1(Dikes.Angle[1]) * no_unit,
-                                         W=Dikes.W_in * m_unit,
-                                         H=Dikes.H_in * m_unit)
-        else
-            error("Unsupported Dikes.Type for InjectSills callback in test_MTK_GMG_2D: $(Dikes.Type)")
-        end
-        poly = hasproperty(Dikes, :sill_poly) ? Dikes.sill_poly : Dikes.dike_poly
-        if Num.advect_polygon == true && isempty(poly)
-            if hasproperty(Dikes, :sill_poly)
-                Dikes.sill_poly = InjectSills.dike_polygon(sill)
-            else
-                Dikes.dike_poly = InjectSills.dike_polygon(sill)
-            end
+        sill = _active_sill(Dikes)
+        if Num.advect_polygon == true && isempty(Dikes.sill_poly)
+            Dikes.sill_poly = InjectSills.dike_polygon(sill)
         end
 
         copyto!(Tnew_cpu, Arrays.T)
-        intrusion_phase = hasproperty(Dikes, :SillPhase) ? Dikes.SillPhase : Dikes.DikePhase
-        Tracers, Tnew_cpu, Vol, _, _ = getproperty(parentmodule(@__MODULE__), :inject_sills)(Tracers, Tnew_cpu, Grid.coord1D, sill, Dikes.T_in_Celsius, intrusion_phase, Dikes.nTr_dike)
+        Tracers, Tnew_cpu, Vol, _, _ = inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, Dikes.T_in_Celsius, Dikes.SillPhase, Dikes.nTr_dike)
 
         if Num.flux_bottom_BC == false
             if Num.dim == 2
@@ -111,7 +62,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
                 Phases = Array(Arrays.Phases)
                 Phases_init = Array(Arrays.Phases_init)
                 for i in eachindex(Phases)
-                    if Phases[i] != intrusion_phase
+                    if Phases[i] != Dikes.SillPhase
                         Phases[i] = Phases_init[i]
                     end
                 end

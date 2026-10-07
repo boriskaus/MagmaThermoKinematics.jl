@@ -36,7 +36,7 @@ function _make_sill(DikeType, cen, DikeAngle, Wdike, Hdike, dim)
 end
 
 
-function test_HostRockVelocityFromDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45]; use_inject_sills=false)
+function test_hostrock_velocity(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45])
   # test generating host velocity from various dikes, with different size/orientation/type in both 2D and 3DD
 
   if Dimension=="2D"
@@ -76,20 +76,13 @@ function test_HostRockVelocityFromDike(Dimension="2D", DikeType="ElasticDike", D
   end
 
   # Compute velocity required to create space for dike
-  if use_inject_sills
-      sill     = _make_sill(DikeType, cen, DikeAngle, Wdike, Hdike, length(Grid))
-      if Dimension == "2D"
-          Dx, Dz   = InjectSills.hostrock_displacement(sill, Float64.(X), Float64.(Z))
-          Velocity = (Dx, Dz)
-      else
-          Dx, Dy, Dz = InjectSills.hostrock_displacement(sill, Float64.(X), Float64.(Y), Float64.(Z))
-          Velocity   = (Dx, Dy, Dz)
-      end
+  sill = _make_sill(DikeType, cen, DikeAngle, Wdike, Hdike, length(Grid))
+  if Dimension == "2D"
+      Dx, Dz   = InjectSills.hostrock_displacement(sill, Float64.(X), Float64.(Z))
+      Velocity = (Dx, Dz)
   else
-      dike     = Dike(W=Wdike, H=Hdike, Center=cen, Angle=DikeAngle, Type=DikeType, T=T_in)
-      Δ        = Hdike
-      dt       = 1
-      Velocity = HostRockVelocityFromDike(Grid, FullGrid, Δ, dt, dike)
+      Dx, Dy, Dz = InjectSills.hostrock_displacement(sill, Float64.(X), Float64.(Y), Float64.(Z))
+      Velocity   = (Dx, Dy, Dz)
   end
 
 
@@ -135,7 +128,7 @@ end
 
 
 
-function test_InjectDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45], numDikeInjectionEvents=1; InterpolationMethod="Cubic", AdvectionMethod="RK2", use_inject_sills=false)
+function test_inject_sills(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45], numDikeInjectionEvents=1; InterpolationMethod="Cubic", AdvectionMethod="RK2")
   # tests dike insertion in the domain including adding tracers
 
 
@@ -182,24 +175,13 @@ function test_InjectDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45],
   nTr_dike = 1000
   Tracers  = StructArray{Tracer{Float32}}(undef, 1)                           # Initialize Tracers structure
 
-  if use_inject_sills
-      sill_is = _make_sill(DikeType, cen, DikeAngle, Wdike, Hdike, length(Grid))
-      Tracers, Tnew, _, _, Velocity = inject_sills(Tracers, T, Grid, sill_is, T_in, 2, nTr_dike;
-                                                    InterpolationMethod=InterpolationMethod, AdvectionMethod=AdvectionMethod)
-      for _ = 1:numDikeInjectionEvents-1
-          T = Tnew
-          Tracers, Tnew, _, _, Velocity = inject_sills(Tracers, T, Grid, sill_is, T_in, 2, nTr_dike;
-                                                        InterpolationMethod=InterpolationMethod, AdvectionMethod=AdvectionMethod)
-      end
-  else
-      dike = Dike(W=Wdike, H=Hdike, Center=cen, Angle=DikeAngle, Type=DikeType, T=T_in)
-      Tracers, Tnew, InjectVol, dike_poly, Velocity = InjectDike(Tracers, T, Grid, dike, nTr_dike;
-                                                                   InterpolationMethod=InterpolationMethod, AdvectionMethod=AdvectionMethod)
-      for _ = 1:numDikeInjectionEvents-1
-          T = Tnew
-          Tracers, Tnew, InjectVol, dike_poly, Velocity = InjectDike(Tracers, T, Grid, dike, nTr_dike;
-                                                                       InterpolationMethod=InterpolationMethod, AdvectionMethod=AdvectionMethod)
-      end
+  sill = _make_sill(DikeType, cen, DikeAngle, Wdike, Hdike, length(Grid))
+  Tracers, Tnew, _, _, Velocity = inject_sills(Tracers, T, Grid, sill, T_in, 2, nTr_dike;
+                                                InterpolationMethod, AdvectionMethod)
+  for _ = 1:numDikeInjectionEvents-1
+      T = Tnew
+      Tracers, Tnew, _, _, Velocity = inject_sills(Tracers, T, Grid, sill, T_in, 2, nTr_dike;
+                                                    InterpolationMethod, AdvectionMethod)
   end
 
   if Dimension=="2D"
@@ -250,102 +232,30 @@ function test_InjectDike(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45],
 end
 
 
-"""
-    test_InjectSills_vs_ElasticDike(Dimension, DikeAngle)
-
-Creates the same dike geometry using both `Type="ElasticDike"` and `Type="InjectSills"`,
-computes the host-rock velocity field for each, and returns the ratio of the two L2 norms.
-A ratio close to 1 confirms that InjectSills reproduces the built-in elastic solution.
-
-Note: PennyShapedSill uses W as the *radius* (half-width), whereas the MTK
-`Dike` struct uses W as the full width, so `W_sill = Wdike / 2`.
-The sill is created with default Center=(0,0) and Angle=0 because `HostRockVelocityFromDike`
-already rotates/shifts the coordinate frame before calling the type-specific branch.
-"""
-function test_InjectSills_vs_ElasticDike(Dimension="2D", DikeAngle=[0])
-
-    Hdike = 100.0
-    Wdike = 20000.0
-    E_val = 1.5e10
-    ν_val = 0.3
-
-    if Dimension == "2D"
-        W, H = 30.0, 30.0
-        Nx, Nz = 129, 129
-        dx, dz = W*1e3/(Nx-1), H*1e3/(Nz-1)
-        x, z   = 0:dx:W*1e3, -H*1e3:dz:0
-        coords = collect(Iterators.product(x, z))
-        X, Z   = (c->c[1]).(coords), (c->c[2]).(coords)
-        Grid, FullGrid = (x, z), (X, Z)
-        cen    = [W/2; -H/2] .* 1e3
-
-        sill = PennyShapedSill(W = (Wdike/2)*m, H = Hdike*m,
-                                           E = E_val*Pa, ν = ν_val*NoUnits,
-                                           Center = Point2(0.0, 0.0)*m)
-    else
-        W, L, H = 30.0, 40.0, 50.0
-        Nx, Ny, Nz = 65, 65, 65
-        dx, dy, dz = W*1e3/(Nx-1), L*1e3/(Ny-1), H*1e3/(Nz-1)
-        x, y, z    = 0:dx:((Nx-1)*dx), 0:dy:((Ny-1)*dy), -((Nz-1)*dz):dz:0.0
-        coords     = collect(Iterators.product(x, y, z))
-        X, Y, Z    = (c->c[1]).(coords), (c->c[2]).(coords), (c->c[3]).(coords)
-        Grid, FullGrid = (x, y, z), (X, Y, Z)
-        cen        = [W/2; L/2; -H/2] .* 1e3
-
-        sill = PennyShapedSill(W = (Wdike/2)*m, H = Hdike*m,
-                                           E = E_val*Pa, ν = ν_val*NoUnits,
-                                           Center = Point3(0.0, 0.0, 0.0)*m,
-                                           Angle  = Vec2(0.0, 0.0))
-    end
-
-    Δ = Hdike
-    dt = 1.0
-
-    dike_elastic  = Dike(W=Wdike, H=Hdike, Center=cen, Angle=DikeAngle, Type="ElasticDike",
-                         T=900.0, E=E_val, ν=ν_val)
-    dike_isills   = Dike(W=Wdike, H=Hdike, Center=cen, Angle=DikeAngle, Type="InjectSills",
-                         T=900.0, E=E_val, ν=ν_val, sill=sill)
-
-    Vel_elastic   = HostRockVelocityFromDike(Grid, FullGrid, Δ, dt, dike_elastic)
-    Vel_isills    = HostRockVelocityFromDike(Grid, FullGrid, Δ, dt, dike_isills)
-
-    norm_elastic  = norm(Vel_elastic[:], 2)
-    norm_isills   = norm(Vel_isills[:],  2)
-
-    return norm_isills / norm_elastic   # should be ≈ 1.0
-end
-
 # ===================================================================================================
 
 if 1==1
 
 @testset "Dike_Velocity" begin
-  # Legacy Dikes.jl path disabled in this branch; keep InjectSills-only checks.
-  @test test_HostRockVelocityFromDike("2D","SquareDike",  [80    ], use_inject_sills=true)   ≈   5286.539510870982  rtol=1e-3;
-  @test test_HostRockVelocityFromDike("3D","SquareDike",  [90; 90], use_inject_sills=true)   ≈  13114.877048604001  rtol=1e-3;
-  @test test_HostRockVelocityFromDike("3D","ElasticDike", [90; 45], use_inject_sills=true)   ≈   4762.014274270334  rtol=1e-3;
+  @test test_hostrock_velocity("2D","SquareDike",  [80    ])   ≈   5286.539510870982  rtol=1e-3;
+  @test test_hostrock_velocity("3D","SquareDike",  [90; 90])   ≈  13114.877048604001  rtol=1e-3;
+  @test test_hostrock_velocity("3D","ElasticDike", [90; 45])   ≈   4762.014274270334  rtol=1e-3;
 end
-
-## Legacy Dikes.jl-specific tests intentionally disabled in this branch:
-## - Dike_Struct
-## - Dike_Volume
-## - InjectSills_vs_ElasticDike (depends on HostRockVelocityFromDike via Dike)
 
 # Dike insertion algorithm
 @testset "Dike_Inject" begin
-  # InjectSills-only path.
-  @test test_InjectDike("2D", "SquareDike", [80 ],1,                          use_inject_sills=true) ≈   47525.465759514336 rtol=1e-4;
-  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Linear",    use_inject_sills=true) ≈   48448.85838494859  rtol=1e-4;
-  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Quadratic", use_inject_sills=true) ≈   48770.817049970356 rtol=1e-4;
-  @test test_InjectDike("2D", "ElasticDike",[45 ],2, InterpolationMethod="Cubic",     use_inject_sills=true) ≈   48782.27237242118  rtol=1e-4;
-  @test test_InjectDike("3D", "ElasticDike",[80; 45],                                 use_inject_sills=true) ≈   519654.91761887114 rtol=1e-4;
-  @test test_InjectDike("3D", "SquareDike", [15; -30],                                use_inject_sills=true) ≈   527521.5507477389  rtol=1e-4;
+  @test test_inject_sills("2D", "SquareDike", [80 ],1) ≈   47525.465759514336 rtol=1e-4;
+  @test test_inject_sills("2D", "ElasticDike",[45 ],2, InterpolationMethod="Linear") ≈   48448.85838494859  rtol=1e-4;
+  @test test_inject_sills("2D", "ElasticDike",[45 ],2, InterpolationMethod="Quadratic") ≈   48770.817049970356 rtol=1e-4;
+  @test test_inject_sills("2D", "ElasticDike",[45 ],2, InterpolationMethod="Cubic") ≈   48782.27237242118  rtol=1e-4;
+  @test test_inject_sills("3D", "ElasticDike",[80; 45]) ≈   519654.91761887114 rtol=1e-4;
+  @test test_inject_sills("3D", "SquareDike", [15; -30]) ≈   527521.5507477389  rtol=1e-4;
 end
 
 @testset "inject_sills" begin
 
   # ------------------------------------------------------------------
-  # 2-D: inject_sills should reproduce InjectDike/ElasticDike
+  # 2-D
   # ------------------------------------------------------------------
   let
     W_dom, H_dom = 30.0, 30.0
@@ -392,7 +302,7 @@ end
   end
 
   # ------------------------------------------------------------------
-  # 3-D: inject_sills should reproduce InjectDike/ElasticDike
+  # 3-D
   # ------------------------------------------------------------------
   let
     W_dom, L_dom, H_dom = 30.0, 30.0, 30.0
@@ -430,6 +340,3 @@ end
 end
 
 end
-
-#test_InjectDike("2D", "ElasticDike", [80 ],5, InterpolationMethod="Linear", AdvectionMethod="Euler")
-#test_InjectDike("3D", "SquareDike",[80; 45], InterpolationMethod="Linear", AdvectionMethod="RK2")

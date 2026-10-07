@@ -158,7 +158,6 @@ end
         c = _sill_center_2d(Dikes)
         ind =  findall( ((Arrays.R.^2.0)/(Num.a_init^2.0) .+ ((Arrays.Z.-c[2]).^2.0)/((Num.b_init)^2.0)) .< 1.0); # ellipse
         Arrays.T_init[ind] .= Dikes.T_in_Celsius;
-        #dike_poly   =   CreateDikePolygon(Dike(dike,W=Num.a_init*2, H=Num.b_init*2));
 
         #InjectVol += 4/3*pi*(Num.a_init)^2*Num.b_init;
 

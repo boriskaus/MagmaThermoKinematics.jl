@@ -115,7 +115,7 @@ Three distinct emplacement modes are available for adding new melt to the system
 | **UCLA-HD (central injection)** | Melt is added at the centre of the intrusion; host rock is displaced radially outward while conserving volume. |
 | **Elastic dike** | An elliptical dike geometry is used and host rock is displaced by an analytically prescribed elastic displacement field. |
 
-All three modes inject a `Dike` object, update the velocity field $\mathbf{v}$ for one time step (used in the semi-Lagrangian advection step A2a), and add tracer particles at the new melt location.
+Each mode is described by an `InjectSills.AbstractSill` (`CylindricalDikeTopAccretion`, `EllipticalIntrusion` and `PennyShapedSill`, respectively). `inject_sills` uses the host-rock displacement of that sill as the velocity field $\mathbf{v}$ for one time step (used in the semi-Lagrangian advection step A2a) and adds tracer particles at the new melt location.
 
 ## Tracers and Temperature–Time Paths
 
