@@ -118,7 +118,8 @@ There are a few functions that you can overwrite in your user code to customize 
     # Optionally set initial sill in models ------
     if hasproperty(Dikes, :sill) && !isnothing(Dikes.sill) && Dikes.sill isa InjectSills.CylindricalDikeTopAccretion
         c = [Dikes.sill.Center[i].val for i in 1:2]
-        ind = findall((Arrays.R .<= Dikes.sill.W.val) .& (abs.(Arrays.Z .- c[2]) .< Dikes.sill.H.val/2))
+        # CylindricalDikeTopAccretion stores the full width in W
+        ind = findall((Arrays.R .<= Dikes.sill.W.val/2) .& (abs.(Arrays.Z .- c[2]) .< Dikes.sill.H.val/2))
         Arrays.T_init[ind] .= Dikes.T_in_Celsius
         if Num.advect_polygon==true
             if hasproperty(Dikes, :sill_poly)
