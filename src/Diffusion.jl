@@ -123,6 +123,15 @@ function bc_z_bottom_flux!(T, K, dz, q_z)
 end
 
 """
+    _squared_l2_distance(A, B)
+
+`Σ (A[i] - B[i])²`, without materializing the difference. On GPU arrays the
+reduction over the lazy broadcast is a single fused kernel.
+"""
+_squared_l2_distance(A::Array, B::Array) = sum(i -> abs2(A[i] - B[i]), eachindex(A, B))
+_squared_l2_distance(A, B) = mapreduce(abs2, +, Base.Broadcast.broadcasted(-, A, B))
+
+"""
     compute_phase_param!(A, fn, MatParam::Tuple, Phases, args)
 
 Set every cell of `A` to `fn` (a GeoParams `compute_…` function, e.g.
@@ -192,9 +201,8 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
         # Relaxed Picard iteration for the T used by the (nonlinear) material properties
         @. Arrays.Tupdate = ω * Arrays.Tnew + (one(FT) - ω) * Arrays.T_it_old
         @. Arrays.T_K = Arrays.Tupdate + T₀     # all GeoParams routines expect T in K
-        @. Arrays.Tbuffer = Arrays.Tnew - Arrays.T_it_old
 
-        err = norm(Arrays.Tbuffer) / maximum(Arrays.Tnew)
+        err = sqrt(_squared_l2_distance(Arrays.Tnew, Arrays.T_it_old)) / maximum(Arrays.Tnew)
         Num.verbose && println("  Nonlinear iteration $(iter), error=$(err)")
         Arrays.T_it_old .= Arrays.Tupdate
         iter += 1

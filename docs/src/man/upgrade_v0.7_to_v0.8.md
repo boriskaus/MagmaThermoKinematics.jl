@@ -1,6 +1,6 @@
 # Upgrading from v0.7 to v0.8
 
-v0.8 replaces ParallelStencil with [KernelAbstractions](https://github.com/JuliaGPU/KernelAbstractions.jl). The same code now runs in 2D and 3D, on the CPU and on the GPU. The numerics are unchanged: on the CPU, v0.8 results agree with v0.7 to round-off (about 1e-11 °C in our test runs). Injection is faster and allocates less. Scripts need changes, because the backend setup, the `2D`/`3D` modules and the re-exported ParallelStencil macros are gone.
+v0.8 replaces ParallelStencil with [KernelAbstractions](https://github.com/JuliaGPU/KernelAbstractions.jl). The same code now runs in 2D and 3D, on the CPU and on the GPU. The numerics are unchanged: on the CPU, v0.8 results agree with v0.7 to round-off (about 1e-11 °C in our test runs). Injection and the nonlinear solver are faster and allocate less. Scripts need changes, because the backend setup, the `2D`/`3D` modules and the re-exported ParallelStencil macros are gone.
 
 ## Checklist
 

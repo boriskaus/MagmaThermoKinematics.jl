@@ -17,7 +17,6 @@ using JLD2                                      # Load/save data to disk
 @reexport using InjectSills                     # Re-export InjectSills API (sill constructors + helpers)
 @reexport using GeoParams                                 # Material parameters calculations
 using KernelAbstractions                        # CPU and GPU kernels; GPU backends come with CUDA.jl, Metal.jl, ...
-using LinearAlgebra: norm
 
 abstract type NumericalParameters end
 abstract type SillParameters end
