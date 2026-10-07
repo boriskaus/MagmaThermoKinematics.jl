@@ -197,9 +197,9 @@ function inject_sills(Tracers, T::Array, Grid,
     # Optionally advect a plotting polygon
     # ------------------------------------------------------------------
     if !isempty(dike_poly)
-        poly_vel = AdvectPoints((dike_poly[1], dike_poly[2]), Grid, Velocity, 1.0)
+        poly_new = AdvectPoints((dike_poly[1], dike_poly[2]), Grid, Velocity, 1.0)   # advected coordinates
         for i in eachindex(dike_poly)
-            dike_poly[i] .+= poly_vel[i]
+            dike_poly[i] .= poly_new[i]
         end
     end
 

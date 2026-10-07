@@ -290,6 +290,13 @@ end
     # Tracers were added
     @test length(Tr_new) == 300
 
+    # The plotting polygon moves with the host rock by less than the sill opening
+    poly0 = InjectSills.dike_polygon(sill2d)
+    _, _, _, poly_adv, _ = inject_sills(StructArray{Tracer{Float32}}(undef, 1), copy(T), Grid, sill2d, T_in, 2, 0;
+                                        dike_poly=deepcopy(poly0))
+    @test maximum(abs.(poly_adv[1] .- poly0[1])) <= Hdike
+    @test maximum(abs.(poly_adv[2] .- poly0[2])) <= Hdike
+
     # Injected volume of other sill types (W is the full width)
     for (sill, V_expected) in (
             (EllipticalIntrusion(Center=Point2(cen[1], cen[2])*m, W=Wdike*m, H=Hdike*m),          4/3*π*(Wdike/2)^2*(Hdike/2)),
