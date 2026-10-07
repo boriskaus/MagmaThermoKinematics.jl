@@ -379,6 +379,16 @@ end
     @test InjVol ≈ 4/3*π*(Wdike/2)^2*(Hdike/2)  rtol=1e-6
     # Tracers were added
     @test length(Tr_new) == 300
+
+    # Injected volume of other sill types (W is the full width)
+    for (sill, V_expected) in (
+            (EllipticalIntrusion(Center=Point2(cen[1], cen[2])*m, W=Wdike*m, H=Hdike*m),          4/3*π*(Wdike/2)^2*(Hdike/2)),
+            (CylindricalDikeTopAccretion(Center=Point2(cen[1], cen[2])*m, W=Wdike*m, H=Hdike*m),  π*(Wdike/2)^2*Hdike),
+            (SquareDike(Center=Point2(cen[1], cen[2])*m, W=Wdike*m, H=Hdike*m),                   Wdike^2*Hdike))
+        Tr_s = StructArray{Tracer{Float32}}(undef, 1)
+        _, _, InjVol_s, _, _ = inject_sills(Tr_s, copy(T), Grid, sill, T_in, 2, 0)
+        @test InjVol_s ≈ V_expected  rtol=1e-12
+    end
   end
 
   # ------------------------------------------------------------------

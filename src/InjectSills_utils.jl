@@ -114,7 +114,8 @@ into the temperature field `T` defined on the regular grid `Grid`.
 - `dike_poly`           – optional plotting polygon that is advected with the host rock
 
 # Returns
-`(Tracers, Tnew, InjectedVolume, dike_poly, Velocity)`
+`(Tracers, Tnew, InjectedVolume, dike_poly, Velocity)`, where `InjectedVolume` is
+the equivalent 3D volume of `sill` in m³ (`InjectSills.volume`).
 
 ## Algorithm
 The sill is opened gradually over `nsteps` pseudo-time steps so that the
@@ -191,11 +192,9 @@ function inject_sills(Tracers, T::Array, Grid,
     Tnew, Tracers = add_dike(T, Tracers, Grid, sill, T_in, Phase_in, nTr_dike)
 
     # ------------------------------------------------------------------
-    # Injected volume (numeric SI value from the GeoUnit)
+    # Injected volume [m³]: equivalent 3D volume of the sill type
     # ------------------------------------------------------------------
-    W_val = sill.W.val   # radius (InjectSills stores W as the half-width/radius)
-    H_val = sill.H.val
-    InjectedVolume = 4/3 * π * W_val^2 * (H_val/2)   # oblate spheroid volume [m³]
+    InjectedVolume = ustrip(uconvert(m^3, InjectSills.volume(sill)))
 
     # ------------------------------------------------------------------
     # Optionally advect a plotting polygon
