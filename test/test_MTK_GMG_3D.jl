@@ -205,7 +205,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams(MatParam, Num, Sill_params, CartData_input=Data_3D); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 244.14916470514495  rtol= 1e-2
-@test sum(time_props.MeltFraction)  ≈ 0.8377621121586017 rtol= 1e-5
+@test sum(time_props.MeltFraction)  ≈ 0.00837762112158602 rtol= 1e-5
 
 rm("Test1", recursive=true, force=true) # remove directory created by this test
 rm("Unzen2", recursive=true, force=true) # remove directory created by this test

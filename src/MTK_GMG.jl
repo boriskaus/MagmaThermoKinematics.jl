@@ -122,7 +122,7 @@ Update time-dependent properties during a simulation
 """
 function MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
     push!(time_props.Time_vec,      Num.time);   # time
-    push!(time_props.MeltFraction,  sum( Arrays.ϕ)/(Num.Nx*Num.Nz));    # melt fraction
+    push!(time_props.MeltFraction,  sum(Arrays.ϕ)/length(Arrays.ϕ));    # mean melt fraction
 
     n_hot = sum(Arrays.T .> 700)
     if n_hot > 0
