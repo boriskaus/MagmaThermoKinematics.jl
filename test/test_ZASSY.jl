@@ -5,6 +5,7 @@ const USE_GPU=false;
 if USE_GPU
     using CUDA      # needs to be loaded before loading Parallkel=
 end
+using InjectSills
 using ParallelStencil, ParallelStencil.FiniteDifferences2D
 
 using MagmaThermoKinematics
@@ -71,23 +72,6 @@ using Printf        # pretty print
 end
 
 """
-    This holds various parameters related to the dike intrusion
-"""
-@with_kw struct DikeParam
-    Type::String                    =   "CylindricalDike_TopAccretion"
-    Center::Vector{Float64}         =   [0.; -7.0e3 - 0/2];     # Center of dike
-    T_in_Celsius::Float64           =   1000;                   # Temperature of injected magma
-    W_in::Float64                   =   20e3                    # Diameter of dike
-    H_in::Float64                   =   74.6269                 # Thickness
-    AspectRatio::Float64            =   H_in/W_in;              # Aspect ratio
-    SillRadius::Float64             =   W_in/2                  # Sill radius
-    SillArea::Float64               =   pi*SillRadius^2         # Horizontal area  of sill
-    InjectionInterval_year::Float64 =   10e3;                   # Injection interval [years]
-    InjectionInterval::Float64      =   InjectionInterval_year*SecYear;           # Injection interval [s]
-    nTr_dike::Int64                 =   300                     # Number of tracers
-end
-
-"""
     Analytical geotherm used for the UCLA setups, which includes radioactive heating
 """
 function AnalyticalGeotherm!(T, Z, Tsurf, qm, qs, k, hr)
@@ -95,6 +79,19 @@ function AnalyticalGeotherm!(T, Z, Tsurf, qm, qs, k, hr)
     T      .=  @. Tsurf - (qm/k)*Z + (qs-qm)*hr/k*( 1.0 - exp(Z/hr))
 
     return nothing
+end
+
+@inline _sill_center_2d(Dikes) = [Dikes.sill.Center[1].val, Dikes.sill.Center[2].val]
+@inline _sill_w(Dikes) = Dikes.sill.W.val
+@inline _sill_h(Dikes) = Dikes.sill.H.val
+
+@inline function _build_sill_2d(Dikes; W=_sill_w(Dikes), H=_sill_h(Dikes), angle_deg=0.0)
+    c = _sill_center_2d(Dikes)
+    return InjectSills.update_abstractsill(Dikes.sill;
+                                           Center=Point2(c[1], c[2]) * m,
+                                           Angle=Vec1(angle_deg) * NoUnits,
+                                           W=W * m,
+                                           H=H * m)
 end
 
 #------------------------------------------------------------------------------------------
@@ -117,8 +114,6 @@ end
 
     FT                      =   Num.TracerFloatType
     Tracers                 =   StructArray{Tracer{FT}}(undef, 1)                   # Initialize tracers
-    dike                    =   Dike(W=Dikes.W_in,H=Dikes.H_in,Type=Dikes.Type,T=Dikes.T_in_Celsius, Center=Dikes.Center[:]);               # "Reference" dike with given thickness,radius and T
-
     # Set initial geotherm -----------------------
     if Num.AnalyticalInitialGeo
         # Turcotte & Schubert  analytical geotherm which takes depth-dependent radioactive heating into account
@@ -154,15 +149,14 @@ end
     # Optionally set initial sill in models ------
     InjectVol = 0.0;
     dike_poly   = []
-    if Dikes.Type  == "CylindricalDike_TopAccretion"
-        ind = findall( (Arrays.R.<=Dikes.W_in/2) .& (abs.(Arrays.Z.-Dikes.Center[2]) .< Dikes.H_in/2) );
+    if Dikes.sill isa CylindricalDikeTopAccretion
+        c = _sill_center_2d(Dikes)
+        ind = findall((Arrays.R .<= _sill_w(Dikes) / 2) .& (abs.(Arrays.Z .- c[2]) .< _sill_h(Dikes) / 2));
         Arrays.T_init[ind] .= Dikes.T_in_Celsius;
-        if Num.advect_polygon==true
-            dike_poly   =   CreateDikePolygon(dike);
-        end
     end
     if Num.InitialEllipse
-        ind =  findall( ((Arrays.R.^2.0)/(Num.a_init^2.0) .+ ((Arrays.Z.-Dikes.Center[2]).^2.0)/((Num.b_init)^2.0)) .< 1.0); # ellipse
+        c = _sill_center_2d(Dikes)
+        ind =  findall( ((Arrays.R.^2.0)/(Num.a_init^2.0) .+ ((Arrays.Z.-c[2]).^2.0)/((Num.b_init)^2.0)) .< 1.0); # ellipse
         Arrays.T_init[ind] .= Dikes.T_in_Celsius;
         #dike_poly   =   CreateDikePolygon(Dike(dike,W=Num.a_init*2, H=Num.b_init*2));
 
@@ -170,15 +164,18 @@ end
 
 
         # Inject initial dike to the tracers
-        dike_initial        =   Dike(dike, Center=Dikes.Center[:],Angle=[0],W=Num.a_init*2, H=Num.b_init*2);           # Specify dike with random location/angle but fixed size/T
+        sill_initial        =   EllipticalIntrusion(Center=Point2(c[1], c[2]) * m,
+                                Angle=Vec1(0.0) * NoUnits,
+                                W=(Num.a_init*2) * m,
+                                H=(Num.b_init*2) * m)
+        if Num.advect_polygon==true && isempty(dike_poly)
+            dike_poly = InjectSills.dike_polygon(sill_initial)
+        end
         Tnew_cpu           .=   Array(Arrays.T)
-        Tracers, Tnew_cpu,Vol,dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike_initial, Dikes.nTr_dike, dike_poly=dike_poly);     # Add dike, move hostrocks
+        Tracers, Tnew_cpu,Vol,_, VEL  =   inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill_initial, Dikes.T_in_Celsius, 2, Dikes.nTr_dike);     # Add dike, move hostrocks
 
         Arrays.T           .=   Data.Array(Tnew_cpu)
         InjectVol          +=   Vol                                                     # Keep track of injected volume
-        if Num.advect_polygon==true && isempty(dike_poly)
-            dike_poly   =   CreateDikePolygon(dike_initial);            # create dike for the 1th time
-        end
         @printf "  Added initial dike; total injected magma volume = %.2f km³ \n"  InjectVol/km³
 
 
@@ -219,9 +216,12 @@ end
         # Add new dike every X years -----------------
         if floor(time/Dikes.InjectionInterval)> dike_inj
             dike_inj            =   floor(time/Dikes.InjectionInterval)                     # Keeps track on what was injected already
-            dike                =   Dike(dike, Center=Dikes.Center[:],Angle=[0]);           # Specify dike with random location/angle but fixed size/T
+            sill = _build_sill_2d(Dikes)
+            if Num.advect_polygon==true && isempty(dike_poly)
+                dike_poly = InjectSills.dike_polygon(sill)
+            end
             Tnew_cpu           .=   Array(Arrays.T)
-            Tracers, Tnew_cpu,Vol,dike_poly, VEL  =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, Dikes.nTr_dike, dike_poly=dike_poly);     # Add dike, move hostrocks
+            Tracers, Tnew_cpu,Vol,_, VEL  =   inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, Dikes.T_in_Celsius, 2, Dikes.nTr_dike);     # Add dike, move hostrocks
 
             if Num.flux_bottom_BC==false
                 # Keep bottom T absolutey constant (advection modifies this)
@@ -232,13 +232,9 @@ end
             InjectVol          +=   Vol                                                     # Keep track of injected volume
             Qrate               =   InjectVol/time
             Qrate_km3_yr        =   Qrate*SecYear/km³
-            Qrate_km3_yr_km2    =   Qrate_km3_yr/(pi*(Dikes.W_in/2/1e3)^2)
+            Qrate_km3_yr_km2    =   Qrate_km3_yr/(pi*(_sill_w(Dikes)/2/1e3)^2)
 
             @printf "  Added new dike; time=%.3f kyrs, total injected magma volume = %.2f km³; rate Q= %.2e km³yr⁻¹  \n" time/kyr InjectVol/km³ Qrate_km3_yr
-
-            if Num.advect_polygon==true && isempty(dike_poly)
-                dike_poly   =   CreateDikePolygon(dike);            # create dike for the 1th time
-            end
 
             if length(Mat_tup)>1
                PhasesFromTracers!(Array(Phases), Grid, Tracers, BackgroundPhase=1, InterpolationMethod="Constant");    # update phases from grid
@@ -349,12 +345,12 @@ if 1==1
                             Geotherm=30/1e3, TrackTracersOnGrid=true,
                             SaveOutput_steps=100000, CreateFig_steps=100000, plot_tracers=false, advect_polygon=true,
                             FigTitle="Geneva Models, Geotherm 30/km");
-    Dike_params = DikeParam(Type="CylindricalDike_TopAccretion",
+    Sill_params = SillParams(
+                            sill=CylindricalDikeTopAccretion(Center=Point2(0.0, -7.0e3) * m, W=20e3 * m, H=74.6269 * m),
                             #InjectionInterval_year = 10e3,      # flux= 7.5e-6 km3/km2/yr
                             #InjectionInterval_year = 7000,      # flux= 10.7e-6 km3/km2/yr
                             InjectionInterval_year = 8200,       # flux= 9.1e-6 km3/km2/yr
                             #InjectionInterval_year = 5000,       # flux= 14.9e-6 km3/km2/yr
-                            W_in=20e3, H_in=74.6269,
                             nTr_dike=300*1
                 )
     MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
@@ -370,7 +366,7 @@ if 1==1
                     # add more parameters here, in case you have >1 phase in the model
                     )
     # Call the main code with the specified material parameters
-    x,z,T, Time_vec,Melt_Time, Tracers, dike_poly, Grid, Phases = MainCode_2D(MatParam, Num, Dike_params); # start the main code
+    x,z,T, Time_vec,Melt_Time, Tracers, dike_poly, Grid, Phases = MainCode_2D(MatParam, Num, Sill_params); # start the main code
     @test sum(T)/prod(size(T)) ≈ 312.1505261202475  rtol= 1e-2
     @test sum(Melt_Time)  ≈ 0.16694675188794647  rtol= 1e-5
 
@@ -443,11 +439,10 @@ if 1==1
     V_inj_b = 0.5757352089772111
 
      # Use the parameters. Note that we specify the diameter of the ellipse in here
-     Dike_params  = DikeParam(Type="EllipticalIntrusion", InjectionInterval_year = InjectionInterval_yr,
-                             W_in=V_inj_a*2*1e3,
-                             H_in=V_inj_b*2*1e3,
-                             Center=[0, mid_depth_km*1e3],
-                             nTr_dike=300*4)
+    Sill_params  = SillParams(
+                        sill=EllipticalIntrusion(Center=Point2(0.0, mid_depth_km*1e3) * m, W=V_inj_a*2*1e3 * m, H=V_inj_b*2*1e3 * m),
+                        InjectionInterval_year = InjectionInterval_yr,
+                        nTr_dike=300*4)
 
      MatParam     = (SetMaterialParams(Name="Host rock", Phase=1,
                                      Density    = ConstantDensity(ρ=2700kg/m^3),                    # used in the parameterisation of Whittington
@@ -468,7 +463,7 @@ if 1==1
              )
 
     # Call the main code with the specified material parameters
-    x,z,T, Time_vec,Melt_Time, Tracers, dike_poly, Grid, Phases = MainCode_2D(MatParam, Num, Dike_params); # start the main code
+    x,z,T, Time_vec,Melt_Time, Tracers, dike_poly, Grid, Phases = MainCode_2D(MatParam, Num, Sill_params); # start the main code
 
     @test sum(T)/prod(size(T)) ≈ 351.6708073949723 rtol= 1e-4
     @test sum(Melt_Time)  ≈ 11.474144800106583 rtol= 1e-4

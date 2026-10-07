@@ -48,18 +48,18 @@ println("Example 1 of the MTK - GMG integration")
 # Overwrite some of the MTK functions ---
 
 # Printing output e
-function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
     println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
     return nothing
 end
 
 @static if USE_GPU
-    function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+    function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
         println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
         return nothing
     end
 else
-    function MTK_GMG.MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+    function MTK_GMG.MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
         if mod(Num.it,Num.CreateFig_steps)==0
             x_1d        =   Grid.coord1D[1]/1e3;
             z_1d        =   Grid.coord1D[2]/1e3;
@@ -82,11 +82,11 @@ else
 end
 
 """
-    MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArrays, Dikes::DikeParameters)
+    MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArrays, Dikes::SillParameters)
 
 Initialize temperature and phases of the grid
 """
-function MTK_GMG.MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::DikeParameters)
+function MTK_GMG.MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters)
     # Initalize T
     Arrays.T_init   .=   @. Num.Tsurface_Celcius - Arrays.Z*Num.Geotherm;                # Initial (linear) temperature profile
 
@@ -118,15 +118,21 @@ Num         = NumParam( Nx                      =   135*2,
                         AddRandomSills          =   true,
                         RandomSills_timestep    =   5);
 
-Dike_params = DikeParam(Type                    =   "ElasticDike",
-                        InjectionInterval_year  =   1000,
-                        W_in                    =   5e3,
-                        H_in                    =   250,
-                        nTr_dike                =   300*4,
-                        DikePhase               =   2,
-                        T_in_Celsius            =   1000,
-                        SillsAbove              =   -12e3       # below this we have dikes; above sills
-                )
+# Default setup: ElasticDike equivalent via PennyShapedSill.
+sill = PennyShapedSill(Center=Point2(0.0, -7.0e3)m, W=2.5e3m, H=250m, E=1.5e10Pa, ν=0.3NoUnits)
+
+# Alternative sill definitions (currently unused):
+# sill = CylindricalDikeTopAccretion(Center=Point2(0.0, -7.0e3)m, W=5e3m, H=250m, E=1.5e10Pa, ν=0.3NoUnits)
+# sill =         EllipticalIntrusion(Center=Point2(0.0, -7.0e3)m, W=5e3m, H=250m, E=1.5e10Pa, ν=0.3NoUnits)
+
+Sill_params = SillParams(
+    sill                    = sill,
+    InjectionInterval_year  = 1000,
+    nTr_dike                = 300*4,
+    SillPhase               = 2,
+    T_in_Celsius            = 1000,
+    SillsAbove              = -12e3,
+)
 
 MatParam     = (SetMaterialParams(Name="Host rock 1", Phase=0,
                                 Density         = ConstantDensity(ρ=2700kg/m^3),                    # used in the parameterisation of Whittington
@@ -155,4 +161,4 @@ MatParam     = (SetMaterialParams(Name="Host rock 1", Phase=0,
                 )
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Dike_params);
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Sill_params);

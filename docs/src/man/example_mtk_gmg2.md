@@ -96,7 +96,7 @@ Key choices in this setup:
 - **Melting** — `SmoothMelting(MeltingParam_4thOrder())` uses the Marxer & Ulmer parameterisation wrapped in a smoothing function to ensure a continuous $\partial\phi/\partial T$ (required for numerical stability; see [Numerics](numerics.md)).
 - **Conductivity** — `T_Conductivity_Whittington_parameterised()` provides a temperature-dependent conductivity for rock; air uses a constant value.
 - **Latent heat** — set to zero for the air phase since no melting occurs above the topography.
-- **DikePhase** — the `DikeParam` below uses `DikePhase=3`, so injected material is assigned the "Dikes" material properties.
+- **SillPhase** — the `SillParams` below uses `SillPhase=3`, so injected material is assigned the "Dikes" material properties.
 
 See the [GeoParams parameterisations](MeltingParameterisations.md) page for all available options.
 
@@ -111,7 +111,7 @@ We specify a few custom time-dependent properties with:
     Tmax_1::Vector{Float64}         = []
 end
 
-function MTK_GMG.MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+function MTK_GMG.MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
     push!(time_props.Time_vec, Num.time)
     push!(time_props.MeltFraction, sum(Arrays.ϕ)/(Num.Nx*Num.Nz))
     push!(time_props.Tmax, maximum(Arrays.T))
@@ -136,18 +136,17 @@ Num = NumParam(
 )
 ```
 Note that the resolution is taken from the size of the `Data_2D` array.
-Dike parameters are set with:
+Sill parameters are set with:
 ```julia
-Dike_params = DikeParam(
-    Type                   = "ElasticDike",
+sill = PennyShapedSill(Center=Point2(0.0, -7.0e3) * m, W=2.5e3 * m, H=250 * m, E=1.5e10 * Pa, ν=0.3 * NoUnits)
+Sill_params = SillParams(
+    sill                   = sill,
     InjectionInterval_year = 1000,
-    W_in                   = 5e3,
-    H_in                   = 250,
     H_ran                  = 5000,
     W_ran                  = 5000,
     nTr_dike               = 2000,
     Dip_ran                = 45,
-    DikePhase              = 3,
+    SillPhase              = 3,
     SillsAbove             = -10e3,
 )
 ```
@@ -157,7 +156,7 @@ Finally, run the simulation with:
 Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(
     MatParam,
     Num,
-    Dike_params,
+    Sill_params,
     CartData_input = Data_2D,
     time_props     = TimeDepProps1(),
 )
