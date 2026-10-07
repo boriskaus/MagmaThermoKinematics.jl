@@ -90,7 +90,7 @@ println("===============================================")
 # These are the final simulations for the ZASSy paper, but done @ a lower resolution
 Num         = NumParam( #Nx=269*1, Nz=269*1,
                         Nx=65*1, Nz=65*1,
-                        SimName="ZASSy_Geneva_9_1e_6", axisymmetric=false,
+                        SimName="MTK_GMG_2D_Geneva", axisymmetric=false,
                         #maxTime_Myrs=1.5,
                         maxTime_Myrs=0.025,
                         fac_dt=0.2, ω=0.5, verbose=false,
@@ -241,7 +241,7 @@ Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_2D.MTK_GeoParams_2D(MatParam,
 @test sum(time_props.MeltFraction)  ≈  0.2238128607809668 rtol= 1e-5
 
 # remove directory created by this test
-rm("ZASSy_Geneva_9_1e_6", recursive=true, force=true)
+rm("MTK_GMG_2D_Geneva", recursive=true, force=true)
 rm("Unzen1", recursive=true, force=true)
 
 end
