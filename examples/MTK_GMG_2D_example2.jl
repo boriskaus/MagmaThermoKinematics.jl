@@ -155,7 +155,7 @@ Num         = NumParam( SimName             =   "Unzen1",
                         RandomSills_timestep=   5);
 
 # Default setup: ElasticDike equivalent via PennyShapedSill.
-sill = PennyShapedSill(Center=Point2(0.0, -7.0e3) * m, W=2.5e3 * m, H=250 * m, E=1.5e10 * Pa, ν=0.3 * NoUnits)
+sill = PennyShapedSill(Center=Point2(0.0, -7.0e3) * m, R=2.5e3 * m, H=250 * m, E=1.5e10 * Pa, ν=0.3 * NoUnits)
 
 # Alternative sill definitions (currently unused):
 # sill = CylindricalDikeTopAccretion(Center=Point2(0.0, -7.0e3) * m, W=5e3 * m, H=250 * m)

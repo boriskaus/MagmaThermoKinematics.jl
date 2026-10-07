@@ -34,9 +34,9 @@ end
 end
 
 @inline _active_sill(Dikes) = isnothing(Dikes.sill) ? error("SillParameters requires a valid `sill` object") : Dikes.sill
-# Horizontal radius of the sill [m]: `PennyShapedSill` stores the radius in `W`,
+# Horizontal radius of the sill [m]: `PennyShapedSill` stores the radius in `R`,
 # the other sill types store the full width.
-@inline _sill_radius_m(sill::InjectSills.PennyShapedSill) = sill.W.val
+@inline _sill_radius_m(sill::InjectSills.PennyShapedSill) = sill.R.val
 @inline _sill_radius_m(sill::InjectSills.AbstractSill) = sill.W.val/2
 
 #using CUDA

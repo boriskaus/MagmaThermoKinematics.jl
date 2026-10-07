@@ -67,7 +67,7 @@ Num         = NumParam( SimName="Unzen3D", axisymmetric=false,
                         USE_GPU=USE_GPU,
                         AddRandomSills = true, RandomSills_timestep=5);
 # sill parameters
-sill = PennyShapedSill(Center=Point3(0.0, 0.0, -7.0e3) * m, Angle=Vec2(0.0, 0.0) * NoUnits, W=2.5e3 * m, H=1000 * m, E=1.5e10 * Pa, ν=0.3 * NoUnits)
+sill = PennyShapedSill(Center=Point3(0.0, 0.0, -7.0e3) * m, Angle=Vec2(0.0, 0.0) * NoUnits, R=2.5e3 * m, H=1000 * m, E=1.5e10 * Pa, ν=0.3 * NoUnits)
 Sill_params = SillParams(
     sill                    = sill,
     InjectionInterval_year  = 1000,

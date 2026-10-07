@@ -49,7 +49,7 @@ end
 `NumParam` sets the numerical parameters; defaults are set, such that you only need to specify the non-default part.
 ```julia
 Num = NumParam(Nx=135*2, Nz=135*2, SimName="Test1", maxTime_Myrs=0.005, USE_GPU=USE_GPU)
-sill = PennyShapedSill(Center=Point2(0.0, -7.0e3)m, W=2.5e3m, H=250m, E=1.5e10Pa, ν=0.3NoUnits)
+sill = PennyShapedSill(Center=Point2(0.0, -7.0e3)m, R=2.5e3m, H=250m, E=1.5e10Pa, ν=0.3NoUnits)
 Sill_params = SillParams(
     sill                   = sill,
     InjectionInterval_year = 1000,

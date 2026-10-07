@@ -16,7 +16,7 @@ const CreatePlots = false      # easy way to deactivate plotting throughout
 # Helper: build the InjectSills AbstractSill that corresponds to a given MTK
 # DikeType at the specified center / orientation / size.
 #   SquareDike        → SquareDike       (W = full width, same as MTK)
-#   ElasticDike / InjectSills / others → PennyShapedSill (W = radius = Wdike/2)
+#   ElasticDike / InjectSills / others → PennyShapedSill (R = radius = Wdike/2)
 # ---------------------------------------------------------------------------
 function _make_sill(DikeType, cen, DikeAngle, Wdike, Hdike, dim)
     if dim == 2
@@ -30,7 +30,7 @@ function _make_sill(DikeType, cen, DikeAngle, Wdike, Hdike, dim)
         SquareDike(Center=center, Angle=angle, W=Wdike*m, H=Hdike*m)
     else  # ElasticDike, InjectSills, EllipticalIntrusion, …
         PennyShapedSill(Center=center, Angle=angle,
-                        W=(Wdike/2)*m, H=Hdike*m,
+                        R=(Wdike/2)*m, H=Hdike*m,
                         E=1.5e10Pa, ν=0.3*NoUnits)
     end
 end
@@ -274,7 +274,7 @@ end
 
     # inject_sills: basic sanity checks in 2D
     sill2d = PennyShapedSill(
-                W      = (Wdike/2)*m,
+                R      = (Wdike/2)*m,
                 H      = Hdike*m,
                 E      = 1.5e10*Pa,
                 ν      = 0.3*NoUnits,
@@ -285,7 +285,7 @@ end
     @test all(isfinite, Tnew_new)
     @test maximum(Tnew_new) <= T_in + 1e-8
     @test minimum(Tnew_new) >= minimum(T) - 1e-8
-    # Injected volume: sill.W.val is the radius, so volume = 4/3*π*r²*(H/2)
+    # Injected volume: sill.R.val is the radius, so volume = 4/3*π*r²*(H/2)
     @test InjVol ≈ 4/3*π*(Wdike/2)^2*(Hdike/2)  rtol=1e-6
     # Tracers were added
     @test length(Tr_new) == 300
@@ -328,7 +328,7 @@ end
 
     # inject_sills: basic sanity checks in 3D
     sill3d = PennyShapedSill(
-                W      = (Wdike/2)*m,
+                R      = (Wdike/2)*m,
                 H      = Hdike*m,
                 E      = 1.5e10*Pa,
                 ν      = 0.3*NoUnits,

@@ -138,7 +138,7 @@ Num = NumParam(
 Note that the resolution is taken from the size of the `Data_2D` array.
 Sill parameters are set with:
 ```julia
-sill = PennyShapedSill(Center=Point2(0.0, -7.0e3) * m, W=2.5e3 * m, H=250 * m, E=1.5e10 * Pa, ν=0.3 * NoUnits)
+sill = PennyShapedSill(Center=Point2(0.0, -7.0e3) * m, R=2.5e3 * m, H=250 * m, E=1.5e10 * Pa, ν=0.3 * NoUnits)
 Sill_params = SillParams(
     sill                   = sill,
     InjectionInterval_year = 1000,
