@@ -44,18 +44,18 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         println("  Added new dike; time=$(Num.time / kyr) kyrs, total injected magma volume = $(Dikes.InjectVol / km³) km³; rate Q= $(Dikes.Qrate_km3_yr) km³yr⁻¹")
 
         if length(Mat_tup) > 1
-            PhasesFromTracers!(Array(Arrays.Phases), Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant")
+            Phases = Array(Arrays.Phases)
+            PhasesFromTracers!(Phases, Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant")
 
             if Num.keep_init_RockPhases == true
-                Phases = Array(Arrays.Phases)
                 Phases_init = Array(Arrays.Phases_init)
-                for i in eachindex(Phases)
+                for i in eachindex(Phases, Phases_init)
                     if Phases[i] != Dikes.SillPhase
                         Phases[i] = Phases_init[i]
                     end
                 end
-                copyto!(Arrays.Phases, Phases)
             end
+            copyto!(Arrays.Phases, Phases)
         end
     end
 

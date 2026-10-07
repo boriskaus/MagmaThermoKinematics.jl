@@ -66,6 +66,7 @@ end
         jl, cpu = run_model(JLBackend(), dim), run_model(CPU(), dim)
         @test jl.on_jl
         @test cpu.InjectVol > 0
+        @test any(==(2), cpu.Phases)       # the phase update after injection ran
         @test jl.InjectVol == cpu.InjectVol
         @test jl.T == cpu.T
         @test jl.ϕ == cpu.ϕ

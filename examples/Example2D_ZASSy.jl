@@ -219,7 +219,9 @@ end
             end
 
             if length(Mat_tup)>1
-                @timeit to "PhasesFromTracers"  PhasesFromTracers!(Array(Phases), Grid, Tracers, BackgroundPhase=1, InterpolationMethod="Constant");    # update phases from grid
+                Phases_cpu = Array(Phases)
+                @timeit to "PhasesFromTracers"  PhasesFromTracers!(Phases_cpu, Grid, Tracers, BackgroundPhase=1, InterpolationMethod="Constant");    # update phases from tracers
+                copyto!(Phases, Phases_cpu)
             end
 
         end

@@ -1,6 +1,6 @@
 # Upgrading from v0.7 to v0.8
 
-v0.8 replaces ParallelStencil with [KernelAbstractions](https://github.com/JuliaGPU/KernelAbstractions.jl). The same code now runs in 2D and 3D, on the CPU and on the GPU. The numerics are unchanged: on the CPU, v0.8 results agree with v0.7 to round-off (about 1e-11 °C in our test runs). Injection and the nonlinear solver are faster and allocate less. Scripts need changes, because the backend setup, the `2D`/`3D` modules and the re-exported ParallelStencil macros are gone.
+v0.8 replaces ParallelStencil with [KernelAbstractions](https://github.com/JuliaGPU/KernelAbstractions.jl). The same code now runs in 2D and 3D, on the CPU and on the GPU. The numerics are unchanged: on the CPU, v0.8 results agree with v0.7 to round-off (about 1e-11 °C in our test runs), except for models affected by the bug fix listed under [Changes without an error](#pitfalls). Injection and the nonlinear solver are faster and allocate less. Scripts need changes, because the backend setup, the `2D`/`3D` modules and the re-exported ParallelStencil macros are gone.
 
 ## Checklist
 
@@ -92,5 +92,6 @@ Arrays.T .= Arrays.Tnew
 
 **Changes without an error**
 
+- Models with more than one phase now update the phases from the tracers after each injection: cells filled by a sill take `SillPhase`, all others keep their initial phase (with `keep_init_RockPhases=true`, the default). In v0.7 `MTK_inject_dikes` wrote the new phases into a copy, so the sills kept the phase of the host rock. Results change if the sill phase has different material properties than the host rock.
 - A 2D `NumParam` with `Ny > 0` now runs a 3D model in `MTK_GeoParams`. Leave `Ny` at its default `0` for 2D models.
 - `Numeric_params` has a new field `deactivationDepth` (default `-15e3` m). In v0.7, `deactivate_La_at_depth=true` with `Numeric_params` failed because this field was missing.

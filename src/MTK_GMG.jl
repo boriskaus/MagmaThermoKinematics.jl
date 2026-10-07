@@ -75,19 +75,19 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         end
 
         if length(Mat_tup)>1
-           PhasesFromTracers!(Array(Arrays.Phases), Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant");    # update phases from grid
+            Phases = Array(Arrays.Phases)
+            PhasesFromTracers!(Phases, Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant");    # update phases from tracers
 
-           # Ensure that we keep the initial phase of the area (host rocks are not deformable)
-           if Num.keep_init_RockPhases==true
-                Phases      = Array(Arrays.Phases)          # move to CPU
+            # Ensure that we keep the initial phase of the area (host rocks are not deformable)
+            if Num.keep_init_RockPhases==true
                 Phases_init = Array(Arrays.Phases_init)
-                for i in eachindex(Phases)
+                for i in eachindex(Phases, Phases_init)
                     if Phases[i] != Dikes.SillPhase
                         Phases[i] = Phases_init[i]
                     end
                 end
-                copyto!(Arrays.Phases, Phases)
-           end
+            end
+            copyto!(Arrays.Phases, Phases)
         end
 
     end

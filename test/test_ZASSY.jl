@@ -209,7 +209,9 @@ end
             @printf "  Added new dike; time=%.3f kyrs, total injected magma volume = %.2f km³; rate Q= %.2e km³yr⁻¹  \n" time/kyr InjectVol/km³ Qrate_km3_yr
 
             if length(Mat_tup)>1
-               PhasesFromTracers!(Array(Phases), Grid, Tracers, BackgroundPhase=1, InterpolationMethod="Constant");    # update phases from grid
+               Phases_cpu = Array(Phases)
+               PhasesFromTracers!(Phases_cpu, Grid, Tracers, BackgroundPhase=1, InterpolationMethod="Constant");    # update phases from tracers
+               copyto!(Phases, Phases_cpu)
             end
         end
         # --------------------------------------------
@@ -436,8 +438,8 @@ if 1==1
     # Call the main code with the specified material parameters
     x,z,T, Time_vec,Melt_Time, Tracers, dike_poly, Grid, Phases = MainCode_2D(MatParam, Num, Sill_params); # start the main code
 
-    @test sum(T)/prod(size(T)) ≈ 351.6708073949723 rtol= 1e-4
-    @test sum(Melt_Time)  ≈ 11.474144800106583 rtol= 1e-4
+    @test sum(T)/prod(size(T)) ≈ 351.8179508143186 rtol= 1e-4
+    @test sum(Melt_Time)  ≈ 10.397557847237765 rtol= 1e-4
 
 
  end
