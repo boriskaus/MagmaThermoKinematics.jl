@@ -1,6 +1,6 @@
 # Numerics and Physics
 
-MagmaThermoKinematics.jl is built around a finite-difference energy solver with semi-Lagrangian advection and tracer-based tracking of injected sill material. 
+MagmaThermoKinematics.jl is built around a finite-difference energy solver with semi-Lagrangian advection and tracer-based tracking of injected sill material.
 
 ## Governing Equation
 The thermal state of the magmatic system is described by the advection–diffusion equation for temperature $T$ with latent heat release:
@@ -121,7 +121,7 @@ All three modes inject a `Dike` object, update the velocity field $\mathbf{v}$ f
 
 Passive tracer particles are advected with the host-rock velocity field using the same semi-Lagrangian scheme as the temperature field.  At each time step each tracer records its current temperature, producing a continuous $T$–$t$ path.  These paths are the primary input to the [ZirconGrowth integration](zircon_growth.md).
 
-Tracers are kept on the CPU, as they generally use a lot of memory. 
+Tracers are kept on the CPU, as they generally use a lot of memory.
 
 ## Dimensions and Geometry
 
