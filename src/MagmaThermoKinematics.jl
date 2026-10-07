@@ -58,7 +58,7 @@ export inject_sills, add_dike
 
 # routines related to advection & interpolation
 include("Advection.jl")
-export AdvectTemperature, Interpolate!, CorrectBounds, evaluate_interp_2D, evaluate_interp_3D
+export AdvectTemperature, AdvectTemperature!, Interpolate!, CorrectBounds, evaluate_interp_2D, evaluate_interp_3D
 
 include("Utils.jl")
 export Process_ZirconAges, simulate_zircon_growth_from_tracers, volume_averaged_age, copy_arrays_GPU2CPU!, copy_arrays_CPU2GPU!

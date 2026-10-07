@@ -174,13 +174,20 @@ function inject_sills(Tracers, T::Array, Grid,
     # ------------------------------------------------------------------
     # Pseudo-timestep advection: open the sill gradually
     # ------------------------------------------------------------------
-    Tnew = zeros(size(T))
-    for _ in 1:nsteps
-        Tnew = AdvectTemperature(T, Grid, GridFull, Velocity, dt, AdvectionMethod, InterpolationMethod)
-        if isassigned(Tracers, 1)
-            AdvectTracers!(Tracers, Grid, Velocity, dt)
+    if AdvectionMethod == "RK2" && InterpolationMethod == "Linear"
+        buf = similar(T)
+        src, dst = T, buf
+        for _ in 1:nsteps
+            AdvectTemperature!(dst, src, Grid, Velocity, dt)
+            isassigned(Tracers, 1) && AdvectTracers!(Tracers, Grid, Velocity, dt)
+            src, dst = dst, src
         end
-        T .= Tnew
+        src === T || copyto!(T, src)
+    else
+        for _ in 1:nsteps
+            T .= AdvectTemperature(T, Grid, GridFull, Velocity, dt, AdvectionMethod, InterpolationMethod)
+            isassigned(Tracers, 1) && AdvectTracers!(Tracers, Grid, Velocity, dt)
+        end
     end
 
     # ------------------------------------------------------------------
