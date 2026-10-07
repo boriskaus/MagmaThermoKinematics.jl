@@ -6,7 +6,7 @@ MagmaThermoKinematics.jl relies on a set of Julia packages for numerics, physics
 
 The package uses for example:
 
-- [ParallelStencil.jl](https://github.com/omlins/ParallelStencil.jl) for stencil-based energy solver kernels.
+- [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl) for the energy solver kernels, which run on CPUs and GPUs.
 - [GeoParams.jl](https://github.com/JuliaGeodynamics/GeoParams.jl) for material properties (for example nonlinear conductivity and melting behavior).
 - [StructArrays.jl](https://github.com/JuliaArrays/StructArrays.jl) for tracer storage.
 - [Parameters.jl](https://github.com/mauro3/Parameters.jl) for parameter handling.

@@ -1,28 +1,7 @@
 using Test, LinearAlgebra, SpecialFunctions, Random
-const USE_GPU=false;
-if USE_GPU
-    using CUDA      # needs to be loaded before loading Parallkel=
-end
-using ParallelStencil, ParallelStencil.FiniteDifferences2D
-
 using MagmaThermoKinematics
-@static if USE_GPU
-    environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
-    @init_parallel_stencil(CUDA, Float64, 2)
-else
-    environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
-    @init_parallel_stencil(Threads, Float64, 2)
-end
-using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
-#using MagmaThermoKinematics.Fields2D
-
 
 Random.seed!(1234);     # such that we can reproduce results
-
-# Initialize for multiple threads (GPU is not tested here)
-#@init_parallel_stencil(Threads, Float64, 2);    # initialize parallel stencil in 2D
-#@init_parallel_stencil(CUDA, Float64, 2);    # initialize parallel stencil in 2D
 
 const CreatePlots = false      # easy way to deactivate plotting throughout
 
@@ -59,17 +38,17 @@ dx                      =   W/(Nx-1)*1e3; dz = H*1e3/(Nz-1);    # grid size [m]
 dt                      =   min(dx^2, dz^2)./κ/10;             # stable timestep (required for explicit FD)
 
 # Array initializations (1 - main arrays on which we can initialize properties)
-T                       =   @zeros(Nx,   Nz);
-K                       =   @ones(Nx,    Nz)*k_rock1;
-Rho                     =   @ones(Nx,    Nz)*ρ;
-Hs                      =   @zeros(Nx,   Nz);
-Hl                      =   @ones(Nx,   Nz)*L;
-Cp                      =   @ones(Nx,    Nz)*cp;
-dPhi_dt                 =   @zeros(Nx,   Nz);
+T                       =   zeros(Nx,   Nz);
+K                       =   fill(Float64(k_rock1), Nx,Nz);
+Rho                     =   fill(Float64(ρ), Nx,Nz);
+Hs                      =   zeros(Nx,   Nz);
+Hl                      =   fill(Float64(L), Nx,Nz);
+Cp                      =   fill(Float64(cp), Nx,Nz);
+dPhi_dt                 =   zeros(Nx,   Nz);
 
 # Work array initialization
-Tnew, qx,qz, Kx, Kz     =   @zeros(Nx,   Nz), @zeros(Nx-1, Nz),     @zeros(Nx,   Nz-1), @zeros(Nx-1, Nz), @zeros(Nx,   Nz-1)    # thermal solver
-X,Xc,Z                  =   @zeros(Nx,   Nz), @zeros(Nx-1, Nz-1),   @zeros(Nx,   Nz)    # 2D gridpoints
+Tnew                    =   zeros(Nx,   Nz)                                             # thermal solver
+X,Xc,Z                  =   zeros(Nx,   Nz), zeros(Nx-1, Nz-1),   zeros(Nx,   Nz)    # 2D gridpoints
 
 # Set up model geometry & initial T structure
 x,z                     =   0:dx:W*1e3, -H*1e3:dz:(-H*1e3+(Nz-1)*dz);
@@ -104,15 +83,15 @@ while (err>1e-10) & (it<1e6)
 
     it += 1
     # Perform a diffusion step
-    diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz, dPhi_dt);
+    diffusion_step!(Tnew, T, K, Rho, Cp, Hs, Hl, dt, (dx, dz), dPhi_dt);
     if Setup=="Constant_Zdirection" || Setup=="VariableK_Zdirection"
          # diffusion in z-direction
-        @parallel (1:size(T,2)) bc2D_x!(Tnew);                                                      # set lateral boundary conditions (flux-free)
+        bc_zero_flux!(Tnew, 1);                                                                     # set lateral boundary conditions (flux-free)
         Tnew[:,1] .= Tbot; Tnew[:,end] .= 0.0;                                                    # bottom & top temperature (constant)
 
     else
         # diffusion in x-direction
-        @parallel (1:size(T,1)) bc2D_z!(Tnew);                                                      # set lateral boundary conditions (flux-free)
+        bc_zero_flux!(Tnew, 2);                                                                     # set lateral boundary conditions (flux-free)
         Tnew[1,:] .= 0; Tnew[end,:] .= Tbot;                                                    # bottom & top temperature (constant)
     end
 
@@ -224,17 +203,17 @@ function Diffusion_Halfspace2D()
     nt                      =   Int(numTime);
 
     # Array initializations (1 - main arrays on which we can initialize properties)
-    T                       =   @ones(Nx,    Nz)*Tbot;
-    K                       =   @ones(Nx,    Nz)*k_rock1;
-    Rho                     =   @ones(Nx,    Nz)*ρ;
-    Cp                      =   @ones(Nx,    Nz)*cp;
-    Hs                      =   @zeros(Nx,   Nz);
-    Hl                      =   @zeros(Nx,   Nz)*L;
-    dPhi_dt                 =   @zeros(Nx,   Nz);
+    T                       =   fill(Float64(Tbot), Nx,Nz);
+    K                       =   fill(Float64(k_rock1), Nx,Nz);
+    Rho                     =   fill(Float64(ρ), Nx,Nz);
+    Cp                      =   fill(Float64(cp), Nx,Nz);
+    Hs                      =   zeros(Nx,   Nz);
+    Hl                      =   zeros(Nx,   Nz)*L;
+    dPhi_dt                 =   zeros(Nx,   Nz);
 
     # Work array initialization
-    Tnew, qx,qz, Kx, Kz     =   @zeros(Nx,   Nz), @zeros(Nx-1, Nz),     @zeros(Nx,   Nz-1), @zeros(Nx-1, Nz), @zeros(Nx,   Nz-1)    # thermal solver
-    X,Xc,Z                  =   @zeros(Nx,   Nz), @zeros(Nx-1, Nz-1),   @zeros(Nx,   Nz)    # 2D gridpoints
+    Tnew                    =   zeros(Nx,   Nz)                                             # thermal solver
+    X,Xc,Z                  =   zeros(Nx,   Nz), zeros(Nx-1, Nz-1),   zeros(Nx,   Nz)    # 2D gridpoints
 
     # Set up model geometry & initial T structure
     x,z                     =   0:dx:W*1e3, -H*1e3:dz:(-H*1e3+(Nz-1)*dz);
@@ -252,10 +231,10 @@ function Diffusion_Halfspace2D()
     for it=1:nt
 
         # Perform a diffusion step
-        diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz, dPhi_dt);
+        diffusion_step!(Tnew, T, K, Rho, Cp, Hs, Hl, dt, (dx, dz), dPhi_dt);
 
         # diffusion in z-direction
-        @parallel (1:size(T,2)) bc2D_x!(Tnew);                                                      # set lateral boundary conditions (flux-free)
+        bc_zero_flux!(Tnew, 1);                                                                     # set lateral boundary conditions (flux-free)
         Tnew[:,1] .= Tbot; Tnew[:,end] .= 0.0;                                                    # bottom & top temperature (constant)
 
 
@@ -319,29 +298,28 @@ function Diffusion_Gaussian2D(Setup="2D")
     nt                      =   Int(numTime);
 
     # Array initializations (1 - main arrays on which we can initialize properties)
-    T                       =   @ones(Nx,    Nz)*Tbot;
-    K                       =   @ones(Nx,    Nz)*k_rock1;
-    Rho                     =   @ones(Nx,    Nz)*ρ;
-    Cp                      =   @ones(Nx,    Nz)*cp;
-    dPhi_dt                 =   @zeros(Nx,   Nz);
-    Hs                      =   @zeros(Nx,   Nz);
-    Hl                      =   @zeros(Nx,   Nz);
+    T                       =   fill(Float64(Tbot), Nx,Nz);
+    K                       =   fill(Float64(k_rock1), Nx,Nz);
+    Rho                     =   fill(Float64(ρ), Nx,Nz);
+    Cp                      =   fill(Float64(cp), Nx,Nz);
+    dPhi_dt                 =   zeros(Nx,   Nz);
+    Hs                      =   zeros(Nx,   Nz);
+    Hl                      =   zeros(Nx,   Nz);
 
     # Work array initialization
-    Tnew, qx,qz, Kx, Kz     =   @zeros(Nx,   Nz), @zeros(Nx-1, Nz),     @zeros(Nx,   Nz-1), @zeros(Nx-1, Nz), @zeros(Nx,   Nz-1)    # thermal solver
-    X,Xc,Z                  =   @zeros(Nx,   Nz), @zeros(Nx-1, Nz-1),   @zeros(Nx,   Nz)    # 2D gridpoints
+    Tnew                    =   zeros(Nx,   Nz)                                             # thermal solver
+    X,Xc,Z                  =   zeros(Nx,   Nz), zeros(Nx-1, Nz-1),   zeros(Nx,   Nz)    # 2D gridpoints
 
     # Set up model geometry & initial T structure
     x,z                     =   -W/2*1e3:dx:W/2*1e3, -H/2*1e3:dz:(-H/2*1e3+(Nz-1)*dz);
     X,Z                     =   ones(Nz)' .* x, z' .* ones(Nx);                             # 2D coordinate grids
-    X,Z = Data.Array(X), Data.Array(Z)
-    Xc                      =   Data.Array((X[2:Nx,:] + X[1:Nx-1,:])/2.0);
+        Xc                      =   ((X[2:Nx,:] + X[1:Nx-1,:])/2.0);
     Grid, Spacing           =   (X,Z), (dx,dz);
 
     if Setup=="2D"
-        T                  .=  Data.Array(Tmax.*exp.(  -(X.^2 .+ Z.^2)./(σ^2)));                     # initial gaussian profile
+        T                  .=  (Tmax.*exp.(  -(X.^2 .+ Z.^2)./(σ^2)));                     # initial gaussian profile
     elseif Setup=="Axisymmetric"
-        T                  .=  Data.Array(Tmax.*exp.(  -(X.^2 .+ Z.^2)./(σ^2)));                     # initial gaussian profile
+        T                  .=  (Tmax.*exp.(  -(X.^2 .+ Z.^2)./(σ^2)));                     # initial gaussian profile
     else
         error("Unknown setup")
     end
@@ -359,13 +337,13 @@ function Diffusion_Gaussian2D(Setup="2D")
 
         # Perform a diffusion step
         if Setup=="2D"
-            diffusion2D_step!(Tnew, T, qx, qz, K,Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz,  dPhi_dt)
+            diffusion_step!(Tnew, T, K, Rho, Cp, Hs, Hl, dt, (dx, dz), dPhi_dt)
         elseif Setup=="Axisymmetric"
-            MagmaThermoKinematics.Diffusion2D.diffusion2D_AxiSymm_step!(Tnew, T, X, Xc, qx, qz, K, Kx, Kz, Rho, Cp, Hs, Hl, dt, dx, dz,  dPhi_dt);
+            diffusion_step!(Tnew, T, K, Rho, Cp, Hs, Hl, dt, (dx, dz), dPhi_dt; R=X)
         end
 
         # diffusion in z-direction
-        @parallel (1:size(T,2)) bc2D_x!(Tnew);                                                      # set lateral boundary conditions (flux-free)
+        bc_zero_flux!(Tnew, 1);                                                                     # set lateral boundary conditions (flux-free)
         Tnew[:,1] .= Tbot; Tnew[:,end] .= 0.0;                                                    # bottom & top temperature (constant)
 
 

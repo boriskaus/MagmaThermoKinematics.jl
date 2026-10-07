@@ -23,22 +23,10 @@ This section documents the script in [examples/MTK_GMG_3D_example.jl](https://gi
 #### Imports and Backend
 As always, we start with loading the required input:
 ```julia
-const USE_GPU = false
-if USE_GPU
-	using CUDA
-end
-
 using MagmaThermoKinematics
-@static if USE_GPU
-	environment!(:gpu, Float64, 3)
-	CUDA.device!(1)
-else
-	environment!(:cpu, Float64, 3)
-end
-using MagmaThermoKinematics.Diffusion3D
-using MagmaThermoKinematics.Fields3D
+# using CUDA                        # for an NVIDIA GPU, then: backend = CUDABackend()
+backend = CPU()
 using MagmaThermoKinematics.MTK_GMG
-using MagmaThermoKinematics.MTK_GMG_3D
 using Random, GeoParams, GeophysicalModelGenerator
 ```
 
@@ -64,7 +52,7 @@ Num         = NumParam( SimName="Unzen3D", axisymmetric=false,
                         maxTime_Myrs=0.025,
                         fac_dt=0.2,
                         SaveOutput_steps=20, CreateFig_steps=1000, plot_tracers=false, advect_polygon=false,
-                        USE_GPU=USE_GPU,
+                        backend=backend,
                         AddRandomSills = true, RandomSills_timestep=5);
 # sill parameters
 sill = PennyShapedSill(Center=Point3(0.0, 0.0, -7.0e3) * m, Angle=Vec2(0.0, 0.0) * NoUnits, R=2.5e3 * m, H=1000 * m, E=1.5e10 * Pa, ν=0.3 * NoUnits)
@@ -113,7 +101,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 Finally, the simulation is performed as:
 ```julia
 Grid, Arrays, Tracers, Dikes, time_props =
-	MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Sill_params, CartData_input = Data_3D)
+	MTK_GeoParams(MatParam, Num, Sill_params, CartData_input = Data_3D)
 ```
 Which looks like:
 ![Unzen 3D](../assets/Unzen3D.png)
@@ -153,7 +141,6 @@ end
 We also adjust the printing info that is shown during the simulation with:
 ```julia
 import MagmaThermoKinematics.MTK_GMG
-import MagmaThermoKinematics.MTK_GMG_3D
 
 function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters,
 								  Arrays::NamedTuple, Mat_tup::Tuple,
@@ -166,7 +153,7 @@ end
 As always, the simulation is performed with:
 ```julia
 Grid, Arrays, Tracers, Dikes, time_props =
-	MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Sill_params, CartData_input = Data_3D)
+	MTK_GeoParams(MatParam, Num, Sill_params, CartData_input = Data_3D)
 ```
 
 Which looks like:

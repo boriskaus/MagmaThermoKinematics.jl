@@ -1,7 +1,5 @@
 # this file tests various aspects of the tracers routines
 using MagmaThermoKinematics
-using ParallelStencil
-using ParallelStencil.FiniteDifferences3D
 using Plots
 using LinearAlgebra
 using SpecialFunctions

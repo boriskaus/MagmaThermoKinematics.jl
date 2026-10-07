@@ -1,7 +1,5 @@
 # this file tests various aspects of the advection routines
 using MagmaThermoKinematics
-using ParallelStencil
-using ParallelStencil.FiniteDifferences3D
 using Plots  
 using LinearAlgebra
 using SpecialFunctions
@@ -11,8 +9,6 @@ using Test
 
 const CreatePlots = false      # easy way to deactivate plotting throughout
 
-# Initialize for multiple threads (GPU is not tested here)
-@init_parallel_stencil(Threads, Float64, 3);    # initialize parallel stencil in 3D
 
 
 function test_Interpolation(Dimension="2D", InterpolationMethod="Linear")
@@ -138,8 +134,8 @@ function test_SemiLagrangian2D(Method="ConstantZ",  InterpolationMethod="Linear"
   dx,dz                   =   W/(Nx-1), H/(Nz-1);           # grid size [m]
 
   # Array initializations (1 - main arrays on which we can initialize properties)
-  T                       =   @zeros(Nx,Nz);  
-  Tnew                    =   @zeros(Nx,Nz);  
+  T                       =   zeros(Nx,Nz);  
+  Tnew                    =   zeros(Nx,Nz);  
   
   # Set up model geometry & initial T structure
   x,z                     =   0:dx:((Nx-1)*dx), 0:dz:((Nz-1)*dz);
@@ -250,8 +246,8 @@ function test_SemiLagrangian3D(Method="ConstantZ",  InterpolationMethod="Linear"
     nt                      =   Int(numTime);
   
     # Array initializations (1 - main arrays on which we can initialize properties)
-    T                       =   @zeros(Nx,Ny,Nz);  
-    Tnew                    =   @zeros(Nx,Ny,Nz);  
+    T                       =   zeros(Nx,Ny,Nz);  
+    Tnew                    =   zeros(Nx,Ny,Nz);  
     
     # Set up model geometry & initial T structure
     x,y,z                   =   0:dx:((Nx-1)*dx), 0:dy:((Ny-1)*dy), 0:dz:((Nz-1)*dz);

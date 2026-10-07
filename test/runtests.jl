@@ -9,6 +9,7 @@ function test_worker(name)
 end
 
 testsuite = find_tests(@__DIR__)
+delete!(testsuite, "run_example")     # helper script run by test_examples
 
 try
     ParallelTestRunner.runtests(MagmaThermoKinematics, ARGS; testsuite, test_worker)

@@ -1,22 +1,8 @@
 # Unzen setup
-const USE_GPU=false;
-if USE_GPU
-    using CUDA      # needs to be loaded before loading Parallkel=
-end
-using ParallelStencil, ParallelStencil.FiniteDifferences2D
 
 using MagmaThermoKinematics
-@static if USE_GPU
-    environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
-    @init_parallel_stencil(CUDA, Float64, 2)
-else
-    environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
-    @init_parallel_stencil(Threads, Float64, 2)
-end
-using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
-using MagmaThermoKinematics.Fields2D
-using MagmaThermoKinematics.MTK_GMG_2D
+# using CUDA                        # for an NVIDIA GPU, then: backend = CUDABackend()
+backend = CPU()
 using GeophysicalModelGenerator
 using GeoParams, Random
 using Plots                             # plots
@@ -37,9 +23,9 @@ if false
     Xt,Yt,Zt   =   xyz_grid(-23:.1:23,-19:.1:19,0)
     Topo_cart  =   ProjectCartData(CartData(Xt,Yt,Zt,(Zt=Zt,)), Topo, proj)
 
-    save_GMG("Topo_cart", Topo_cart)
+    save_GMG(joinpath(@__DIR__, "Topo_cart"), Topo_cart)
 end
-Topo_cart = load_GMG("Topo_cart")
+Topo_cart = load_GMG(joinpath(@__DIR__, "Topo_cart"))
 
 # Create 3D grid of the region
 X,Y,Z       =   xyz_grid(-23:.1:23,-19:.1:19,-20:.1:5)
@@ -72,7 +58,7 @@ Volume      = 4/3*pi*r^3 # equivalent 3D volume of the anomaly [km^3]
 println(" --- Performing MTK models --- ")
 
 # Overwrite some of the default functions
-@static if USE_GPU
+if !(backend isa CPU)
     function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
         println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
         return nothing
@@ -149,7 +135,7 @@ Num         = NumParam( SimName             =   "Unzen1",
                         maxTime_Myrs        =   0.005,
                         SaveOutput_steps    =   25,
                         CreateFig_steps     =   5,
-                        USE_GPU             =   USE_GPU,
+                        backend             =   backend,
                         ω                   =   0.5,
                         AddRandomSills      =   true,
                         RandomSills_timestep=   5);
@@ -206,4 +192,4 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
                 )
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Sill_params, CartData_input=Data_2D, time_props=TimeDepProps1()); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams(MatParam, Num, Sill_params, CartData_input=Data_2D, time_props=TimeDepProps1()); # start the main code

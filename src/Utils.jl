@@ -72,19 +72,53 @@ Requires `ZirconGrowth.jl` to be loaded.  Load the extension with `using ZirconG
 """
 function volume_averaged_age end
 
+"""
+    copy_to_device!(dest, src)
+
+Copy the host array `src` into `dest`, which may live on a GPU, converting the
+elements to `eltype(dest)` on the host first. Throws if the sizes differ.
+"""
+function copy_to_device!(dest::AbstractArray, src::AbstractArray)
+    size(dest) == size(src) || throw(DimensionMismatch("cannot copy an array of size $(size(src)) into one of size $(size(dest))"))
+    copyto!(dest, convert(Array{eltype(dest)}, src))
+    return dest
+end
+
+"""
+    copy_to_host!(dest, src)
+
+Copy `src`, which may live on a GPU, into the host array `dest`, converting the
+elements to `eltype(dest)`. Throws if the sizes differ.
+"""
+function copy_to_host!(dest::AbstractArray, src::AbstractArray)
+    size(dest) == size(src) || throw(DimensionMismatch("cannot copy an array of size $(size(src)) into one of size $(size(dest))"))
+    if eltype(dest) === eltype(src)
+        copyto!(dest, src)
+    else
+        dest .= Array(src)
+    end
+    return dest
+end
+
+"""
+    copy_arrays_GPU2CPU!(T_CPU, ϕ_CPU, T_GPU, ϕ_GPU)
+
+Copy the device arrays `T_GPU` and `ϕ_GPU` into the host arrays `T_CPU` and `ϕ_CPU`.
+"""
 function copy_arrays_GPU2CPU!(T_CPU::AbstractArray,  ϕ_CPU::AbstractArray, T_GPU::AbstractArray, ϕ_GPU::AbstractArray)
-
-    T_CPU  .= Array(T_GPU)
-    ϕ_CPU  .= Array(ϕ_GPU)
-
+    copy_to_host!(T_CPU, T_GPU)
+    copy_to_host!(ϕ_CPU, ϕ_GPU)
     return nothing
 end
 
-function copy_arrays_CPU2GPU!(T_GPU::Array,  ϕ_GPU::Array, T_CPU::AbstractArray, ϕ_CPU::AbstractArray)
+"""
+    copy_arrays_CPU2GPU!(T_GPU, ϕ_GPU, T_CPU, ϕ_CPU)
 
-    T_GPU  .= Data.Array(T_CPU)
-    ϕ_GPU  .= Data.Array(ϕ_CPU)
-
+Copy the host arrays `T_CPU` and `ϕ_CPU` into the device arrays `T_GPU` and `ϕ_GPU`.
+"""
+function copy_arrays_CPU2GPU!(T_GPU::AbstractArray,  ϕ_GPU::AbstractArray, T_CPU::AbstractArray, ϕ_CPU::AbstractArray)
+    copy_to_device!(T_GPU, T_CPU)
+    copy_to_device!(ϕ_GPU, ϕ_CPU)
     return nothing
 end
 

@@ -1,26 +1,15 @@
 using  Random
-const USE_GPU=false;
-if USE_GPU
-    using CUDA      # needs to be loaded before loading Parallkel=
-end
 
 using MagmaThermoKinematics
-@static if USE_GPU
-    environment!(:gpu, Float64, 3)      # initialize parallel stencil in 2D
-    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
-else
-    environment!(:cpu, Float64, 3)      # initialize parallel stencil in 2D
-end
-using MagmaThermoKinematics.Diffusion3D # to load AFTER calling environment!()
-using MagmaThermoKinematics.Fields3D
+# using CUDA                        # for an NVIDIA GPU, then: backend = CUDABackend()
+backend = CPU()
 using MagmaThermoKinematics.MTK_GMG
-using MagmaThermoKinematics.MTK_GMG_3D
 using Random, GeoParams, GeophysicalModelGenerator
 
 const rng = Random.seed!(1234);     # same seed such that we can reproduce results
 
 
-@static if USE_GPU
+if !(backend isa CPU)
     function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
         if mod(Num.it,10) == 0
             println("$(Num.it), $(Num.time/SecYear/1e3) kyrs; max(T)=$(maximum(Arrays.Tnew))")
@@ -89,7 +78,7 @@ Num         = NumParam( SimName="Lanin3D_$(Nx)^3", axisymmetric=false,
                         Nx = Nx, Ny = Ny, Nz = Nz,
                         fac_dt=0.2,
                         SaveOutput_steps=20, CreateFig_steps=1000, plot_tracers=false, advect_polygon=false,
-                        USE_GPU=USE_GPU,
+                        backend=backend,
                         AddRandomSills = true, RandomSills_timestep=5);
 
 # Default setup: ElasticDike equivalent via PennyShapedSill.
@@ -150,7 +139,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Sill_params, CartData_input=Data_3D); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams(MatParam, Num, Sill_params, CartData_input=Data_3D); # start the main code
 
 Data_set3D_out = Data_3D;
 Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Temperature[C]",  Float32.(Array(Arrays.Tnew )));   # in MPa

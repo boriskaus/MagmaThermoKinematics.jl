@@ -1,19 +1,7 @@
 using Test, LinearAlgebra, SpecialFunctions, Random
-const USE_GPU=false;
-if USE_GPU
-    using CUDA      # needs to be loaded before loading Parallkel=
-end
 using InjectSills
 
 using MagmaThermoKinematics
-@static if USE_GPU
-    environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
-else
-    environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
-end
-import MagmaThermoKinematics.Diffusion2D # load module AFTER calling environment!()
-import MagmaThermoKinematics.MTK_GMG_2D
 using GeophysicalModelGenerator, GeoParams
 
 const rng = Random.seed!(1234);     # same seed such that we can reproduce results
@@ -49,7 +37,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
             end
         end
 
-        Arrays.T .= DataArray(Tnew_cpu)
+        copyto!(Arrays.T, Tnew_cpu)
         Dikes.InjectVol += Vol
         Qrate = Dikes.InjectVol / Num.time
         Dikes.Qrate_km3_yr = Qrate * SecYear / km³
@@ -66,7 +54,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
                         Phases[i] = Phases_init[i]
                     end
                 end
-                Arrays.Phases .= DataArray(Phases)
+                copyto!(Arrays.Phases, Phases)
             end
         end
     end
@@ -97,8 +85,7 @@ Num         = NumParam( #Nx=269*1, Nz=269*1,
                         flux_bottom_BC=false, flux_bottom=0, deactivate_La_at_depth=false,
                         Geotherm=30/1e3, TrackTracersOnGrid=true,
                         SaveOutput_steps=100000, CreateFig_steps=100000, plot_tracers=false, advect_polygon=false,
-                        FigTitle="Geneva Models, Geotherm 30/km",
-                        USE_GPU=USE_GPU);
+                        FigTitle="Geneva Models, Geotherm 30/km");
 
 Sill_params = SillParams(
             sill=CylindricalDikeTopAccretion(Center=Point2(0.0, -7.0e3) * m, W=20e3 * m, H=74.6269 * m),
@@ -120,7 +107,7 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
                 )
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_2D.MTK_GeoParams_2D(MatParam, Num, Sill_params); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams(MatParam, Num, Sill_params); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 296.4607300089425  rtol= 1e-4
 @test sum(time_props.MeltFraction)  ≈ 0.0  rtol= 1e-5
@@ -188,8 +175,7 @@ end
 Num         = NumParam( SimName="Unzen1", axisymmetric=false,
                         maxTime_Myrs=0.005,
                         fac_dt=0.2, ω=0.5, verbose=false,
-                        SaveOutput_steps=10000, CreateFig_steps=1000, plot_tracers=false, advect_polygon=false,
-                        USE_GPU=USE_GPU);
+                        SaveOutput_steps=10000, CreateFig_steps=1000, plot_tracers=false, advect_polygon=false);
 
 # dike parameters
 Sill_params = SillParams(
@@ -235,7 +221,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_2D.MTK_GeoParams_2D(MatParam, Num, Sill_params, CartData_input=Data_2D); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams(MatParam, Num, Sill_params, CartData_input=Data_2D); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 251.58206620240594  rtol= 1e-4
 @test sum(time_props.MeltFraction)  ≈  0.2238128607809668 rtol= 1e-5

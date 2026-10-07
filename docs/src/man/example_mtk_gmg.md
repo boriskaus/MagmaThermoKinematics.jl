@@ -17,7 +17,7 @@ The general workflow is as follows:
 3. Override selected functions in the MTK_GMG namespace for custom output, visualization, initialization, or time-dependent diagnostics, or dike injection.
 4. Define NumParam and SillParams inputs.
 5. Define material parameters as tuples of SetMaterialParams entries.
-6. Run MTK_GeoParams_2D or MTK_GeoParams_3D.
+6. Run `MTK_GeoParams` (2D or 3D, depending on `Num.Ny`).
 
 ## Overriding custom settings
 

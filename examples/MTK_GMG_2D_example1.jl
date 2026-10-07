@@ -1,44 +1,14 @@
 # This is a first example of how to use MagmaThermoKinematics with a real setup which can be customized with user-defined functions,
 # for example for plotting or printing output.
 
-const USE_GPU=false;
-if USE_GPU
-    using CUDA      # needs to be loaded before loading Parallkel=
-end
-using ParallelStencil, ParallelStencil.FiniteDifferences2D
-
 using MagmaThermoKinematics
-@static if USE_GPU
-    environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
-    @init_parallel_stencil(CUDA, Float64, 2)
-else
-    environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
-    @init_parallel_stencil(Threads, Float64, 2)
-end
-using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
-using MagmaThermoKinematics.Fields2D
-using MagmaThermoKinematics.MTK_GMG_2D
+# using CUDA                        # for an NVIDIA GPU, then: backend = CUDABackend()
+backend = CPU()
 using GeophysicalModelGenerator
 using GeoParams, Random
 using Plots                             # plots
 using MagmaThermoKinematics.MTK_GMG     # Allow overwriting user routines
 
-#=
-const USE_GPU=false;
-using MagmaThermoKinematics
-if USE_GPU
-    environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-else
-    environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
-end
-using MagmaThermoKinematics.Diffusion2D
-using MagmaThermoKinematics.Fields2D
-using MagmaThermoKinematics.MTK_GMG     # Allow overwriting user routines
-using MagmaThermoKinematics.GeophysicalModelGenerator
-using Plots                             # plots
-using Random, GeoParams
-=#
 
 Random.seed!(1234);     # use the same random seed, such that we can reproduce results
 
@@ -53,7 +23,7 @@ function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arra
     return nothing
 end
 
-@static if USE_GPU
+if !(backend isa CPU)
     function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
         println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
         return nothing
@@ -114,7 +84,7 @@ Num         = NumParam( Nx                      =   135*2,
                         ω                       =   0.5,
                         CreateFig_steps         =   20,
                         SaveOutput_steps        =   100,
-                        USE_GPU                 =   USE_GPU,
+                        backend                 =   backend,
                         AddRandomSills          =   true,
                         RandomSills_timestep    =   5);
 
@@ -161,4 +131,4 @@ MatParam     = (SetMaterialParams(Name="Host rock 1", Phase=0,
                 )
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Sill_params);
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams(MatParam, Num, Sill_params);

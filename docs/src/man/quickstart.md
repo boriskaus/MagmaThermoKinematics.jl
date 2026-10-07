@@ -1,69 +1,26 @@
 # Quick Start
 
-This package requires selecting a backend and dimensionality before loading backend-specific diffusion/fields modules.
+MagmaThermoKinematics runs on a [KernelAbstractions](https://github.com/JuliaGPU/KernelAbstractions.jl) backend. The same code is used for 2D and 3D models: the dimensionality follows from the size of the grid and arrays you create.
 
-Important distinction:
-
-- `environment!(...)` initializes backend modules inside MagmaThermoKinematics.
-- If your own script/module uses ParallelStencil macros directly (for example `@zeros`, `@parallel`, `@parallel_indices`), initialize ParallelStencil in your script scope as well with `@init_parallel_stencil(...)`.
-
-## 2D CPU Workflow
+## Backend Selection
 
 :::code-group
 
 ```julia [CPUs]
-using ParallelStencil
 using MagmaThermoKinematics
 
-environment!(:cpu, Float64, 2)
-@init_parallel_stencil(Threads, Float64, 2)   # needed when this script uses @zeros/@parallel
-
-using MagmaThermoKinematics.Diffusion2D
-using MagmaThermoKinematics.Fields2D
+backend = CPU()
 ```
 
 ```julia [Nvidia GPUs]
 using CUDA
-using ParallelStencil
 using MagmaThermoKinematics
 
-environment!(:gpu, Float64, 2)
-CUDA.device!(0)
-@init_parallel_stencil(CUDA, Float64, 2)      # needed when this script uses @zeros/@parallel
-
-using MagmaThermoKinematics.Diffusion2D
-using MagmaThermoKinematics.Fields2D
+backend = CUDABackend()
 ```
 :::
 
-## 3D GPU Workflow
-
-:::code-group
-
-```julia [CPUs]
-using ParallelStencil
-using MagmaThermoKinematics
-
-environment!(:cpu, Float64, 3)
-@init_parallel_stencil(Threads, Float64, 3)   # needed when this script uses @zeros/@parallel
-
-using MagmaThermoKinematics.Diffusion3D
-using MagmaThermoKinematics.Fields3D
-```
-
-```julia [Nvidia GPUs]
-using CUDA
-using ParallelStencil
-using MagmaThermoKinematics
-
-environment!(:gpu, Float64, 3)
-CUDA.device!(0)
-@init_parallel_stencil(CUDA, Float64, 3)      # needed when this script uses @zeros/@parallel
-
-using MagmaThermoKinematics.Diffusion3D
-using MagmaThermoKinematics.Fields3D
-```
-:::
+Pass the backend when allocating arrays, either through `CreateArrays(...; backend)` or through `NumParam(backend=backend)` when using the `MTK_GMG` workflow.
 
 ## Minimal Model Setup Pattern
 

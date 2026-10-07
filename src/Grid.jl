@@ -5,16 +5,25 @@ import GeophysicalModelGenerator: CartData
 
 export GridData, CreateGrid
 
-struct GridData{FT, D}
+# `R` and `RC` are the concrete range types of the coordinate fields.
+# `StepRangeLen{FT}` alone leaves three of the range's four parameters free, so
+# every read of `coord1D` would return an abstractly typed range and every
+# operation on it would dispatch dynamically. Construct through `CreateGrid`,
+# which fills them in.
+struct GridData{FT, D, R<:StepRangeLen{FT}, RC<:StepRangeLen{FT}}
     ConstantΔ   :: Bool                         # Constant spacing (true in all cases for now)
     N           :: NTuple{D,Int}                # Number of grid points in every direction
     Δ           :: NTuple{D,FT}                 # (constant) spacing in every direction
     L           :: NTuple{D,FT}                 # Domain size
-    min         :: NTuple{D,FT}                 # start of the grid in every direction 
-    max         :: NTuple{D,FT}                 # end of the grid in every direction 
-    coord1D     :: NTuple{D,StepRangeLen{FT}}   # Tuple with 1D vectors in all directions
-    coord1D_cen :: NTuple{D,StepRangeLen{FT}}   # Tuple with 1D vectors of center points in all directions
-end   
+    min         :: NTuple{D,FT}                 # start of the grid in every direction
+    max         :: NTuple{D,FT}                 # end of the grid in every direction
+    coord1D     :: NTuple{D,R}                  # Tuple with 1D vectors in all directions
+    coord1D_cen :: NTuple{D,RC}                 # Tuple with 1D vectors of center points in all directions
+
+    # Explicit parameters only: an empty grid would leave `FT` undetermined.
+    GridData{FT,D,R,RC}(ConstantΔ, N, Δ, L, min, max, coord1D, coord1D_cen) where {FT,D,R,RC} =
+        new{FT,D,R,RC}(ConstantΔ, N, Δ, L, min, max, coord1D, coord1D_cen)
+end
 
 
 """
@@ -92,7 +101,7 @@ function CreateGrid(;
     end
     
     ConstantΔ   = true;
-    return GridData(ConstantΔ,N,Δ,L,X₁,Xₙ,coord1D, coord1D_cen)
+    return GridData{typeof(first(Δ)), dim, eltype(coord1D), eltype(coord1D_cen)}(ConstantΔ,N,Δ,L,X₁,Xₙ,coord1D, coord1D_cen)
 
 end
 

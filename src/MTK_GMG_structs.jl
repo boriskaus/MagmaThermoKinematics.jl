@@ -38,7 +38,8 @@ This mutable structure represents numerical parameters in the program. It is use
 - `convergence::Float64`: Convergence criterion for nonlinear iterations.
 - `deactivate_La_at_depth::Bool`: Whether to deactivate latent heating at the bottom of the model box.
 - `deactivationDepth::Float64`: Depth at which to deactivate latent heating.
-- `USE_GPU`: Whether to use a GPU.
+- `backend`: KernelAbstractions backend on which the model arrays live: `CPU()` (default), or e.g. `CUDABackend()` or `MetalBackend()` once CUDA.jl or Metal.jl is loaded.
+- `FloatType`: Element type of the model arrays (default `Float64`).
 - `AnalyticalInitialGeo::Bool`: Whether to use an analytical initial geotherm.
 - `qs_anal::Float64`: Analytical surface heat flux.
 - `qm_anal::Float64`: Analytical mantle heat flux.
@@ -62,7 +63,7 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     Nx::Int64                       =   201
     Ny::Int64                       =   0
     Nz::Int64                       =   201
-    dim::Int64                      =   length([Nx, Ny, Nz].>0)
+    dim::Int64                      =   count(>(0), (Nx, Ny, Nz))
     W::Float64                =   20e3
     L::Float64                =   0
     H::Float64                =   20e3
@@ -91,7 +92,8 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     max_iter::Int64                 =   5000;           # max. number of nonlinear iterations
     verbose::Bool                   =   false;
     convergence::Float64      =   1e-5;           # nonlinear convergence criteria
-    USE_GPU::Bool                   =   false;
+    backend::KernelAbstractions.Backend = CPU();     # KernelAbstractions backend of the model arrays
+    FloatType::DataType             =   Float64;        # element type of the model arrays
     keep_init_RockPhases::Bool      =   true;           # keep initial rock phases (if false, all phases are initialized as Dikes.BackgroundPhase)
     pvd::Union{Nothing,GeophysicalModelGenerator.WriteVTK.CollectionFile}     =   nothing;             # pvd file info for paraview
     Output_VTK::Bool                =   true;           # output VTK files in case CartData is an input?

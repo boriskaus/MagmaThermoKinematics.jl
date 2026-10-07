@@ -1,10 +1,5 @@
 using Test
 using MagmaThermoKinematics
-using ParallelStencil, ParallelStencil.FiniteDifferences2D
-@init_parallel_stencil(Threads, Float64, 2)
-
-environment!(:cpu, Float64, 2)
-using MagmaThermoKinematics.Diffusion2D
 
 @testset "Grid" begin
 
@@ -17,9 +12,9 @@ Grid = CreateGrid(size=(10,20),x=(0.,10), z=(2.,10))
 @test Grid.Δ[2] ≈ 0.42105263157894735
 
 
-X = @zeros(Grid.N...)
-Z = @zeros(Grid.N...)
-@parallel (1:Grid.N[1], 1:Grid.N[2]) GridArray!(X,Z,Grid.coord1D[1], Grid.coord1D[2])
+X = zeros(Grid.N...)
+Z = zeros(Grid.N...)
+GridArray!(X, Z, Grid)
 
 @test sum(X) ≈ 1000
 @test minimum(Z) ==2.0

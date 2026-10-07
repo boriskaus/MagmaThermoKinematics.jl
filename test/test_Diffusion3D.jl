@@ -1,22 +1,5 @@
 using Test, LinearAlgebra, SpecialFunctions, Random
-const USE_GPU=false;
-if USE_GPU
-    using CUDA      # needs to be loaded before loading Parallkel=
-end
-using ParallelStencil, ParallelStencil.FiniteDifferences3D
-
 using MagmaThermoKinematics
-@static if USE_GPU
-    environment!(:gpu, Float64, 3)      # initialize parallel stencil in 2D
-    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
-    @init_parallel_stencil(CUDA, Float64, 3)
-else
-    environment!(:cpu, Float64, 3)      # initialize parallel stencil in 2D
-    @init_parallel_stencil(Threads, Float64, 3)
-end
-using MagmaThermoKinematics.Diffusion3D # to load AFTER calling environment!()
-#using MagmaThermoKinematics.Fields3D
-
 
 const CreatePlots = false      # easy way to deactivate plotting throughout
 
@@ -45,19 +28,17 @@ function Diffusion_Gaussian3D(Setup="3D")
     nt                      =   Int(numTime);
 
     # Array initializations (1 - main arrays on which we can initialize properties)
-    T                       =   @ones(Nx,Ny,Nz)*Tbot;
-    K                       =   @ones(Nx,Ny,Nz)*k_rock1;
-    Rho                     =   @ones(Nx,Ny,Nz)*ρ;
-    Cp                      =   @ones(Nx,Ny,Nz)*cp;
-    dPhi_dt                 =   @zeros(Nx,Ny,Nz);
-    Hs                      =   @zeros(Nx,Ny,Nz);
-    Hl                      =   @ones(Nx,Ny,Nz)*La;
+    T                       =   fill(Float64(Tbot), Nx,Ny,Nz);
+    K                       =   fill(Float64(k_rock1), Nx,Ny,Nz);
+    Rho                     =   fill(Float64(ρ), Nx,Ny,Nz);
+    Cp                      =   fill(Float64(cp), Nx,Ny,Nz);
+    dPhi_dt                 =   zeros(Nx,Ny,Nz);
+    Hs                      =   zeros(Nx,Ny,Nz);
+    Hl                      =   fill(Float64(La), Nx,Ny,Nz);
 
     # Work array initialization
-    Tnew, qx,qy,qz          =   @zeros(Nx,Ny,Nz),       @zeros(Nx-1,Ny,Nz),     @zeros(Nx, Ny-1, Nz),   @zeros(Nx,Ny,Nz-1)  # thermal solver
-    Kx, Ky, Kz              =                           @zeros(Nx-1, Ny, Nz),   @zeros(Nx,Ny-1,Nz),     @zeros(Nx,Ny,Nz-1)  # thermal conductivities
-    X,Y,Z                   =   @zeros(Nx,Ny,Nz),       @zeros(Nx,Ny,Nz),       @zeros(Nx,Ny,Nz)                            # 3D gridpoints
-    @parallel MagmaThermoKinematics.Diffusion3D.diffusion3D_conductivity!(Kx, Ky, Kz, K)
+    Tnew                    =   zeros(Nx,Ny,Nz)                                                         # thermal solver
+    X,Y,Z                   =   zeros(Nx,Ny,Nz),        zeros(Nx,Ny,Nz),        zeros(Nx,Ny,Nz)                             # 3D gridpoints
 
 
     # Set up model geometry & initial T structure
@@ -65,7 +46,7 @@ function Diffusion_Gaussian3D(Setup="3D")
     coords                  =   collect(Iterators.product(x,y,z))                               # generate coordinates from 1D coordinate vectors
     X,Y,Z                   =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);     # transfer coords to 3D arrays
     Grid, Spacing           =   (X,Y,Z), (dx,dy,dz);
-    T                      .=   Data.Array(Tmax.*exp.(  -((X.^2 .+ Y.^2 .+ Z.^2)./(σ^2)) ));                 # initial gaussian profile
+    T                      .=   (Tmax.*exp.(  -((X.^2 .+ Y.^2 .+ Z.^2)./(σ^2)) ));                 # initial gaussian profile
     Tnew                   .=   T;
 
 
@@ -81,13 +62,12 @@ function Diffusion_Gaussian3D(Setup="3D")
 
         # Perform a diffusion step
         if Setup=="3D"
-            diffusion3D_step_varK!(Tnew, T, qx, qy, qz, K, Kx, Ky, Kz, Rho, Cp, Hs, Hl, dt, dx, dy, dz, dPhi_dt);
-            #@parallel diffusion3D_step!(Tnew, T, K, 1.0/(ρ*cp), dt, dx, dy, dz)
+            diffusion_step!(Tnew, T, K, Rho, Cp, Hs, Hl, dt, (dx, dy, dz), dPhi_dt);
         end
 
         # diffusion in z-direction
-        @parallel (1:size(T,2), 1:size(T,3)) bc3D_x!(Tnew);                                         # set lateral boundary conditions (flux-free)
-        @parallel (1:size(T,1), 1:size(T,3)) bc3D_y!(Tnew);                                         # set lateral boundary conditions (flux-free)
+        bc_zero_flux!(Tnew, 1);                                                           # set lateral boundary conditions (flux-free)
+        bc_zero_flux!(Tnew, 2);                                                           # set lateral boundary conditions (flux-free)
 
         Tnew[:,:,1] .= Tbot; Tnew[:,:,end] .= 0.0;                                                  # bottom & top temperature (constant)
 

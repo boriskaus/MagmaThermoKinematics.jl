@@ -1,0 +1,94 @@
+# Upgrading from v0.7 to v0.8
+
+v0.8 replaces ParallelStencil with [KernelAbstractions](https://github.com/JuliaGPU/KernelAbstractions.jl). The same code now runs in 2D and 3D, on the CPU and on the GPU. The numerics are unchanged: on the CPU, v0.8 gives bitwise identical results to v0.7 for the same input. Scripts need changes, because the backend setup, the `2D`/`3D` modules and the re-exported ParallelStencil macros are gone.
+
+## Checklist
+
+1. Remove `environment!(...)`, `using ParallelStencil...`, `@init_parallel_stencil(...)` and `using MagmaThermoKinematics.Diffusion2D` (or `Diffusion3D`, `Fields2D`, `Fields3D`, `MTK_GMG_2D`, `MTK_GMG_3D`). `using MagmaThermoKinematics` is enough.
+2. Rename the functions listed in [Renamed functions](#renamed-functions). Most `_2D`/`_3D` names lost their suffix.
+3. Replace `USE_GPU` with a backend: `NumParam(backend=CPU())` (the default) or, after `using CUDA`, `NumParam(backend=CUDABackend())`.
+4. Replace `@parallel`, `@zeros`, `@ones` and `Data.Array` by plain Julia (see [Replacing ParallelStencil code](#replacing-parallelstencil-code)).
+5. If you run on an NVIDIA GPU, add CUDA.jl to your own environment. It is no longer a dependency of MagmaThermoKinematics.
+
+Quick check of a v0.7 script:
+
+```bash
+grep -nE "environment!|@parallel|@init_parallel_stencil|@zeros|@ones|Data\.Array|USE_GPU" my_script.jl
+grep -nE "Diffusion[23]D|Fields[23]D|MTK_GMG_[23]D|_2D!|_3D!|_2D\(|_3D\(|bc[23]D_|assign!" my_script.jl
+```
+
+Every hit needs a change.
+
+## Renamed functions
+
+| v0.7 | v0.8 |
+| --- | --- |
+| `Nonlinear_Diffusion_step_2D!`, `Nonlinear_Diffusion_step_3D!` | `Nonlinear_Diffusion_step!` |
+| `MTK_GMG_2D.MTK_GeoParams_2D`, `MTK_GMG_3D.MTK_GeoParams_3D` | `MTK_GeoParams` |
+| `diffusion2D_step!(Tnew, T, qx, qz, K, Kx, Kz, Rho, Cp, H, Hl, dt, dx, dz, dϕdT)` | `diffusion_step!(Tnew, T, K, Rho, Cp, H, Hl, dt, (dx, dz), dϕdT)` |
+| `diffusion2D_AxiSymm_step!(Tnew, T, R, Rc, qr, qz, K, Kr, Kz, ...)` | `diffusion_step!(...; R)` |
+| `diffusion3D_step_varK!(Tnew, T, qx, qy, qz, K, Kx, Ky, Kz, ...)` | `diffusion_step!(Tnew, T, K, Rho, Cp, H, Hl, dt, (dx, dy, dz), dϕdT)` |
+| `bc2D_x!(T)`, `bc3D_x!(T)` | `bc_zero_flux!(T, 1)` |
+| `bc2D_z!(T)`, `bc3D_y!(T)` | `bc_zero_flux!(T, 2)` |
+| `bc2D_T!`, `bc3D_T!` | `bc_T!(Tnew, T)` |
+| `bc2D_z_bottom_flux!`, `bc3D_z_bottom_flux!` | `bc_z_bottom_flux!(T, K, dz, q_z)` |
+| `bc2D_z_bottom!(T)`, `bc3D_z_bottom!(T)` | `selectdim(T, ndims(T), 1) .= selectdim(T, ndims(T), 2)` |
+| `compute_meltfraction_ps!`, `compute_density_ps!`, ... (and `_ps_3D!`) | `compute_phase_param!(A, compute_meltfraction, Mat_tup, Phases, args)` |
+| `@parallel (...) GridArray!(X, Z, x, z)` | `GridArray!(X, Z, Grid)` |
+| `@parallel assign!(A, B)` | `A .= B` |
+| `@parallel assign!(A, B, c)` | `A .= B .+ c` |
+
+`MTK_GeoParams` builds a 3D model if `Num.Ny > 0` or if `CartData_input` is 3D, and a 2D model otherwise. `diffusion_step!` no longer needs the face arrays `qx`, `qz`, `Kx`, `Kz`, `Rc`, ..., so you can drop them from `CreateArrays`. With `R` (the cell radii), the first dimension is radial.
+
+## Replacing ParallelStencil code
+
+v0.7:
+
+```julia
+const USE_GPU = false
+using ParallelStencil, ParallelStencil.FiniteDifferences2D
+using MagmaThermoKinematics
+environment!(:cpu, Float64, 2)
+@init_parallel_stencil(Threads, Float64, 2)
+using MagmaThermoKinematics.Diffusion2D
+using MagmaThermoKinematics.Fields2D
+
+Arrays = CreateArrays(Dict((Nx, Nz) => (T=0, Tnew=0, ...), (Nx-1, Nz) => (qx=0, Kx=0), (Nx, Nz-1) => (qz=0, Kz=0)))
+Phases = ones(Int64, Nx, Nz)
+@parallel (1:Nx, 1:Nz) GridArray!(Arrays.X, Arrays.Z, Grid.coord1D[1], Grid.coord1D[2])
+...
+Arrays.T .= Data.Array(Tnew_cpu)
+Nonlinear_Diffusion_step_2D!(Arrays, MatParam, Phases, Grid, dt, Num)
+@parallel assign!(Arrays.T, Arrays.Tnew)
+```
+
+v0.8:
+
+```julia
+using MagmaThermoKinematics
+backend = CPU()            # or: using CUDA; backend = CUDABackend()
+
+Arrays = CreateArrays(Dict((Nx, Nz) => (T=0, Tnew=0, ...)); backend)
+Phases = similar(Arrays.T, Int64); fill!(Phases, 1)
+GridArray!(Arrays.X, Arrays.Z, Grid)
+...
+copyto!(Arrays.T, Tnew_cpu)
+Nonlinear_Diffusion_step!(Arrays, MatParam, Phases, Grid, dt, Num)
+Arrays.T .= Arrays.Tnew
+```
+
+`CreateArrays` takes `backend` (default `CPU()`) and `FloatType` (default `Float64`). `NumParam` has the same two fields, which replace `USE_GPU`. On the CPU, set the number of threads with `julia -t auto`.
+
+## Pitfalls
+
+**Errors you will see**
+
+- `UndefVarError` for `environment!`, `@parallel`, `@zeros`, `Data`, `Diffusion2D`, ...: the script still uses the v0.7 API.
+- `Nonlinear_Diffusion_step!` throws an error if the Picard iterations do not converge within `max_iter`. In v0.7 it printed a warning and carried on with the unconverged temperature. Reduce `dt` or the relaxation parameter `ω`. A melting law whose `dϕ/dT` jumps (for example `MeltingParam_Assimilation()` at the liquidus) may need `SmoothMelting(...)`.
+- `NumParam(USE_GPU=...)` fails, because the field no longer exists.
+- The `Arrays` returned by `MTK_GeoParams` no longer contain `qx`, `qz`, `Kx`, `Kz`, `Rc` (and `qy`, `Ky` in 3D). Callbacks that read them fail.
+
+**Changes without an error**
+
+- A 2D `NumParam` with `Ny > 0` now runs a 3D model in `MTK_GeoParams`. Leave `Ny` at its default `0` for 2D models.
+- `Numeric_params` has a new field `deactivationDepth` (default `-15e3` m). In v0.7, `deactivate_La_at_depth=true` with `Numeric_params` failed because this field was missing.

@@ -1,8 +1,7 @@
-# various routines that are shared between the 2D and 3D MTK_GMG routines
 """
     MTK_GMG
-This contains various user callback routines that are shared between the 2D and 3D MTK_GMG routines.
-You can overwrite this in your own code to customize the simulation.
+This contains the user callback routines that [`MTK_GeoParams`](@ref) calls in 2D and 3D.
+You can overwrite them in your own code to customize the simulation.
 
 """
 module MTK_GMG
@@ -15,23 +14,8 @@ using StructArrays
 using MagmaThermoKinematics.Grid
 import MagmaThermoKinematics: NumericalParameters, SillParameters, TimeDependentProperties
 import MagmaThermoKinematics: update_Tvec!, inject_sills, km³, kyr, Myr
-import MagmaThermoKinematics: PhasesFromTracers!
+import MagmaThermoKinematics: PhasesFromTracers!, CreateArrays, copy_to_device!
 SecYear = 3600*24*365.25;
-
-@inline _root_module() = parentmodule(@__MODULE__)
-@inline DataArray(x) = getproperty(getproperty(_root_module(), :Data), :Array)(x)
-
-@inline function CreateArrays2D(args...)
-    fields2d = getproperty(_root_module(), :Fields2D)
-    f = getproperty(fields2d, :CreateArrays)
-    return f(args...)
-end
-
-@inline function CreateArrays3D(args...)
-    fields3d = getproperty(_root_module(), :Fields3D)
-    f = getproperty(fields3d, :CreateArrays)
-    return f(args...)
-end
 
 @inline _active_sill(Dikes) = isnothing(Dikes.sill) ? error("SillParameters requires a valid `sill` object") : Dikes.sill
 # Horizontal radius of the sill [m]: `PennyShapedSill` stores the radius in `R`,
@@ -39,13 +23,13 @@ end
 @inline _sill_radius_m(sill::InjectSills.PennyShapedSill) = sill.R.val
 @inline _sill_radius_m(sill::InjectSills.AbstractSill) = sill.W.val/2
 
-#using CUDA
-
 """
     Analytical geotherm used for the UCLA setups, which includes radioactive heating
 """
 function AnalyticalGeotherm!(T, Z, Tsurf, qm, qs, k, hr)
-    T      .=  @. Tsurf - (qm/k)*Z + (qs-qm)*hr/k*( 1.0 - exp(Z/hr))
+    FT = eltype(T)
+    Tsurf, qm, qs, k, hr = FT(Tsurf), FT(qm), FT(qs), FT(k), FT(hr)
+    T      .=  @. Tsurf - (qm/k)*Z + (qs-qm)*hr/k*( one(FT) - exp(Z/hr))
     return nothing
 end
 
@@ -78,7 +62,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
             end
         end
 
-        Arrays.T           .=   DataArray(Tnew_cpu)
+        copyto!(Arrays.T, Tnew_cpu)
         Dikes.InjectVol    +=   Vol                                                     # Keep track of injected volume
         Qrate               =   Dikes.InjectVol/Num.time
         Dikes.Qrate_km3_yr  =   Qrate*SecYear/km³
@@ -102,7 +86,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
                         Phases[i] = Phases_init[i]
                     end
                 end
-                Arrays.Phases .= DataArray(Phases)          # move back to GPU
+                copyto!(Arrays.Phases, Phases)
            end
         end
 
@@ -112,7 +96,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
 end
 
 """
-    MTK_display_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
+    MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
 
 Function that creates plots
 """
@@ -159,7 +143,9 @@ Initialize temperature and phases
 """
 function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters)
     # Initalize T
-    Arrays.T_init      .=   @. Num.Tsurface_Celcius - Arrays.Z*Num.Geotherm;                # Initial (linear) temperature profile
+    FT = eltype(Arrays.T_init)
+    Tsurf, Geotherm = FT(Num.Tsurface_Celcius), FT(Num.Geotherm)
+    Arrays.T_init      .=   @. Tsurf - Arrays.Z*Geotherm;                # Initial (linear) temperature profile
 
     # Open pvd file if requested
     if Num.Output_VTK
@@ -171,23 +157,17 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
 end
 
 """
-    Ararys = MTK_initialize_arrays(Num::NumericalParameters)
+    Arrays = MTK_initialize_arrays(Num::NumericalParameters)
 
 Initialize arrays used in the computations
 """
 function MTK_initialize_arrays(Num::NumericalParameters)
 
+    kw = (; backend=Num.backend, FloatType=Num.FloatType)
     if Num.dim==2
-        Arrays = CreateArrays2D(Dict( (Num.Nx,  Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Tupdate=0, Tbuffer=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0),
-                                    (Num.Nx-1,Num.Nz  )=>(qx=0,Kx=0, Rc=0),
-                                    (Num.Nx  ,Num.Nz-1)=>(qz=0,Kz=0 )
-                                    ))
+        Arrays = CreateArrays(Dict( (Num.Nx,  Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Tupdate=0, Tbuffer=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0)); kw...)
     else
-        Arrays = CreateArrays3D(Dict( (Num.Nx,  Num.Ny  , Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Tupdate=0, Tbuffer=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, X=0, Y=0, Z=0, P=0),
-                                    (Num.Nx-1,Num.Ny  , Num.Nz  )=>(qx=0,Kx=0),
-                                    (Num.Nx  ,Num.Ny-1, Num.Nz  )=>(qy=0,Ky=0),
-                                    (Num.Nx  ,Num.Ny  , Num.Nz-1)=>(qz=0,Kz=0 )
-                                    ))
+        Arrays = CreateArrays(Dict( (Num.Nx,  Num.Ny  , Num.Nz  )=>(T=0,T_K=0, Tnew=0, T_init=0, T_it_old=0, Tupdate=0, Tbuffer=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, X=0, Y=0, Z=0, P=0)); kw...)
     end
 
     return Arrays
@@ -199,30 +179,15 @@ end
 Initialize temperature and phases
 """
 function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters, CartData_input::Union{Nothing,CartData})
-    # Initalize T from CartData set
-    # NOTE: this almost certainly requires changes if we use GPUs
-
-    if Num.USE_GPU
-        if Num.dim==2
-            Arrays.T_init       .= DataArray(CartData_input.fields.Temp[:,:,1])
-            Arrays.Phases       .= DataArray(CartData_input.fields.Phases[:,:,1]);
-            Arrays.Phases_init  .= DataArray(CartData_input.fields.Phases[:,:,1]);
-        else
-            Arrays.T_init       .= DataArray(CartData_input.fields.Temp)
-            Arrays.Phases       .= DataArray(CartData_input.fields.Phases);
-            Arrays.Phases_init  .= DataArray(CartData_input.fields.Phases);
-        end
+    # Initalize T and phases from the CartData set
+    if Num.dim==2
+        Temp, Phases = CartData_input.fields.Temp[:,:,1], CartData_input.fields.Phases[:,:,1]
     else
-        if Num.dim==2
-            Arrays.T_init       .= CartData_input.fields.Temp[:,:,1];
-            Arrays.Phases       .= CartData_input.fields.Phases[:,:,1];
-            Arrays.Phases_init  .= CartData_input.fields.Phases[:,:,1];
-        else
-            Arrays.T_init       .= CartData_input.fields.Temp;
-            Arrays.Phases       .= CartData_input.fields.Phases;
-            Arrays.Phases_init  .= CartData_input.fields.Phases;
-        end
+        Temp, Phases = CartData_input.fields.Temp, CartData_input.fields.Phases
     end
+    copy_to_device!(Arrays.T_init, Temp)
+    copy_to_device!(Arrays.Phases, Phases)
+    copy_to_device!(Arrays.Phases_init, Phases)
 
     # open pvd file if requested
     if Num.Output_VTK

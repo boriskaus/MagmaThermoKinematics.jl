@@ -113,6 +113,10 @@ makedocs(;
             ],
             "Numerics and Physics" => "man/numerics.md",
             "Zircon ages" => "man/zircon_growth.md",
+            "Upgrading" => Any[
+                "From v0.7 to v0.8" => "man/upgrade_v0.7_to_v0.8.md",
+                "From v0.6 to v0.8" => "man/upgrade_v0.6_to_v0.8.md",
+            ],
         ],
         "API" => Any[
             "Function Reference" => "man/listfunctions.md",

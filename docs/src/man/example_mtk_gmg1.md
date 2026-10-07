@@ -5,24 +5,9 @@
 ## Imports and Backend
 All simulations need to import the appropriate libraries:
 ```julia
-const USE_GPU=false;
-if USE_GPU
-    using CUDA
-end
-using ParallelStencil, ParallelStencil.FiniteDifferences2D
-
 using MagmaThermoKinematics
-@static if USE_GPU
-    environment!(:gpu, Float64, 2)
-    CUDA.device!(0)
-    @init_parallel_stencil(CUDA, Float64, 2)
-else
-    environment!(:cpu, Float64, 2)
-    @init_parallel_stencil(Threads, Float64, 2)
-end
-using MagmaThermoKinematics.Diffusion2D
-using MagmaThermoKinematics.Fields2D
-using MagmaThermoKinematics.MTK_GMG_2D
+# using CUDA                        # for an NVIDIA GPU, then: backend = CUDABackend()
+backend = CPU()
 using MagmaThermoKinematics.GeophysicalModelGenerator
 using GeoParams, Random
 using Plots
@@ -48,7 +33,7 @@ end
 ## Parameter Setup and Run
 `NumParam` sets the numerical parameters; defaults are set, such that you only need to specify the non-default part.
 ```julia
-Num = NumParam(Nx=135*2, Nz=135*2, SimName="Test1", maxTime_Myrs=0.005, USE_GPU=USE_GPU)
+Num = NumParam(Nx=135*2, Nz=135*2, SimName="Test1", maxTime_Myrs=0.005, backend=backend)
 sill = PennyShapedSill(Center=Point2(0.0, -7.0e3)m, R=2.5e3m, H=250m, E=1.5e10Pa, ν=0.3NoUnits)
 Sill_params = SillParams(
     sill                   = sill,
@@ -73,7 +58,7 @@ MatParam = (
 
 Once that is done, you can run a simulation with:
 ```julia
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Sill_params)
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams(MatParam, Num, Sill_params)
 ```
 
 ## Visualize results

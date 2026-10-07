@@ -2,27 +2,11 @@
 #  It includes comparisons with 2D simulations done by the Geneva (Gregor Weber, Luca Caricchi) & UCLA (Oscar Lovera) Tracers_SimParams
 #
 #
-const USE_GPU=false;
-if USE_GPU
-    using CUDA      # needs to be loaded before loading Parallkel=
-end
-using ParallelStencil, ParallelStencil.FiniteDifferences2D
-
 using MagmaThermoKinematics
+# using CUDA                        # for an NVIDIA GPU, then: backend = CUDABackend()
+backend = CPU()
 using InjectSills
-@static if USE_GPU
-    environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
-    @init_parallel_stencil(CUDA, Float64, 2)
-else
-    environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
-    @init_parallel_stencil(Threads, Float64, 2)
-end
-using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
-import MagmaThermoKinematics.Diffusion2D: GridArray!, assign!, Nonlinear_Diffusion_step_2D!
 using GeophysicalModelGenerator, GeoParams
-using MagmaThermoKinematics.Fields2D
-import MagmaThermoKinematics.Fields2D: CreateArrays
 
 using CairoMakie    # plotting
 import CairoMakie: Figure, Axis, lines!, contourf!, contour!, heatmap!, scatter!, axislegend, limits!, Colorbar, save
@@ -103,16 +87,12 @@ end
 @views function MainCode_2D(Mat_tup, Num, Dikes);
 
     # Array & grid initializations ---------------
-    Arrays = CreateArrays(Dict( (Num.Nx,  Num.Nz  )=>(T=0,T_K=0,  Tupdate=0, Tbuffer=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0),
-                                (Num.Nx-1,Num.Nz  )=>(qx=0,Kx=0, Rc=0),
-                                (Num.Nx  ,Num.Nz-1)=>(qz=0,Kz=0 )
-                                ))
+    Arrays = CreateArrays(Dict( (Num.Nx,  Num.Nz  )=>(T=0,T_K=0,  Tupdate=0, Tbuffer=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0)
+                                ); backend)
 
     # Set up model geometry & initial T structure
     Grid    = CreateGrid(size=(Num.Nx,Num.Nz), extent=(Num.W, Num.H))
     GridArray!(Arrays.R, Arrays.Z, Grid)
-    Arrays.Rc              .=   (Arrays.R[2:end,:] + Arrays.R[1:end-1,:])/2         # center points in x
-    Rc_CPU                  = Array(Arrays.Rc);                                 # on CPU
     # --------------------------------------------
 
     println("Timestep Δt= $(Num.dt/SecYear) ")
@@ -140,16 +120,9 @@ end
     # --------------------------------------------
 
     # Update buffer & phases arrays --------------
-    if USE_GPU
-        # CPU buffers for advection
-        Tnew_cpu        =   Matrix{Float64}(undef, Num.Nx, Num.Nz)
-        Phi_melt_cpu    =   similar(Tnew_cpu)
-        Phases          =   CUDA.ones(Int64,Num.Nx,Num.Nz)
-    else
-        Tnew_cpu        =   similar(Arrays.T)
-        Phi_melt_cpu    =   similar(Arrays.ϕ)
-        Phases          =   ones(Int64,Num.Nx,Num.Nz)
-    end
+    Tnew_cpu            =   Matrix{Float64}(undef, Num.Nx, Num.Nz)      # CPU buffers for advection
+    Phi_melt_cpu        =   similar(Tnew_cpu)
+    Phases              =   similar(Arrays.T, Int64); fill!(Phases, 1)
     # --------------------------------------------
 
     # Optionally set initial sill in models ------
@@ -178,7 +151,7 @@ end
         Tnew_cpu           .=   Array(Arrays.T)
         @timeit to "Dike intrusion" Tracers, Tnew_cpu, Vol, dike_poly, _ = inject_sills(Tracers, Tnew_cpu, Grid.coord1D, dike_initial, Dikes.T_in_Celsius, 2, Dikes.nTr_dike, dike_poly=dike_poly);     # Add dike, move hostrocks
 
-        Arrays.T           .=   Data.Array(Tnew_cpu)
+        copyto!(Arrays.T, Tnew_cpu)
         InjectVol          +=   Vol                                                     # Keep track of injected volume
         if Num.advect_polygon==true && isempty(dike_poly)
             dike_poly = InjectSills.dike_polygon(dike_initial);            # create dike polygon for the first time
@@ -190,8 +163,8 @@ end
     # --------------------------------------------
 
     # Initialise arrays --------------------------
-    @parallel assign!(Arrays.Tnew, Arrays.T_init)
-    @parallel assign!(Arrays.T, Arrays.T_init)
+    Arrays.Tnew .= Arrays.T_init
+    Arrays.T    .= Arrays.T_init
     time, dike_inj, Time_vec,Melt_Time,Tav_magma_Time, Tav_3D_magma_Time, VolMelt_time,
     Tav_all_Time, Tav_3D_all_Time, Tav_Phase2_Time, Tav_3D_Phase2_Time = 0.0, 0.0,zeros(Num.nt,1),zeros(Num.nt,1),zeros(Num.nt,1),
                     zeros(Num.nt,1), zeros(Num.nt,1), zeros(Num.nt,1), zeros(Num.nt,1), zeros(Num.nt,1), zeros(Num.nt,1);
@@ -233,7 +206,7 @@ end
                 Z               = Array(Arrays.Z)
                 Tnew_cpu[:,1]   .=   @. Num.Tsurface_Celcius - Z[:,1]*Num.Geotherm
             end
-            Arrays.T           .=   Data.Array(Tnew_cpu)
+            copyto!(Arrays.T, Tnew_cpu)
             InjectVol          +=   Vol                                                     # Keep track of injected volume
             Qrate               =   InjectVol/time
             Qrate_km3_yr        =   Qrate*SecYear/km³
@@ -253,7 +226,7 @@ end
         # --------------------------------------------
 
         # Do a diffusion step, while taking T-dependencies into account
-        @timeit to "Diffusion solver" Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Phases, Grid, Num.dt, Num)
+        @timeit to "Diffusion solver" Nonlinear_Diffusion_step!(Arrays, Mat_tup, Phases, Grid, Num.dt, Num)
         # --------------------------------------------
 
         # Update variables ---------------------------
@@ -269,11 +242,11 @@ end
             update_Tvec!(Tracers_grid, time/SecYear*1e-6)                                                        # update T & time vectors on tracers
         end
         # copy back to gpu
-        Arrays.Tnew   .= Data.Array(Tnew_cpu)
-        Arrays.ϕ      .= Data.Array(Phi_melt_cpu)
+        copyto!(Arrays.Tnew, Tnew_cpu)
+        copyto!(Arrays.ϕ, Phi_melt_cpu)
 
-        @parallel assign!(Arrays.T, Arrays.Tnew)
-        @parallel assign!(Arrays.Tnew, Arrays.T)
+        Arrays.T    .= Arrays.Tnew
+        Arrays.Tnew .= Arrays.T
         Melt_Time[it]       =   sum( Arrays.ϕ)/(Num.Nx*Num.Nz)                      # Average melt fraction in crust
 
         ind = findall(Arrays.T.>700);

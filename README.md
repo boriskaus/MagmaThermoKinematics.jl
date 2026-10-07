@@ -30,21 +30,10 @@ A simple example that simulates the emplacement of dikes within the crust over a
 
 The code to simulate this, including visualization, is <100 lines (if we remove empty ones) and the key parts of it are shown below
 ```julia
-const USE_GPU=false;
-if USE_GPU; using CUDA; end      # needs to be loaded before loading Parallkel=
-using ParallelStencil, ParallelStencil.FiniteDifferences2D
 using MagmaThermoKinematics
+# using CUDA                        # for an NVIDIA GPU, then: backend = CUDABackend()
+backend = CPU()
 using InjectSills
-@static if USE_GPU
-    environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
-    @init_parallel_stencil(CUDA, Float64, 2)
-else
-    environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
-    @init_parallel_stencil(Threads, Float64, 2)
-end
-using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
-using MagmaThermoKinematics.Fields2D
 using Plots
 
 #------------------------------------------------------------------------------------------
@@ -75,22 +64,17 @@ nt                      =   floor(Int64,maxTime/dt);    # number of required tim
 nTr_dike                =   300;                        # number of tracers inserted per dike
 
 # Array initializations
-Arrays = CreateArrays(Dict( (Nx,  Nz)=>(T=0,T_K=0, T_it_old=0, Tupdate=0, Tbuffer=0, K=1.5, Rho=2800, Cp=1050, Tnew=0,  Hr=0, Hl=0, Kc=1, P=0, X=0, Z=0, ϕₒ=0, ϕ=0, dϕdT=0),
-                                (Nx-1,Nz)=>(qx=0,Kx=0), (Nx, Nz-1)=>(qz=0,Kz=0 ) ))
+Arrays = CreateArrays(Dict( (Nx,  Nz)=>(T=0,T_K=0, T_it_old=0, Tupdate=0, Tbuffer=0, K=1.5, Rho=2800, Cp=1050, Tnew=0,  Hr=0, Hl=0, Kc=1, P=0, X=0, Z=0, ϕₒ=0, ϕ=0, dϕdT=0)); backend)
 # CPU buffers
 Tnew_cpu                =   Matrix{Float64}(undef, Grid.N...)
 Phi_melt_cpu            =   similar(Tnew_cpu)
-if USE_GPU;
-    Phases      =   CUDA.ones(Int64,Grid.N...)
-else
-    Phases      =   ones(Int64,Grid.N...)
-end
+Phases                  =   similar(Arrays.T, Int64); fill!(Phases, 1)
 
-@parallel (1:Nx, 1:Nz) GridArray!(Arrays.X,  Arrays.Z, Grid.coord1D[1], Grid.coord1D[2])
+GridArray!(Arrays.X, Arrays.Z, Grid)
 Tracers                 =   StructArray{Tracer{Float32}}(undef, 1)                   # Initialize tracers
 Arrays.T               .=   -Arrays.Z.*GeoT;                                        # Initial (linear) temperature profile
 
-# Preparation of visualisation
+# Preparation of visualization
 ENV["GKSwstype"]="nul"; if isdir("viz2D_out")==false mkdir("viz2D_out") end; loadpath = "./viz2D_out/"; anim = Animation(loadpath,String[])
 
 time, dike_inj, InjectVol, Time_vec,Melt_Time = 0.0, 0.0, 0.0,zeros(nt,1),zeros(nt,1);
@@ -107,24 +91,24 @@ for it = 1:nt   # Time loop
         sill      =     EllipticalIntrusion(Center=Point2(cen[1],cen[2])*m, Angle=Vec1(Angle_rand)*NoUnits, W=W_in*m, H=H_in*m)
         Tnew_cpu .=     Array(Arrays.T)
         Tracers, Tnew_cpu, Vol, _, _   =   inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, T_in, 2, nTr_dike);   # Add dike, move hostrocks
-        Arrays.T .=     Data.Array(Tnew_cpu)
+        copyto!(Arrays.T, Tnew_cpu)
         InjectVol +=    Vol                                                                 # Keep track of injected volume
         println("Added new dike; total injected magma volume = $(round(InjectVol/km³,digits=2)) km³; rate Q=$(round(InjectVol/(time),digits=2)) m³/s")
     end
 
-    Nonlinear_Diffusion_step_2D!(Arrays, MatParam, Phases, Grid, dt, Num)   # Perform a nonlinear diffusion step
+    Nonlinear_Diffusion_step!(Arrays, MatParam, Phases, Grid, dt, Num)   # Perform a nonlinear diffusion step
 
     copy_arrays_GPU2CPU!(Tnew_cpu, Phi_melt_cpu, Arrays.Tnew, Arrays.ϕ)     # Copy arrays to CPU to update properties
     UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);      # Update info on tracers
 
-    @parallel assign!(Arrays.T, Arrays.Tnew)
-    @parallel assign!(Arrays.Tnew, Arrays.T)                                # Update temperature
+    Arrays.T .= Arrays.Tnew
+    Arrays.Tnew .= Arrays.T                                # Update temperature
     time                =   time + dt;                                      # Keep track of evolved time
     Melt_Time[it]       =   sum(Arrays.ϕ)/prod(Grid.N)                      # Melt fraction in crust
     Time_vec[it]        =   time;                                           # Vector with time
     println(" Timestep $it = $(round(time/kyr*100)/100) kyrs")
 
-    if mod(it,20)==0  # Visualisation
+    if mod(it,20)==0  # Visualization
         x,z         =   Grid.coord1D[1], Grid.coord1D[2]
         p1          =   heatmap(x/1e3, z/1e3, Array(Arrays.T)',  aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:lajolla, clims=(0.,900.), xlabel="Width [km]",ylabel="Depth [km]", title="$(round(time/kyr, digits=2)) kyrs", dpi=200, fontsize=6, colorbar_title="Temperature")
         p2          =   heatmap(x/1e3,z/1e3, Array(Arrays.ϕ)',  aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:nuuk,    clims=(0., 1. ), xlabel="Width [km]",             dpi=200, fontsize=6, colorbar_title="Melt Fraction")
@@ -139,7 +123,7 @@ Time_vec, Melt_Time, Tracers, Grid, Arrays = MainCode_2D(); # start the main cod
 plot(Time_vec/kyr, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example2D") # Create plot
 
 ```
-The main routines are thus ``inject_sills(..)``, which inserts a new dike or sill (of given dimensions and orientation) into the domain using the [InjectSills.jl](https://github.com/JuliaGeodynamics/InjectSills.jl) package, and ``Nonlinear_Diffusion_step_2D!(...)``, which computes thermal diffusion. Variable thermal conductivity, and latent heat are all taken into account.
+The main routines are thus ``inject_sills(..)``, which inserts a new dike or sill (of given dimensions and orientation) into the domain using the [InjectSills.jl](https://github.com/JuliaGeodynamics/InjectSills.jl) package, and ``Nonlinear_Diffusion_step!(...)``, which computes thermal diffusion. Variable thermal conductivity, and latent heat are all taken into account.
 
 If you have a multicore processor (chances are very high that you do), the code can also take advantage of that. The only thing that you have to do is start julia with multiple threads, which on linux or macOS is done with:
 ```
@@ -156,9 +140,10 @@ julia> include("Example2D.jl")
 ```
 provided that you are in the same directory as the file (check that with `pwd()`).
 
-If you happen to have a machine with an NVIDIA graphics card build in, the code will run (substantially) faster by changing this flag:
+If you happen to have a machine with an NVIDIA graphics card build in, the code will run (substantially) faster by loading CUDA and selecting the CUDA backend:
 ```julia
-const USE_GPU=true;
+using CUDA
+backend = CUDABackend()
 ```
 
 The full code example can be downloaded [here](./examples/Example2D.jl)
@@ -169,23 +154,10 @@ To go from 2D to 3D, only a few minor changes to the code above are required. A 
 
 Here the full 3D code:
 ```julia
-const USE_GPU=false;
-if USE_GPU
-    using CUDA      # needs to be loaded before loading Parallkel=
-end
-using ParallelStencil, ParallelStencil.FiniteDifferences2D
-
 using MagmaThermoKinematics
+# using CUDA                        # for an NVIDIA GPU, then: backend = CUDABackend()
+backend = CPU()
 using InjectSills
-@static if USE_GPU
-    environment!(:gpu, Float64, 3)      # initialize parallel stencil in 3D
-    @init_parallel_stencil(CUDA, Float64, 3)
-else
-    environment!(:cpu, Float64, 3)      # initialize parallel stencil in 3D
-    @init_parallel_stencil(Threads, Float64, 3)
-end
-using MagmaThermoKinematics.Diffusion3D # to load AFTER calling environment!()
-using MagmaThermoKinematics.Fields3D
 using Plots
 using WriteVTK
 
@@ -217,15 +189,13 @@ using WriteVTK
     nTr_dike                =   300;                        # number of tracers inserted per dike
 
     # Array initializations
-    Arrays = CreateArrays(Dict( (Nx,  Ny, Nz)=>(T=0,T_K=0, T_it_old=0, Tupdate=0, Tbuffer=0, K=1.5, Rho=2800, Cp=1050, Tnew=0,  Hr=0, Hl=0, Kc=1, P=0, X=0, Y=0, Z=0, ϕₒ=0, ϕ=0, dϕdT=0),
-                                (Nx-1,Ny,Nz)=>(qx=0,Kx=0), (Nx, Ny-1, Nz)=>(qy=0,Ky=0 ) , (Nx, Ny, Nz-1)=>(qz=0,Kz=0 ) ))
+    Arrays = CreateArrays(Dict( (Nx,  Ny, Nz)=>(T=0,T_K=0, T_it_old=0, Tupdate=0, Tbuffer=0, K=1.5, Rho=2800, Cp=1050, Tnew=0,  Hr=0, Hl=0, Kc=1, P=0, X=0, Y=0, Z=0, ϕₒ=0, ϕ=0, dϕdT=0)); backend)
     # CPU buffers
     Tnew_cpu                =   zeros(Float64, Grid.N...)
     Phi_melt_cpu            =   similar(Tnew_cpu)
-    if USE_GPU; Phases      =   CUDA.ones(Int64,Grid.N...)
-    else        Phases      =   ones(Int64,Grid.N...)   end
+    Phases                  =   similar(Arrays.T, Int64); fill!(Phases, 1)
 
-    @parallel (1:Nx,1:Ny,1:Nz) GridArray!(Arrays.X,Arrays.Y,Arrays.Z, Grid.coord1D[1], Grid.coord1D[2], Grid.coord1D[3])
+    GridArray!(Arrays.X, Arrays.Y, Arrays.Z, Grid)
     Tracers                 =   StructArray{Tracer{Float32}}(undef, 1)                   # Initialize tracers
     Arrays.T               .=   -Arrays.Z.*GeoT;                                        # Initial (linear) temperature profile
 
@@ -243,24 +213,24 @@ using WriteVTK
             sill      =     EllipticalIntrusion(Center=Point3(cen[1],cen[2],cen[3])*m, Angle=Vec2(Angle_rand[1],Angle_rand[2])*NoUnits, W=W_in*m, H=H_in*m)
             Tnew_cpu .=     Array(Arrays.T)
             Tracers, Tnew_cpu, Vol, _, _   =   inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, T_in, 2, nTr_dike);   # Add dike, move hostrocks
-            Arrays.T .=     Data.Array(Tnew_cpu)
+            copyto!(Arrays.T, Tnew_cpu)
             InjectVol +=    Vol                                                                 # Keep track of injected volume
             println("Added new dike; total injected magma volume = $(round(InjectVol/km³,digits=2)) km³; rate Q=$(round(InjectVol/(time),digits=2)) m³/s")
         end
 
-        Nonlinear_Diffusion_step_3D!(Arrays, MatParam, Phases, Grid, dt, Num)   # Perform a nonlinear diffusion step
+        Nonlinear_Diffusion_step!(Arrays, MatParam, Phases, Grid, dt, Num)   # Perform a nonlinear diffusion step
 
         copy_arrays_GPU2CPU!(Tnew_cpu, Phi_melt_cpu, Arrays.Tnew, Arrays.ϕ)     # Copy arrays to CPU to update properties
         UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);      # Update info on tracers
 
-        @parallel assign!(Arrays.T, Arrays.Tnew)
-        @parallel assign!(Arrays.Tnew, Arrays.T)                                # Update temperature
+        Arrays.T .= Arrays.Tnew
+        Arrays.Tnew .= Arrays.T                                # Update temperature
         time                =   time + dt;                                      # Keep track of evolved time
         Melt_Time[it]       =   sum(Arrays.ϕ)/prod(Grid.N)                      # Melt fraction in crust
         Time_vec[it]        =   time;                                           # Vector with time
         println(" Timestep $it = $(round(time/kyr*100)/100) kyrs")
 
-        if mod(it,20)==0  # Visualisation
+        if mod(it,20)==0  # Visualization
             x,y,z         =   Grid.coord1D[1], Grid.coord1D[2], Grid.coord1D[3]
             vtkfile = vtk_grid("./viz3D_out/ex3D_$(Int32(it+1e4))", Vector(x/1e3), Vector(y/1e3), Vector(z/1e3)) # 3-D VTK file
             vtkfile["Temperature"] = Array(Arrays.T); vtkfile["MeltFraction"] = Array(Arrays.ϕ);                 # Store fields in file
@@ -276,7 +246,7 @@ Time_vec, Melt_Time, Tracers, Grid, Arrays = MainCode_3D(); # start the main cod
 The result of the script are a range of VTK files, which can be visualized with the 3D software [Paraview](https://www.paraview.org). The full code example can be downloaded [here](./examples/Example3D.jl), and the paraview statefile (to reproduce the movie) is available [here](./examples/movies/Example3D_Paraview.pvsm).
 
 ## Dependencies
-We rely on [ParallelStencil.jl](https://github.com/omlins/ParallelStencil.jl) for the energy solver, [GeoParams.jl](https://github.com/JuliaGeodynamics/GeoParams.jl) to define material properties (such as nonlinear conductivity, melting, etc.), [InjectSills.jl](https://github.com/JuliaGeodynamics/InjectSills.jl) to kinematically emplace dikes and sills (penny-shaped cracks, elliptical intrusions, cylindrical top-accreting bodies), [StructArrays.jl](https://github.com/JuliaArrays/StructArrays.jl) to generate an array of tracer structures, [Random.jl](https://docs.julialang.org/en/v1/stdlib/Random/) for random number generation, [Parameters.jl](https://github.com/mauro3/Parameters.jl) to simplify setting parameters, [Interpolations.jl](https://github.com/JuliaMath/Interpolations.jl) to interpolate properties such as temperature from a fixed grid to tracers, and [StaticArrays.jl](https://github.com/JuliaArrays/StaticArrays.jl) for speed. All these dependencies should be installed automatically if you install `MagmaThermoKinematics.jl`.
+We rely on [KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl) for the energy solver kernels (which run on CPUs and GPUs), [GeoParams.jl](https://github.com/JuliaGeodynamics/GeoParams.jl) to define material properties (such as nonlinear conductivity, melting, etc.), [InjectSills.jl](https://github.com/JuliaGeodynamics/InjectSills.jl) to kinematically emplace dikes and sills (penny-shaped cracks, elliptical intrusions, cylindrical top-accreting bodies), [StructArrays.jl](https://github.com/JuliaArrays/StructArrays.jl) to generate an array of tracer structures, [Random.jl](https://docs.julialang.org/en/v1/stdlib/Random/) for random number generation, [Parameters.jl](https://github.com/mauro3/Parameters.jl) to simplify setting parameters, [Interpolations.jl](https://github.com/JuliaMath/Interpolations.jl) to interpolate properties such as temperature from a fixed grid to tracers, and [StaticArrays.jl](https://github.com/JuliaArrays/StaticArrays.jl) for speed. All these dependencies should be installed automatically if you install `MagmaThermoKinematics.jl`.
 
 [Plots.jl](http://docs.juliaplots.org/latest/) is employed for plotting, and [WriteVTK.jl](https://github.com/jipolanco/WriteVTK.jl) is used in the 3D example to generate `*.vtr/*.pvd` files that can be visualized with [Paraview](https://www.paraview.org). You have to add both packages yourself; they are however anyways useful to have.
 
@@ -289,7 +259,7 @@ julia>]
   pkg> add MagmaThermoKinematics
   pkg> test MagmaThermoKinematics
 ```
-Dependencies such as `ParallelStencil.jl` are installed automatically.
+Dependencies such as `KernelAbstractions.jl` are installed automatically.
 The testing suite run above performs a large number of tests and, among others, compares the results with analytical solutions for advection/diffusion. Let us know if you encounter problems.
 
 If you want to run the examples and create plots, you may also want to install these packages:

@@ -1,8 +1,6 @@
 # this file tests various aspects of the advection routines
 using MagmaThermoKinematics
 using InjectSills
-using ParallelStencil
-using ParallelStencil.FiniteDifferences3D
 using Plots
 using LinearAlgebra
 using SpecialFunctions

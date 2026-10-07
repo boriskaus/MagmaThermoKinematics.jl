@@ -1,10 +1,6 @@
 using Test
 using MagmaThermoKinematics
 
-environment!(:cpu, Float64, 2)
-
-using MagmaThermoKinematics.Fields2D
-
 @testset "Fields" begin
 
 Arrays = CreateArrays(Dict( (100,100)=>(A=1.1,B=1,C=1.2),
