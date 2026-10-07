@@ -23,14 +23,16 @@ Pkg.update("MagmaThermoKinematics")
 
 ## Optional Packages for Examples and Visualization
 
-Some examples rely on plotting or VTK output packages:
+The examples use packages that are not installed with MagmaThermoKinematics. Add the ones a script loads to your environment:
 
 ```julia
 using Pkg
-Pkg.add("Plots")
-Pkg.add("Makie")
-Pkg.add("WriteVTK")
+Pkg.add("Plots")            # most examples
+Pkg.add("CairoMakie")       # ZASSy example and zircon post-processing (or GLMakie)
+Pkg.add(["MAT", "TimerOutputs"])   # ZASSy example
 ```
+
+`LoadPhaseDiagrams(...; PlotDiagrams=true)` draws its figures with Makie: load a backend first, e.g. `using CairoMakie` or `using GLMakie`.
 
 ## Development Install
 

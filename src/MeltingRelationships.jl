@@ -1,3 +1,12 @@
+"""
+    save_phase_diagram(path, Tvec, Pvec, fields)
+
+Plot each `(values, title, colormap)` entry of `fields` as a heatmap over
+`Tvec` and `Pvec ./ 1e3` and save the figure to `path`. The method is provided
+by the Makie extension: load a Makie backend first (`using CairoMakie` or `using GLMakie`).
+"""
+save_phase_diagram(args...) = error("save_phase_diagram needs Makie; load a backend first with `using CairoMakie` or `using GLMakie`")
+
 
 """
     SolidFraction computes the solid fraction (= (1-phi) as a function of T
@@ -145,13 +154,13 @@ end
 
         with:
             PhaseDiagramNames:  Array with names that are either [""] or contain the name & directory of the phase diagram
-            PlotDiagrams:       Plot the diagrams [warning; to be removed]
+            PlotDiagrams:       Plot the diagrams; needs a Makie backend (`using CairoMakie` or `using GLMakie`)
 
         out:
             PhaseDiagramData:   Array with interpolation objects that describe the phase diagrams
 
 """
-function LoadPhaseDiagrams(PhaseDiagramNames, PlotDiagrams=false)
+function LoadPhaseDiagrams(PhaseDiagramNames; PlotDiagrams=false)
     # This pre-loads phase diagram and creates the interpolation objects to
     #   efficiently query them @ a later stage.
     #
@@ -225,38 +234,26 @@ function LoadPhaseDiagrams(PhaseDiagramNames, PlotDiagrams=false)
             end
 
             # plot phase diagram if requested
-            if PlotDiagrams # note that this requires the Plots package to be installed - move this to a separate routine?
+            if PlotDiagrams
                 Rho = meltWt.*meltRho .+ (1.0 .- meltWt).*rockRho
 
-                # density
-                p2 = heatmap(Tvec,Pvec/1e3,meltWt',  title=PhaseDiagramName,  c=:batlow,  xlabel="T [C]",   ylabel="P [kbar]", dpi=400, fontsize=6, colorbar_title="Melt fraction")
-                p3 = heatmap(Tvec,Pvec/1e3,meltRho',                          c=:lajolla, xlabel="T [C]",   ylabel="P [kbar]", dpi=400, fontsize=6, colorbar_title="ρ melt [kg/m3]")
-                p1 = heatmap(Tvec,Pvec/1e3,rockRho',                          c=:lajolla, xlabel="T [C]",   ylabel="P [kbar]", dpi=400, fontsize=6, colorbar_title="ρ rock [kg/m3]")
-                p4 = heatmap(Tvec,Pvec/1e3,Rho',                              c=:lajolla, xlabel="T [C]",   ylabel="P [kbar]", dpi=400, fontsize=6, colorbar_title="ρ combined[kg/m3]")
-                plot(p1,p2,p3,p4); png("PhaseDiagram_DensitiesMeltfraction")
+                save_phase_diagram("PhaseDiagram_DensitiesMeltfraction.png", Tvec, Pvec,
+                    ((rockRho, "ρ rock [kg/m³]", :lajolla), (meltWt, "Melt fraction", :batlow),
+                     (meltRho, "ρ melt [kg/m³]", :lajolla), (Rho, "ρ combined [kg/m³]", :lajolla)))
 
                 if numFields>5
-                    # Seismic velocities for rock
-                    p1 = heatmap(Tvec,Pvec/1e3,rockVp',                         c=:batlow,  xlabel="T [C]",   ylabel="P [kbar]", dpi=400, fontsize=6, colorbar_title="rock Vp [km/s]")
-                    p2 = heatmap(Tvec,Pvec/1e3,rockVs',  title=PhaseDiagramName,c=:batlow,  xlabel="T [C]",   ylabel="P [kbar]", dpi=400, fontsize=6, colorbar_title="rock Vs [km/s]")
-                    p3 = heatmap(Tvec,Pvec/1e3,rockVpVs',                       c=:batlow,  xlabel="T [C]",   ylabel="P [kbar]", dpi=400, fontsize=6, colorbar_title="rock Vp/Vs []")
-                    plot(p1,p2,p3); png("PhaseDiagram_RockSeismicVelocities")
-
-                    # Seismic velocities for melt
-                    p1 = heatmap(Tvec,Pvec/1e3,meltVp',                         c=:batlow,  xlabel="T [C]",   ylabel="P [kbar]", dpi=400, fontsize=6, colorbar_title="melt Vp [km/s]")
-                    p2 = heatmap(Tvec,Pvec/1e3,meltVs',  title=PhaseDiagramName,c=:batlow,  xlabel="T [C]",   ylabel="P [kbar]", dpi=400, fontsize=6, colorbar_title="melt Vs [km/s]")
-                    p3 = heatmap(Tvec,Pvec/1e3,meltVpVs',                       c=:batlow,  xlabel="T [C]",   ylabel="P [kbar]", dpi=400, fontsize=6, colorbar_title="melt Vp/Vs []")
-                    plot(p1,p2,p3); png("PhaseDiagram_MeltSeismicVelocities")
-
-                    # Combined velocities
-                    Vp      =  meltWt.*meltVp   .+ (1.0 .- meltWt).*rockVp;
-                    Vs      =  meltWt.*meltVs   .+ (1.0 .- meltWt).*rockVs;
-                    VpVs    =  meltWt.*meltVpVs .+ (1.0 .- meltWt).*rockVpVs;
-                    p1 = heatmap(Tvec,Pvec/1e3,Vp',                         c=:batlow,  xlabel="T [C]",   ylabel="P [kbar]", dpi=400, fontsize=6, colorbar_title="melt Vp [km/s]")
-                    p2 = heatmap(Tvec,Pvec/1e3,Vs',  title=PhaseDiagramName,c=:batlow,  xlabel="T [C]",   ylabel="P [kbar]", dpi=400, fontsize=6, colorbar_title="melt Vs [km/s]")
-                    p3 = heatmap(Tvec,Pvec/1e3,VpVs',                       c=:batlow,  xlabel="T [C]",   ylabel="P [kbar]", dpi=400, fontsize=6, colorbar_title="melt Vp/Vs []")
-                    plot(p1,p2,p3); png("PhaseDiagram_CombinedSeismicVelocities")
-
+                    save_phase_diagram("PhaseDiagram_RockSeismicVelocities.png", Tvec, Pvec,
+                        ((rockVp, "rock Vp [km/s]", :batlow), (rockVs, "rock Vs [km/s]", :batlow),
+                         (rockVpVs, "rock Vp/Vs", :batlow)))
+                    save_phase_diagram("PhaseDiagram_MeltSeismicVelocities.png", Tvec, Pvec,
+                        ((meltVp, "melt Vp [km/s]", :batlow), (meltVs, "melt Vs [km/s]", :batlow),
+                         (meltVpVs, "melt Vp/Vs", :batlow)))
+                    Vp = meltWt.*meltVp .+ (1.0 .- meltWt).*rockVp
+                    Vs = meltWt.*meltVs .+ (1.0 .- meltWt).*rockVs
+                    VpVs = meltWt.*meltVpVs .+ (1.0 .- meltWt).*rockVpVs
+                    save_phase_diagram("PhaseDiagram_CombinedSeismicVelocities.png", Tvec, Pvec,
+                        ((Vp, "combined Vp [km/s]", :batlow), (Vs, "combined Vs [km/s]", :batlow),
+                         (VpVs, "combined Vp/Vs", :batlow)))
                 end
 
             end

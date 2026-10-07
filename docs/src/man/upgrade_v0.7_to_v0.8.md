@@ -9,6 +9,7 @@ v0.8 replaces ParallelStencil with [KernelAbstractions](https://github.com/Julia
 3. Replace `USE_GPU` with a backend: `NumParam(backend=CPU())` (the default) or, after `using CUDA`, `NumParam(backend=CUDABackend())`.
 4. Replace `@parallel`, `@zeros`, `@ones` and `Data.Array` by plain Julia (see [Replacing ParallelStencil code](#replacing-parallelstencil-code)).
 5. If you run on an NVIDIA GPU, add CUDA.jl to your own environment. It is no longer a dependency of MagmaThermoKinematics.
+6. Plots, CairoMakie, MAT and TimerOutputs are no longer installed with MagmaThermoKinematics. Add the ones your scripts load to your environment. `LoadPhaseDiagrams(...; PlotDiagrams=true)` plots with Makie and needs a backend (`using CairoMakie` or `using GLMakie`).
 
 Quick check of a v0.7 script:
 
@@ -86,6 +87,7 @@ Arrays.T .= Arrays.Tnew
 - `UndefVarError` for `environment!`, `@parallel`, `@zeros`, `Data`, `Diffusion2D`, ...: the script still uses the v0.7 API.
 - `Nonlinear_Diffusion_step!` throws an error if the Picard iterations do not converge within `max_iter`. In v0.7 it printed a warning and carried on with the unconverged temperature. Reduce `dt` or the relaxation parameter `ω`. A melting law whose `dϕ/dT` jumps (for example `MeltingParam_Assimilation()` at the liquidus) may need `SmoothMelting(...)`.
 - `NumParam(USE_GPU=...)` fails, because the field no longer exists.
+- `LoadPhaseDiagrams(names, true)` fails: `PlotDiagrams` is a keyword, `LoadPhaseDiagrams(names; PlotDiagrams=true)`.
 - The `Arrays` returned by `MTK_GeoParams` no longer contain `qx`, `qz`, `Kx`, `Kz`, `Rc` (and `qy`, `Ky` in 3D). Callbacks that read them fail.
 
 **Changes without an error**

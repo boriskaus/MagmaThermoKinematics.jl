@@ -1,6 +1,5 @@
 # this file tests various aspects of the tracers routines
 using MagmaThermoKinematics
-using Plots
 using LinearAlgebra
 using SpecialFunctions
 using Test

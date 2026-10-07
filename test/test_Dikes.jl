@@ -1,7 +1,6 @@
 # this file tests various aspects of the advection routines
 using MagmaThermoKinematics
 using InjectSills
-using Plots
 using LinearAlgebra
 using SpecialFunctions
 using Test
