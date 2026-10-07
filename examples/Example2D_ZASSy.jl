@@ -434,7 +434,7 @@ if 1==0
     # 2D, run7-9 Geneva-type models with Greg's smooth melting parameterisation but different Geother & BC;s
     # These are the final simulations for the ZASSy paper
     Num         = NumParam(Nx=269*1, Nz=269*1, SimName="ZASSy_Geneva_10_7e_6_v2", axisymmetric=true,
-                            maxTime_Myrs=1.5, fac_dt=0.2, ω=0.5, verbose=false,
+                            maxTime_Myrs=1.5, fac_dt=0.2, ω=0.7, verbose=false,
                             flux_bottom_BC=false, flux_bottom=0, deactivate_La_at_depth=false,
                             Geotherm=30/1e3, TrackTracersOnGrid=true,
                             SaveOutput_steps=100000, CreateFig_steps=100000, plot_tracers=false, advect_polygon=true,
@@ -480,7 +480,7 @@ if 1==0
     # Constant k case:
     Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_ellipticalIntrusion_constant_k_radioactiveheating_AssimilationAndQuadratic_initialEllipse_La0_Lm267",
                             SaveOutput_steps=1000, CreateFig_steps=1000, axisymmetric=false,
-                            flux_bottom_BC=true, flux_bottom=167e-3, fac_dt=0.4,  ω=0.6, verbose=false, dt = 20*SecYear,
+                            flux_bottom_BC=true, flux_bottom=167e-3, fac_dt=0.4,  ω=0.7, verbose=false, dt = 20*SecYear,
                             maxTime_Myrs=0.7,
                             AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=170e-3, qm_anal=167e-3, hr_anal=10e3, k_anal=3.3453,
                             InitialEllipse =   true, a_init= 2.5e3,  b_init  =   1.5e3,
@@ -510,7 +510,7 @@ if 1==0
 
                         # Fig 12A:
                         maxTime_Myrs=0.75,
-                        flux_bottom_BC=true, flux_bottom=40/1e3*1.89, fac_dt=0.2, ω=0.6, verbose=false,
+                        flux_bottom_BC=true, flux_bottom=40/1e3*1.89, fac_dt=0.2, ω=0.7, verbose=false,
                         AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=130e-3, qm_anal=130e-3, hr_anal=10e3, k_anal=3.3453,
                         InitialEllipse =   true, a_init= 2.33e3,  b_init  =   0.44e3,
 
@@ -604,7 +604,7 @@ if 1==1
     # This is the reference model used in Fig. 11 of the paper:
     Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_9_1e_6_reference",
                      SaveOutput_steps=200000, CreateFig_steps=1000, axisymmetric=false,
-                     flux_bottom_BC=true, flux_bottom=30/1e3*1.9, fac_dt=0.2, ω=0.5, verbose=false,
+                     flux_bottom_BC=true, flux_bottom=30/1e3*1.9, fac_dt=0.2, ω=0.7, verbose=false,
                      maxTime_Myrs=1.1,
                      AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=100e-3, qm_anal=100e-3, hr_anal=10e3, k_anal=3.3453,
                      InitialEllipse =   true, a_init= 6.7e3,  b_init  =   1.67e3,
@@ -613,7 +613,7 @@ if 1==1
 
     Num          = NumParam(Nx=301, Nz=201, W=30e3, SimName="ZASSy_UCLA_10_7e_6_v3",
                          SaveOutput_steps=200000, CreateFig_steps=1000, axisymmetric=false,
-                         flux_bottom_BC=true, flux_bottom=30/1e3*1.9, fac_dt=0.2, ω=0.5, verbose=false,
+                         flux_bottom_BC=true, flux_bottom=30/1e3*1.9, fac_dt=0.2, ω=0.7, verbose=false,
                          #maxTime_Myrs=1.1,  # Fig. 11, Fig. 12B
                          #maxTime_Myrs=0.7,  # Fig. 12A
                          #maxTime_Myrs=1.3,  # Fig. 12C
