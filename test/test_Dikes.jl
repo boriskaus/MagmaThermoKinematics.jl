@@ -289,6 +289,12 @@ end
     # Tracers were added
     @test length(Tr_new) == 300
 
+    # Empty tracer array and integer arguments
+    Tr_int, Tnew_int, _, _, _ = inject_sills(StructArray{Tracer{Float32}}(undef, 0), copy(T), Grid, sill2d, 900, Int32(2), Int32(5))
+    @test length(Tr_int) == 5
+    @test all(==(2), Tr_int.Phase)
+    @test maximum(Tnew_int) == 900
+
     # The plotting polygon moves with the host rock by less than the sill opening
     poly0 = InjectSills.dike_polygon(sill2d)
     _, _, _, poly_adv, _ = inject_sills(StructArray{Tracer{Float32}}(undef, 1), copy(T), Grid, sill2d, T_in, 2, 0;
@@ -305,12 +311,6 @@ end
         _, _, InjVol_s, _, _ = inject_sills(Tr_s, copy(T), Grid, sill, T_in, 2, 0)
         @test InjVol_s ≈ V_expected  rtol=1e-12
     end
-
-    # Sill radius used by the injection-rate printout
-    radius = MagmaThermoKinematics.MTK_GMG._sill_radius_m
-    @test radius(sill2d) == Wdike/2
-    @test radius(PlaneStrainSill(R=(Wdike/2)*m, H=Hdike*m, Center=Point2(cen[1], cen[2])*m)) == Wdike/2
-    @test radius(SquareDike(Center=Point2(cen[1], cen[2])*m, W=Wdike*m, H=Hdike*m)) == Wdike/2
   end
 
   # ------------------------------------------------------------------

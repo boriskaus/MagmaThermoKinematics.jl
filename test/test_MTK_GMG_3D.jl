@@ -10,48 +10,6 @@ using Random, GeoParams, GeophysicalModelGenerator
 
 const rng = Random.seed!(1234);     # same seed such that we can reproduce results
 
-@eval MTK_GMG begin
-function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters, Tracers::StructVector)
-    if floor(Num.time / Dikes.InjectionInterval) > Dikes.sill_inj
-        Dikes.sill_inj = floor(Num.time / Dikes.InjectionInterval)
-
-        T_bottom = copy(selectdim(Arrays.T, Num.dim, 1))
-
-        sill = _active_sill(Dikes)
-        if Num.advect_polygon == true && isempty(Dikes.sill_poly)
-            Dikes.sill_poly = InjectSills.dike_polygon(sill)
-        end
-
-        Tracers, _, Vol, _, _ = inject_sills(Tracers, Arrays.T, Grid.coord1D, sill, Dikes.T_in_Celsius, Dikes.SillPhase, Dikes.nTr_dike)
-
-        if Num.flux_bottom_BC == false
-            selectdim(Arrays.T, Num.dim, 1) .= T_bottom
-        end
-
-        Dikes.InjectVol += Vol
-        Qrate = Dikes.InjectVol / Num.time
-        Dikes.Qrate_km3_yr = Qrate * SecYear / km³
-        println("  Added new dike; time=$(Num.time / kyr) kyrs, total injected magma volume = $(Dikes.InjectVol / km³) km³; rate Q= $(Dikes.Qrate_km3_yr) km³yr⁻¹")
-
-        if length(Mat_tup) > 1
-            Phases = Array(Arrays.Phases)
-            PhasesFromTracers!(Phases, Grid, Tracers, BackgroundPhase=Dikes.BackgroundPhase, InterpolationMethod="Constant")
-
-            if Num.keep_init_RockPhases == true
-                Phases_init = Array(Arrays.Phases_init)
-                for i in eachindex(Phases, Phases_init)
-                    if Phases[i] != Dikes.SillPhase
-                        Phases[i] = Phases_init[i]
-                    end
-                end
-            end
-            copyto!(Arrays.Phases, Phases)
-        end
-    end
-
-    return Tracers
-end
-end
 
 
 @testset "MTK_GMG_3D" begin
@@ -197,7 +155,29 @@ Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams(MatParam, Num, Sill_par
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 244.14916470514495  rtol= 1e-2
 @test sum(time_props.MeltFraction)  ≈ 0.00837762112158602 rtol= 1e-5
 
+# Random sill placement moves the sill within the randomization zone
+Num.AddRandomSills, Num.it = true, 0
+MTK_GMG.MTK_update_ArraysStructs!(Arrays, Grid, Dikes, Num, MatParam)
+cen = [c.val for c in Dikes.sill.Center]
+@test Dikes.sill isa EllipticalIntrusion
+@test all(abs.(cen .- (Grid.max .+ Grid.min)./2) .<= [Dikes.W_ran, Dikes.L_ran, Dikes.H_ran]./2)
+
+# The initial CylindricalDikeTopAccretion sill is a vertical cylinder of radius W/2
+Num         = NumParam( Nx=31, Ny=31, Nz=31, SimName="Cylinder3D",
+                        W=20e3, H=20e3, L=20e3, maxTime_Myrs=0.0005,
+                        SaveOutput_steps=100000, CreateFig_steps=100000, plot_tracers=false, advect_polygon=true);
+Sill_params = SillParams(
+            sill=CylindricalDikeTopAccretion(Center=Point3(0.0, 0.0, -7000.0) * m, Angle=Vec2(0.0, 0.0) * NoUnits, W=5e3 * m, H=2e3 * m),
+            InjectionInterval_year = 1000,
+        )
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams(MatParam[2:2], Num, Sill_params);
+ind = findall(Arrays.T_init .== Dikes.T_in_Celsius)
+@test !isempty(ind)
+@test all(hypot.(Arrays.X[ind], Arrays.Y[ind]) .<= 2.5e3)
+@test !isempty(Dikes.sill_poly)
+
 rm("Test1", recursive=true, force=true) # remove directory created by this test
 rm("Unzen2", recursive=true, force=true) # remove directory created by this test
+rm("Cylinder3D", recursive=true, force=true) # remove directory created by this test
 
 end

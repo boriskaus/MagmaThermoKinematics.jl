@@ -18,10 +18,6 @@ import MagmaThermoKinematics: PhasesFromTracers!, CreateArrays, copy_to_device!
 SecYear = 3600*24*365.25;
 
 @inline _active_sill(Dikes) = isnothing(Dikes.sill) ? error("SillParameters requires a valid `sill` object") : Dikes.sill
-# Horizontal radius of the sill [m]: `PennyShapedSill` and `PlaneStrainSill` store
-# the radius in `R`, the other sill types store the full width in `W`.
-@inline _sill_radius_m(sill::Union{InjectSills.PennyShapedSill, InjectSills.PlaneStrainSill}) = sill.R.val
-@inline _sill_radius_m(sill::InjectSills.AbstractSill) = sill.W.val/2
 
 """
     Analytical geotherm used for the UCLA setups, which includes radioactive heating
@@ -56,8 +52,6 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         Dikes.InjectVol    +=   Vol                                                     # Keep track of injected volume
         Qrate               =   Dikes.InjectVol/Num.time
         Dikes.Qrate_km3_yr  =   Qrate*SecYear/km³
-        radius_m            =   _sill_radius_m(sill)
-        Qrate_km3_yr_km2    =   Dikes.Qrate_km3_yr/(pi*(radius_m/1e3)^2)
         println("  Added new dike; time=$(Num.time/kyr) kyrs, total injected magma volume = $(Dikes.InjectVol/km³) km³; rate Q= $(Dikes.Qrate_km3_yr) km³yr⁻¹")
 
         if Num.advect_polygon==true && isempty(Dikes.sill_poly)
