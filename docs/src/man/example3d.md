@@ -15,7 +15,6 @@ Note:
 using MagmaThermoKinematics
 # using CUDA                        # for an NVIDIA GPU, then: backend = CUDABackend()
 backend = CPU()
-using Plots
 using WriteVTK
 
 #------------------------------------------------------------------------------------------
@@ -46,7 +45,7 @@ using WriteVTK
     nTr_dike                =   300;                        # number of tracers inserted per dike
 
     # Array initializations
-    Arrays = CreateArrays(Dict( (Nx,  Ny, Nz)=>(T=0,T_K=0, T_it_old=0, K=1.5, Rho=2800, Cp=1050, Tnew=0, Tupdate=0, Tbuffer=0,   Hr=0, Hl=0, Kc=1, P=0, X=0, Y=0, Z=0, ϕₒ=0, ϕ=0, dϕdT=0)); backend)
+    Arrays = CreateArrays(Dict( (Nx,  Ny, Nz)=>(T=0,T_K=0, T_it_old=0, Rho=2800, Cp=1050, Tnew=0, Tupdate=0, Hr=0, Hl=0, Kc=1, P=0, X=0, Y=0, Z=0, ϕₒ=0, ϕ=0, dϕdT=0)); backend)
     # CPU buffers
     Tnew_cpu                =   zeros(Float64, Grid.N...)
     Phi_melt_cpu            =   similar(Tnew_cpu)
@@ -80,8 +79,7 @@ using WriteVTK
         copy_arrays_GPU2CPU!(Tnew_cpu, Phi_melt_cpu, Arrays.Tnew, Arrays.ϕ)     # Copy arrays to CPU to update properties
         UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);      # Update info on tracers
 
-        Arrays.T .= Arrays.Tnew
-        Arrays.Tnew .= Arrays.T                                # Update temperature
+        Arrays.T .= Arrays.Tnew                                # Update temperature
         time                =   time + dt;                                      # Keep track of evolved time
         Melt_Time[it]       =   sum(Arrays.ϕ)/prod(Grid.N)                      # Melt fraction in crust
         Time_vec[it]        =   time;                                           # Vector with time

@@ -19,7 +19,7 @@ These dependencies are installed automatically when adding MagmaThermoKinematics
 
 Examples commonly use:
 
-- Plots.jl for plotting.
+- Makie.jl for plotting, through CairoMakie or GLMakie (not installed with MagmaThermoKinematics; add it to your own environment).
 - WriteVTK.jl to generate VTK/PVD outputs for ParaView.
 
 ## Real-World Model Setup

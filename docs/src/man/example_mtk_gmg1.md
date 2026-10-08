@@ -1,6 +1,6 @@
 # MTK_GMG Example 1
 
- with different magma temperatures to study the thermal effects on crustal rocks.
+This example uses different magma temperatures to study the thermal effects on crustal rocks.
 
 ## Imports and Backend
 All simulations need to import the appropriate libraries:
@@ -10,7 +10,7 @@ using MagmaThermoKinematics
 backend = CPU()
 using MagmaThermoKinematics.GeophysicalModelGenerator
 using GeoParams, Random
-using Plots
+using CairoMakie
 using MagmaThermoKinematics.MTK_GMG
 ```
 

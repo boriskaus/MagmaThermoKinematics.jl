@@ -1,6 +1,6 @@
 # Upgrading from v0.7 to v0.8
 
-v0.8 replaces ParallelStencil with [KernelAbstractions](https://github.com/JuliaGPU/KernelAbstractions.jl). The same code now runs in 2D and 3D, on the CPU and on the GPU. The numerics are unchanged: on the CPU, v0.8 results agree with v0.7 to round-off (about 1e-11 °C in our test runs), except for models affected by the two bug fixes listed under [Changes without an error](#pitfalls). Injection and the nonlinear solver are faster and allocate less. Scripts need changes, because the backend setup, the `2D`/`3D` modules and the re-exported ParallelStencil macros are gone.
+v0.8 replaces ParallelStencil with [KernelAbstractions](https://github.com/JuliaGPU/KernelAbstractions.jl). The same code now runs in 2D and 3D, on the CPU and on the GPU. The numerics are unchanged: on the CPU, v0.8 results agree with v0.7 to round-off (about 1e-11 °C in our test runs), except for the changes listed under [Changes without an error](#pitfalls). Injection and the nonlinear solver are faster and allocate less. Scripts need changes, because the backend setup, the `2D`/`3D` modules and the re-exported ParallelStencil macros are gone.
 
 ## Checklist
 
@@ -9,7 +9,8 @@ v0.8 replaces ParallelStencil with [KernelAbstractions](https://github.com/Julia
 3. Replace `USE_GPU` with a backend: `NumParam(backend=CPU())` (the default) or, after `using CUDA`, `NumParam(backend=CUDABackend())`.
 4. Replace `@parallel`, `@zeros`, `@ones` and `Data.Array` by plain Julia (see [Replacing ParallelStencil code](#replacing-parallelstencil-code)).
 5. If you run on an NVIDIA GPU, add CUDA.jl to your own environment. It is no longer a dependency of MagmaThermoKinematics.
-6. Plots, CairoMakie, MAT and TimerOutputs are no longer installed with MagmaThermoKinematics. Add the ones your scripts load to your environment. `LoadPhaseDiagrams(...; PlotDiagrams=true)` plots with Makie and needs a backend (`using CairoMakie` or `using GLMakie`).
+6. v0.8 requires GeoParams 0.9. Material laws evaluate in the precision of their input (`Float32` arrays give `Float32` results).
+7. Plots, CairoMakie, MAT and TimerOutputs are no longer installed with MagmaThermoKinematics. Add the ones your scripts load to your environment. The examples plot with CairoMakie instead of Plots. `LoadPhaseDiagrams(...; PlotDiagrams=true)` plots with Makie and needs a backend (`using CairoMakie` or `using GLMakie`).
 
 Quick check of a v0.7 script:
 
@@ -89,10 +90,15 @@ Arrays.T .= Arrays.Tnew
 - `NumParam(USE_GPU=...)` fails, because the field no longer exists.
 - `LoadPhaseDiagrams(names, true)` fails: `PlotDiagrams` is a keyword, `LoadPhaseDiagrams(names; PlotDiagrams=true)`.
 - The `Arrays` returned by `MTK_GeoParams` no longer contain `qx`, `qz`, `Kx`, `Kz`, `Rc` (and `qy`, `Ky` in 3D). Callbacks that read them fail.
+- A user-defined `MTK_inject_dikes` with the v0.7 signature `(Grid, Num, Arrays, Mat_tup, Dikes, Tracers, Tnew_cpu)` is no longer called, because the solver calls `MTK_inject_dikes(Grid, Num, Arrays, Mat_tup, Dikes, Tracers)`. Drop the last argument and pass `Arrays.T` to `inject_sills`, which accepts arrays on any backend.
 
 **Changes without an error**
 
 - Models with more than one phase now update the phases from the tracers after each injection: cells filled by a sill take `SillPhase`, all others keep their initial phase (with `keep_init_RockPhases=true`, the default). In v0.7 `MTK_inject_dikes` wrote the new phases into a copy, so the sills kept the phase of the host rock. Results change if the sill phase has different material properties than the host rock.
+- The default relaxation parameter of the nonlinear iterations is `ω = 0.5` (in `NumParam` and `Numeric_params`; v0.7 used 0.8, which does not converge at high resolution once a sill is present). Set `ω` explicitly to keep the v0.7 behavior.
+- GeoParams 0.9 corrects the diffusivity coefficient of `T_Conductivity_Whittington` (567.3 instead of 576.3, as in Whittington et al., 2009). Models using this law change slightly (+0.17% total melt in our ZASSy test).
+- The melt fraction `ϕ` is clamped to [0, 1]. Some melting laws, e.g. `SmoothMelting(MeltingParam_4thOrder())`, return values slightly outside this range (up to about 2e-4), which v0.7 kept.
+- `inject_sills` moves existing tracers and the sill polygon from `x` to `x + u(x)`, with `u` the host-rock displacement at their own positions. v0.7 integrated the grid displacement field as a velocity over pseudo-time steps. Tracer positions shift by about a meter in typical 2D models and by up to the sill opening for tracers on the crack plane of a new sill; in our ZASSy test the total melt changes by −0.13%.
 - `time_props.MeltFraction` is the mean melt fraction of the whole model in 3D. In v0.7 it was `Ny` times too large.
 - A 2D `NumParam` with `Ny > 0` now runs a 3D model in `MTK_GeoParams`. Leave `Ny` at its default `0` for 2D models.
 - `Numeric_params` has a new field `deactivationDepth` (default `-15e3` m). In v0.7, `deactivate_La_at_depth=true` with `Numeric_params` failed because this field was missing.

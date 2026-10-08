@@ -27,8 +27,7 @@ The examples use packages that are not installed with MagmaThermoKinematics. Add
 
 ```julia
 using Pkg
-Pkg.add("Plots")            # most examples
-Pkg.add("CairoMakie")       # ZASSy example and zircon post-processing (or GLMakie)
+Pkg.add("CairoMakie")       # plotting (or GLMakie)
 Pkg.add(["MAT", "TimerOutputs"])   # ZASSy example
 ```
 

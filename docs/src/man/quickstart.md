@@ -20,6 +20,8 @@ backend = CUDABackend()
 ```
 :::
 
+GPU backends are not tested in CI.
+
 Pass the backend when allocating arrays, either through `CreateArrays(...; backend)` or through `NumParam(backend=backend)` when using the `MTK_GMG` workflow.
 
 ## Minimal Model Setup Pattern
