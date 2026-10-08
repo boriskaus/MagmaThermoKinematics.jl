@@ -28,7 +28,7 @@ ZirconGrowthExt = "ZirconGrowth"
 
 [compat]
 Aqua = "0.8"
-GeoParams = "0.7, 0.8, 0.9"
+GeoParams = "0.9"
 GeophysicalModelGenerator = "0.7, 0.8"
 InjectSills = "0.3"
 Interpolations = "0.13 - 0.16"
