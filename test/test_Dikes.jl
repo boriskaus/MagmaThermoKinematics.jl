@@ -347,6 +347,16 @@ end
     @test minimum(Tnew_new) >= minimum(T) - 1e-8
     @test InjVol ≈ 4/3*π*(Wdike/2)^2*(Hdike/2)  rtol=1e-6   # Wdike/2 = sill radius
     @test length(Tr_new) == 300
+
+    # The plotting polygon (x–z section through the sill center) moves with the host rock
+    sill_e = EllipticalIntrusion(Center=Point3(cen[1], cen[2], cen[3])*m, Angle=Vec2(0.0, 0.0)*NoUnits, W=Wdike*m, H=Hdike*m)
+    poly0  = InjectSills.dike_polygon(sill_e)
+    _, _, _, poly_adv, _ = inject_sills(StructArray{Tracer{Float32}}(undef, 1), copy(T), Grid, sill_e, T_in, 2, 0;
+                                        dike_poly=deepcopy(poly0))
+    # EllipticalIntrusion grows self-similarly: the outline scales by ∛2 about the center
+    @test length(poly_adv) == 2
+    @test poly_adv[1] ≈ cen[1] .+ cbrt(2) .* (poly0[1] .- cen[1])  rtol=1e-10
+    @test poly_adv[2] ≈ cen[3] .+ cbrt(2) .* (poly0[2] .- cen[3])  rtol=1e-10
   end
 
 end

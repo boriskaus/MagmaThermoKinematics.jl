@@ -103,7 +103,7 @@ into the temperature field `T` defined on the regular grid `Grid`.
 # Keyword arguments
 - `AdvectionMethod`     – `"RK2"` (default) or `"Euler"`
 - `InterpolationMethod` – `"Linear"`, `"Quadratic"`, or `"Cubic"` (default `"Linear"`)
-- `dike_poly`           – optional plotting polygon that is advected with the host rock
+- `dike_poly`           – optional plotting polygon `[x, z]` that is advected with the host rock; in 3D the x–z section through the sill center
 
 # Returns
 `(Tracers, Tnew, InjectedVolume, dike_poly, Velocity)`, where `InjectedVolume` is
@@ -179,7 +179,11 @@ function inject_sills(Tracers, T::AbstractArray, Grid,
             c .= getindex.(P, i)
         end
     end
-    isempty(dike_poly) || displace_points!(dike_poly, sill, Grid)
+    if !isempty(dike_poly)
+        # In 3D, dike_poly is the x–z section through the sill center (InjectSills.dike_polygon)
+        P = dim == 2 ? dike_poly : (dike_poly[1], fill(sill.Center.val[2], length(dike_poly[1])), dike_poly[2])
+        displace_points!(P, sill, Grid)
+    end
 
     # ------------------------------------------------------------------
     # Set T = T_in inside the sill and seed new tracers

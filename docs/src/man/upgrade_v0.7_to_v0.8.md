@@ -99,6 +99,7 @@ Arrays.T .= Arrays.Tnew
 - GeoParams 0.9 corrects the diffusivity coefficient of `T_Conductivity_Whittington` (567.3 instead of 576.3, as in Whittington et al., 2009). Models using this law change slightly (+0.17% total melt in our ZASSy test).
 - The melt fraction `ϕ` is clamped to [0, 1]. Some melting laws, e.g. `SmoothMelting(MeltingParam_4thOrder())`, return values slightly outside this range (up to about 2e-4), which v0.7 kept.
 - `inject_sills` moves existing tracers and the sill polygon from `x` to `x + u(x)`, with `u` the host-rock displacement at their own positions. v0.7 integrated the grid displacement field as a velocity over pseudo-time steps. Tracer positions shift by about a meter in typical 2D models and by up to the sill opening for tracers on the crack plane of a new sill; in our ZASSy test the total melt changes by −0.13%.
+- In 3D, `inject_sills` advects the plotting polygon `dike_poly` as the x–z section through the sill center. In v0.7, 3D models with `advect_polygon=true` failed with a `BoundsError` at the first injection.
 - `time_props.MeltFraction` is the mean melt fraction of the whole model in 3D. In v0.7 it was `Ny` times too large.
 - A 2D `NumParam` with `Ny > 0` now runs a 3D model in `MTK_GeoParams`. Leave `Ny` at its default `0` for 2D models.
 - `Numeric_params` has a new field `deactivationDepth` (default `-15e3` m). In v0.7, `deactivate_La_at_depth=true` with `Numeric_params` failed because this field was missing.
