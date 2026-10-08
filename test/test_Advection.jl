@@ -7,6 +7,9 @@ using Test
 
 
 const CreatePlots = false      # easy way to deactivate plotting throughout
+if CreatePlots
+    using CairoMakie: Figure, Axis, DataAspect, contourf!, scatter!, axislegend, save
+end
 
 
 
@@ -93,13 +96,11 @@ function test_Interpolation(Dimension="2D", InterpolationMethod="Linear")
     Terror      =   Tanal - Data_fine2[2];
 
     if CreatePlots
-      p1          =   contourf(x, z,      Data_coarse1[1]',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Coarse ",  dpi=150, levels=10)
-      p2          =   contourf(x_f, z_f,  Data_fine2[2]',         aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Fine ",    dpi=150, levels=10)
-      p3          =   contourf(x_f, z_f,  Terror',                aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="error ",    dpi=150, levels=10)
-      
-      plot(p1,p2,p3);
-
-      png("Interpolation_2D_$InterpolationMethod")
+      fig = Figure(size=(1500,450))
+      contourf!(Axis(fig[1,1], title="Coarse ", aspect=DataAspect()), x,   z,   Data_coarse1[1], colormap=:inferno, levels=10)
+      contourf!(Axis(fig[1,2], title="Fine ",   aspect=DataAspect()), x_f, z_f, Data_fine2[2],   colormap=:inferno, levels=10)
+      contourf!(Axis(fig[1,3], title="error ",  aspect=DataAspect()), x_f, z_f, Terror,          colormap=:inferno, levels=10)
+      save("Interpolation_2D_$(InterpolationMethod).png", fig)
     end
   
   elseif Dimension=="3D"
@@ -107,12 +108,11 @@ function test_Interpolation(Dimension="2D", InterpolationMethod="Linear")
     Terror      =   Tanal - Data_fine2[2];
 
     if CreatePlots
-      p1          =   contourf(x, z,      Data_coarse1[1][:,10,:]', aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Coarse ",  dpi=150, levels=10)
-      p2          =   contourf(x_f, z_f,  Data_fine2[2][:,10,:]',   aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Fine ",    dpi=150, levels=10)
-      p3          =   contourf(x_f, z_f,  Terror[:,10,:]',          aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="error ",    dpi=150, levels=10)
-      
-      plot(p1,p2,p3);
-      png("Interpolation_3D_$InterpolationMethod")
+      fig = Figure(size=(1500,450))
+      contourf!(Axis(fig[1,1], title="Coarse ", aspect=DataAspect()), x,   z,   Data_coarse1[1][:,10,:], colormap=:inferno, levels=10)
+      contourf!(Axis(fig[1,2], title="Fine ",   aspect=DataAspect()), x_f, z_f, Data_fine2[2][:,10,:],   colormap=:inferno, levels=10)
+      contourf!(Axis(fig[1,3], title="error ",  aspect=DataAspect()), x_f, z_f, Terror[:,10,:],          colormap=:inferno, levels=10)
+      save("Interpolation_3D_$(InterpolationMethod).png", fig)
     end
 
   end
@@ -173,8 +173,7 @@ function test_SemiLagrangian2D(Method="ConstantZ",  InterpolationMethod="Linear"
   dt          =   TotalTime/nt;
 
   
-  #ENV["GKSwstype"]="nul"; if isdir("viz2D_out")==false mkdir("viz2D_out") end; loadpath = "./viz2D_out/"; anim = Animation(loadpath,String[])
-  #println("Animation directory: $(anim.dir)")
+  #mkpath("viz2D_out")                            # directory for animation frames
 
   time,time_kyrs          = 0.0, 0.0;
   err = 100;
@@ -190,10 +189,11 @@ function test_SemiLagrangian2D(Method="ConstantZ",  InterpolationMethod="Linear"
   
       if mod(it,1000)==0  # print progress      
           println(" Timestep $it = $((time)) ")
-          #p1          =   heatmap(x_km, z_km, T[:,Int(Ny/2),:]',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="Temperature, $(round(time_kyrs, digits=2)) kyrs",  dpi=150)
-          p1          =   contourf(x, z, T[:,:]',         aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Temperature, $(round(time, digits=2)) ",  dpi=150, levels=10)
-          
-          plot(p1); frame(anim)
+          if CreatePlots
+              fig = Figure()
+              contourf!(Axis(fig[1,1], title="Temperature, $(round(time, digits=2)) ", aspect=DataAspect()), x, z, T, colormap=:inferno, levels=10)
+              mkpath("viz2D_out"); save("viz2D_out/SemiLagrangian2D_$(it).png", fig)
+          end
       end
   
   end
@@ -217,12 +217,12 @@ function test_SemiLagrangian2D(Method="ConstantZ",  InterpolationMethod="Linear"
   Terror      =  T - Tanal;   # error
   
   if CreatePlots
-    # create plot 
-    p1          =   contourf(x, z, T',      aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Tnumeric, $(round(time, digits=2)) ",  dpi=300, levels=10)
-    p2          =   contourf(x, z, Tanal',  aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Tanal, $(round(time, digits=2)) ",     dpi=300, levels=10)
-    p3          =   contourf(x, z, Terror', aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Terror, $(round(time, digits=2)) ",    dpi=300, levels=10)
-    plot(p1,p2,p3);
-    png(fname)
+    # create plot
+    fig = Figure(size=(1500,450))
+    contourf!(Axis(fig[1,1], title="Tnumeric, $(round(time, digits=2)) ", aspect=DataAspect()), x, z, T,      colormap=:inferno, levels=10)
+    contourf!(Axis(fig[1,2], title="Tanal, $(round(time, digits=2)) ",    aspect=DataAspect()), x, z, Tanal,  colormap=:inferno, levels=10)
+    contourf!(Axis(fig[1,3], title="Terror, $(round(time, digits=2)) ",   aspect=DataAspect()), x, z, Terror, colormap=:inferno, levels=10)
+    save("$(fname).png", fig)
   end
 
   error = norm(Terror[:],2)/length(Terror[:]); 
@@ -305,8 +305,7 @@ function test_SemiLagrangian3D(Method="ConstantZ",  InterpolationMethod="Linear"
     dt          =   TotalTime/nt;
   
 
-    #ENV["GKSwstype"]="nul"; if isdir("viz2D_out")==false mkdir("viz2D_out") end; loadpath = "./viz2D_out/"; anim = Animation(loadpath,String[])
-    #println("Animation directory: $(anim.dir)")
+    #mkpath("viz2D_out")                            # directory for animation frames
 
     time          = 0.0;
     for it=1:nt
@@ -321,13 +320,13 @@ function test_SemiLagrangian3D(Method="ConstantZ",  InterpolationMethod="Linear"
     
         if mod(it,1000)==0  # print progress      
             println(" Timestep $it = $((time)) ")
-            #p1          =   heatmap(x_km, z_km, T[:,Int(Ny/2),:]',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="Temperature, $(round(time_kyrs, digits=2)) kyrs",  dpi=150)
-            #p1          =   heatmap(x, z, T[:,Int(Ny/2),:]',         aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Temperature, $time",  dpi=150)
-         #   p1          =   heatmap(x, y, T[:,:,Int(Nz/2)]',         aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Temperature, $time",  dpi=150)
+            #fig = Figure()
+            #heatmap!(Axis(fig[1,1], title="Temperature, $time", aspect=DataAspect()), x, z, T[:,Int(Ny/2),:], colormap=:inferno)
+         #   heatmap!(Axis(fig[1,1], title="Temperature, $time", aspect=DataAspect()), x, y, T[:,:,Int(Nz/2)], colormap=:inferno)
             
-           # p1          =   heatmap(x, z, T[Int(Nx/2),:,:]',         aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Temperature, $time",  dpi=150)
+           # heatmap!(Axis(fig[1,1], title="Temperature, $time", aspect=DataAspect()), y, z, T[Int(Nx/2),:,:], colormap=:inferno)
             
-          #  plot(p1); frame(anim)
+          #  save("viz2D_out/SemiLagrangian3D_$(it).png", fig)
         end
     
     end
@@ -364,17 +363,17 @@ function test_SemiLagrangian3D(Method="ConstantZ",  InterpolationMethod="Linear"
     
       
     if CreatePlots
-      # create plot 
-      p1          =   contourf(x, z, Tslice',      aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Tnumeric, $(round(time, digits=2)) ",  dpi=300, levels=10)
-      p2          =   contourf(x, z, Tanal1',  aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Tanal 3D, $(round(time, digits=2)) ",     dpi=300, levels=10)
-      p3          =   contourf(x, z, Terror1', aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Terror, $(round(time, digits=2)) ",    dpi=300, levels=10)
-      plot(p1,p2,p3);
-
+      # create plot
+      fig = Figure(size=(1500,450))
+      contourf!(Axis(fig[1,1], title="Tnumeric, $(round(time, digits=2)) ", aspect=DataAspect()), x, z, Tslice,  colormap=:inferno, levels=10)
+      contourf!(Axis(fig[1,2], title="Tanal 3D, $(round(time, digits=2)) ", aspect=DataAspect()), x, z, Tanal1,  colormap=:inferno, levels=10)
+      ax3 = Axis(fig[1,3], title="Terror, $(round(time, digits=2)) ", aspect=DataAspect())
+      contourf!(ax3, x, z, Terror1, colormap=:inferno, levels=10)
 
       # st=20;
-      # quiver!(X1[1:st:end], Z1[1:st:end], gradient=(Vx1[1:st:end]*0.1,Vz1[1:st:end]*0.1), arrow = :arrow, color = :white)
-        
-      png(fname)
+      # arrows!(ax3, X1[1:st:end], Z1[1:st:end], Vx1[1:st:end]*0.1, Vz1[1:st:end]*0.1, color = :white)
+
+      save("$(fname).png", fig)
     end
 
     error = norm(Terror[:],2)/length(Terror[:]); 
@@ -444,8 +443,7 @@ function test_AdvectTracers2D(Method="ConstantZ",  AdvectionMethod="RK2")
   Tracers0 = copy(Tracers);         # create a copy of the original tracers
     
 
-  #  ENV["GKSwstype"]="nul"; if isdir("viz2D_out")==false mkdir("viz2D_out") end; loadpath = "./viz2D_out/"; anim = Animation(loadpath,String[])
-  #  println("Animation directory: $(anim.dir)")
+  #  mkpath("viz2D_out")                            # directory for animation frames
 
   time,time_kyrs          = 0.0, 0.0;
   err = 100;
@@ -462,8 +460,11 @@ function test_AdvectTracers2D(Method="ConstantZ",  AdvectionMethod="RK2")
           println(" Timestep $it = $((time)) ")
 
           Tr_coord = Tracers.coord; Tr_coord = hcat(Tr_coord...)';       # extract array with coordinates of tracers
-          p1 = scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), markersize=1.0, xlims=(0,1), ylims=(0,1))
-          plot(p1); frame(anim)
+          if CreatePlots
+              fig = Figure()
+              scatter!(Axis(fig[1,1], limits=((0,1),(0,1)), aspect=DataAspect()), Tr_coord[:,1], Tr_coord[:,2], color=Tracers.T, colormap=:inferno, alpha=0.8, markersize=2, strokewidth=0.01, strokecolor=:black)
+              mkpath("viz2D_out"); save("viz2D_out/AdvectTracers2D_$(it).png", fig)
+          end
       end
   
   end
@@ -490,11 +491,13 @@ function test_AdvectTracers2D(Method="ConstantZ",  AdvectionMethod="RK2")
   Terror      =  Tr_coord - Tr_coord_anal;   # error
   
   if CreatePlots
-    # create plot   
-    p1 = plot(Tr_coord_anal[:,1], Tr_coord_anal[:,2], seriestype = :scatter, markersize=5.0, markershape=:circle, markerstrokecolor=:red, markercolor=:white, linewidth=0, label="analytics")
-        plot!(Tr_coord[:,1],      Tr_coord[:,2],      seriestype = :scatter, markersize=2.0, markershape=:circle, markerstrokecolor=:black, linewidth=0, label="numerics")
-    plot(p1);
-    png(fname)
+    # create plot
+    fig = Figure()
+    ax  = Axis(fig[1,1])
+    scatter!(ax, Tr_coord_anal[:,1], Tr_coord_anal[:,2], markersize=10, color=:white, strokecolor=:red,   strokewidth=1, label="analytics")
+    scatter!(ax, Tr_coord[:,1],      Tr_coord[:,2],      markersize=4,                strokecolor=:black, strokewidth=1, label="numerics")
+    axislegend(ax)
+    save("$(fname).png", fig)
   end
 
   error = norm(Terror[:],2)/length(Terror[:]); 
@@ -594,8 +597,11 @@ function test_AdvectTracers3D(Method="ConstantZ",  AdvectionMethod="RK2")
           println(" Timestep $it = $((time)) ")
 
           Tr_coord = Tracers.coord; Tr_coord = hcat(Tr_coord...)';       # extract array with coordinates of tracers
-          p1 = scatter(Tr_coord[:,1], Tr_coord[:,3], zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), markersize=1.0, xlims=(0,1), ylims=(0,1))
-          plot(p1); 
+          if CreatePlots
+              fig = Figure()
+              scatter!(Axis(fig[1,1], limits=((0,1),(0,1)), aspect=DataAspect()), Tr_coord[:,1], Tr_coord[:,3], color=Tracers.T, colormap=:inferno, alpha=0.8, markersize=2, strokewidth=0.01, strokecolor=:black)
+              mkpath("viz2D_out"); save("viz2D_out/AdvectTracers3D_$(it).png", fig)
+          end
       end
   
   end
@@ -623,11 +629,13 @@ function test_AdvectTracers3D(Method="ConstantZ",  AdvectionMethod="RK2")
   Terror      =  Tr_coord - Tr_coord_anal;   # error
   
   if CreatePlots
-    # create plot   
-    p1 = plot(Tr_coord_anal[:,1], Tr_coord_anal[:,3], seriestype = :scatter, markersize=5.0, markershape=:circle, markerstrokecolor=:red, markercolor=:white, linewidth=0, label="analytics")
-        plot!(Tr_coord[:,1],      Tr_coord[:,3],      seriestype = :scatter, markersize=2.0, markershape=:circle, markerstrokecolor=:black, linewidth=0, label="numerics")
-    plot(p1);
-    png(fname)
+    # create plot
+    fig = Figure()
+    ax  = Axis(fig[1,1])
+    scatter!(ax, Tr_coord_anal[:,1], Tr_coord_anal[:,3], markersize=10, color=:white, strokecolor=:red,   strokewidth=1, label="analytics")
+    scatter!(ax, Tr_coord[:,1],      Tr_coord[:,3],      markersize=4,                strokecolor=:black, strokewidth=1, label="numerics")
+    axislegend(ax)
+    save("$(fname).png", fig)
   end
 
   error = norm(Terror[:],2)/length(Terror[:]); 

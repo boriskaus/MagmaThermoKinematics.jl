@@ -8,7 +8,7 @@
 Parameters that control the nonlinear diffusion solver.
 """
 @with_kw struct Numeric_params
-    ω::Float64                  =   0.8;            # relaxation parameter for nonlinear iterations
+    ω::Float64                  =   0.5;            # relaxation parameter for nonlinear iterations
     max_iter::Int64             =   1500;           # max. number of nonlinear iterations
     verbose::Bool               =   false;          # print info?
     convergence::Float64        =   1e-4;           # nonlinear convergence criteria
@@ -125,11 +125,10 @@ end
 """
     _squared_l2_distance(A, B)
 
-`Σ (A[i] - B[i])²`, without materializing the difference. On GPU arrays the
-reduction over the lazy broadcast is a single fused kernel.
+`Σ (A[i] - B[i])²`, without materializing the difference: one fused kernel on
+GPU arrays, a linear-index loop on CPU (`vec` avoids the slow Cartesian iteration).
 """
-_squared_l2_distance(A::Array, B::Array) = sum(i -> abs2(A[i] - B[i]), eachindex(A, B))
-_squared_l2_distance(A, B) = mapreduce(abs2, +, Base.Broadcast.broadcasted(-, A, B))
+_squared_l2_distance(A, B) = sum(abs2, Broadcast.instantiate(Broadcast.broadcasted(-, vec(A), vec(B))))
 
 """
     compute_phase_param!(A, fn, MatParam::Tuple, Phases, args)
@@ -137,8 +136,10 @@ _squared_l2_distance(A, B) = mapreduce(abs2, +, Base.Broadcast.broadcasted(-, A,
 Set every cell of `A` to `fn` (a GeoParams `compute_…` function, e.g.
 `compute_density`) evaluated with the material of that cell's phase. `args` is a
 NamedTuple of arrays shaped like `A` (e.g. `(; T, P)`), read at each cell.
+`Phases` may hold any integer type (e.g. `Int32` on GPUs).
 """
 function compute_phase_param!(A, fn::F, MatParam::Tuple, Phases, args::NamedTuple) where {F}
+    eltype(Phases) <: Integer || throw(ArgumentError("Phases must hold integer phase numbers, got $(eltype(Phases))"))
     _launch!(_compute_phase_param!, A, size(A), A, fn, MatParam, Phases, args)
     return nothing
 end
@@ -146,7 +147,7 @@ end
 @kernel function _compute_phase_param!(A, fn::F, MatParam, Phases, args) where {F}
     I = @index(Global, Cartesian)
     argsI = NamedTuple{keys(args)}(map(a -> a[I], values(args)))
-    A[I] = compute_param(fn, MatParam, Phases[I], argsI)
+    A[I] = fn(MatParam, Int64(Phases[I]), argsI)   # GeoParams' phase lookup takes an Int64
 end
 
 """
@@ -171,7 +172,7 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
     @. Arrays.T_K = Arrays.T + T₀
     Arrays.T_it_old .= Arrays.T
     args1 = haskey(Arrays, :index) ? (; T=Arrays.T_K, P=Arrays.P, index=Arrays.index) : (; T=Arrays.T_K, P=Arrays.P)
-    args2 = (; z=-Arrays.Z)
+    compute_phase_param!(Arrays.Hr, compute_radioactive_heat, Mat_tup, Phases, (; z=-Arrays.Z))   # independent of T
     err, iter = 1.0, 1
     while err > Num.convergence && iter < Num.max_iter
         compute_phase_param!(Arrays.ϕ,    compute_meltfraction,     Mat_tup, Phases, args1)
@@ -179,7 +180,6 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
         compute_phase_param!(Arrays.Rho,  compute_density,          Mat_tup, Phases, args1)
         compute_phase_param!(Arrays.Cp,   compute_heatcapacity,     Mat_tup, Phases, args1)
         compute_phase_param!(Arrays.Kc,   compute_conductivity,     Mat_tup, Phases, args1)
-        compute_phase_param!(Arrays.Hr,   compute_radioactive_heat, Mat_tup, Phases, args2)
         compute_phase_param!(Arrays.Hl,   compute_latent_heat,      Mat_tup, Phases, args1)
 
         if Num.deactivate_La_at_depth       # no latent heat and melt below `deactivationDepth`

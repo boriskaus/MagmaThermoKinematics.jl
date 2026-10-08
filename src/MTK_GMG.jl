@@ -18,9 +18,9 @@ import MagmaThermoKinematics: PhasesFromTracers!, CreateArrays, copy_to_device!
 SecYear = 3600*24*365.25;
 
 @inline _active_sill(Dikes) = isnothing(Dikes.sill) ? error("SillParameters requires a valid `sill` object") : Dikes.sill
-# Horizontal radius of the sill [m]: `PennyShapedSill` stores the radius in `R`,
-# the other sill types store the full width.
-@inline _sill_radius_m(sill::InjectSills.PennyShapedSill) = sill.R.val
+# Horizontal radius of the sill [m]: `PennyShapedSill` and `PlaneStrainSill` store
+# the radius in `R`, the other sill types store the full width in `W`.
+@inline _sill_radius_m(sill::Union{InjectSills.PennyShapedSill, InjectSills.PlaneStrainSill}) = sill.R.val
 @inline _sill_radius_m(sill::InjectSills.AbstractSill) = sill.W.val/2
 
 """
@@ -34,35 +34,25 @@ function AnalyticalGeotherm!(T, Z, Tsurf, qm, qs, k, hr)
 end
 
 """
-    Tracers = MTK_inject_dikes(Grid, Num, Arrays, Mat_tup, Dikes, Tracers, Tnew_cpu)
+    Tracers = MTK_inject_dikes(Grid, Num, Arrays, Mat_tup, Dikes, Tracers)
 
 Function that injects dikes once in a while
 """
-function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters, Tracers::StructVector, Tnew_cpu)
+function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters, Tracers::StructVector)
 
     if floor(Num.time/Dikes.InjectionInterval)> Dikes.sill_inj
         Dikes.sill_inj = floor(Num.time/Dikes.InjectionInterval)                 # Keeps track on what was injected already
-        if Num.dim==2
-            T_bottom  =   Array(@view Arrays.T[:,1])
-        else
-            T_bottom  =   Array(@view Arrays.T[:,:,1])
-        end
+        T_bottom  =   copy(selectdim(Arrays.T, Num.dim, 1))
         sill = _active_sill(Dikes)
-        copyto!(Tnew_cpu, Arrays.T)
 
-        Tracers, Tnew_cpu, Vol, poly_out, _ = inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, Float64(Dikes.T_in_Celsius), Dikes.SillPhase, Dikes.nTr_dike, dike_poly=Dikes.sill_poly);     # Add dike, move hostrocks
+        Tracers, _, Vol, poly_out, _ = inject_sills(Tracers, Arrays.T, Grid.coord1D, sill, Float64(Dikes.T_in_Celsius), Dikes.SillPhase, Dikes.nTr_dike, dike_poly=Dikes.sill_poly);     # Add dike, move hostrocks
         Dikes.sill_poly = poly_out
 
         if Num.flux_bottom_BC==false
             # Keep bottom T constant (advection modifies this)
-            if Num.dim==2
-                Tnew_cpu[:,1]     .=  T_bottom
-            else
-                Tnew_cpu[:,:,1]   .=  T_bottom
-            end
+            selectdim(Arrays.T, Num.dim, 1) .= T_bottom
         end
 
-        copyto!(Arrays.T, Tnew_cpu)
         Dikes.InjectVol    +=   Vol                                                     # Keep track of injected volume
         Qrate               =   Dikes.InjectVol/Num.time
         Dikes.Qrate_km3_yr  =   Qrate*SecYear/km³
@@ -124,7 +114,7 @@ function MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::Gri
     push!(time_props.Time_vec,      Num.time);   # time
     push!(time_props.MeltFraction,  sum(Arrays.ϕ)/length(Arrays.ϕ));    # mean melt fraction
 
-    n_hot = sum(Arrays.T .> 700)
+    n_hot = count(>(700), Arrays.T)
     if n_hot > 0
         Tav_magma_Time = mapreduce(t -> t > 700 ? t : zero(t), +, Arrays.T) / n_hot     # average T of part with magma
     else

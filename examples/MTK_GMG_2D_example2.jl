@@ -5,7 +5,7 @@ using MagmaThermoKinematics
 backend = CPU()
 using GeophysicalModelGenerator
 using GeoParams, Random
-using Plots                             # plots
+using CairoMakie                        # plots
 using MagmaThermoKinematics.MTK_GMG     # Allow overwriting user routines
 
 
@@ -68,9 +68,9 @@ else
         if mod(Num.it,Num.CreateFig_steps)==0
             x_1d        =   Grid.coord1D[1]/1e3;
             z_1d        =   Grid.coord1D[2]/1e3;
-            temp_data   =   Array(Arrays.Tnew)'
-            ϕ_data      =   Array(Arrays.ϕ)'
-            phase_data  =   Float64.(Array(Arrays.Phases))'
+            temp_data   =   Array(Arrays.Tnew)
+            ϕ_data      =   Array(Arrays.ϕ)
+            phase_data  =   Float64.(Array(Arrays.Phases))
 
             # remove topo on plots
             ind             = findall(phase_data .== 0)
@@ -79,13 +79,15 @@ else
 
             t = Num.time/SecYear/1e3;
 
-            p=plot(layout=grid(1,2) )
+            fig =   Figure(size=(1000,450))
 
-            Plots.heatmap!(p[1],x_1d, z_1d, temp_data, c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Temperature, t=$(round(t)) kyrs", aspect_ratio=:equal,  ylimits=(minimum(z_1d),2))
-            Plots.heatmap!(p[2],x_1d, z_1d, ϕ_data,    c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Melt fraction", clims=(0,1), aspect_ratio=:equal, ylimits=(minimum(z_1d),2))
-            #Plots.heatmap!(p[2],x_1d, z_1d, phase_data,    c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Melt fraction", aspect_ratio=:equal, ylimits=(minimum(z_1d),2))
+            ax1 =   Axis(fig[1,1], xlabel="x [km]", ylabel="z [km]", title="Temperature, t=$(round(t)) kyrs", aspect=DataAspect(), limits=(nothing, (minimum(z_1d),2)))
+            Colorbar(fig[1,2], heatmap!(ax1, x_1d, z_1d, temp_data, colormap=:viridis))
+            ax2 =   Axis(fig[1,3], xlabel="x [km]", ylabel="z [km]", title="Melt fraction", aspect=DataAspect(), limits=(nothing, (minimum(z_1d),2)))
+            Colorbar(fig[1,4], heatmap!(ax2, x_1d, z_1d, ϕ_data, colormap=:viridis, colorrange=(0,1)))
+            #Colorbar(fig[1,4], heatmap!(ax2, x_1d, z_1d, phase_data, colormap=:viridis))
 
-            display(p)
+            save("MTK_GMG_2D_example2_$(Num.it).png", fig)
         end
         return nothing
     end

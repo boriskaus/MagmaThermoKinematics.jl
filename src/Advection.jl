@@ -218,47 +218,24 @@ per direction, in meters, defined on the grid nodes) over pseudo-time `dt`, into
 `Tnew`. `Grid` is the tuple of 1D coordinate ranges. The spacing is constant, so
 every departure point is index arithmetic; the RK2 velocity sample and the
 temperature read are multilinear. This is the RK2/linear scheme of
-[`AdvectTemperature`](@ref), threaded and without allocations.
+[`AdvectTemperature`](@ref), as a kernel on the backend of `T`.
 
 `Tnew` must not alias `T`: the departure point of one node generally reads
 values other nodes still need.
 """
-function AdvectTemperature!(Tnew::AbstractArray{<:Any,2}, T, Grid, Velocity, dt)
+function AdvectTemperature!(Tnew, T, Grid, Velocity, dt)
     Tnew === T && error("AdvectTemperature!: Tnew must be a separate array from T")
-    Nx, Nz = size(T)
-    dx, dz = step(Grid[1]), step(Grid[2])
-    u,  w  = Velocity
-    Threads.@threads for j in 1:Nz
-        for i in 1:Nx
-            # RK2, backward in pseudo-time: half a step on the node velocity,
-            # then a full step on the velocity sampled where that landed.
-            p = (clamp(i - 0.5*dt*u[i,j]/dx, 1.0, Nx),
-                 clamp(j - 0.5*dt*w[i,j]/dz, 1.0, Nz))
-            q = (clamp(i - dt*_lerp(u, p)/dx, 1.0, Nx),
-                 clamp(j - dt*_lerp(w, p)/dz, 1.0, Nz))
-            Tnew[i,j] = _lerp(T, q)
-        end
-    end
+    _launch!(_advect_temperature!, T, size(T), Tnew, T, map(step, Tuple(Grid)), Tuple(Velocity), dt)
     return Tnew
 end
 
-function AdvectTemperature!(Tnew::AbstractArray{<:Any,3}, T, Grid, Velocity, dt)
-    Tnew === T && error("AdvectTemperature!: Tnew must be a separate array from T")
-    Nx, Ny, Nz = size(T)
-    dx, dy, dz = step(Grid[1]), step(Grid[2]), step(Grid[3])
-    u,  v,  w  = Velocity
-    Threads.@threads for k in 1:Nz
-        for j in 1:Ny, i in 1:Nx
-            p = (clamp(i - 0.5*dt*u[i,j,k]/dx, 1.0, Nx),
-                 clamp(j - 0.5*dt*v[i,j,k]/dy, 1.0, Ny),
-                 clamp(k - 0.5*dt*w[i,j,k]/dz, 1.0, Nz))
-            q = (clamp(i - dt*_lerp(u, p)/dx, 1.0, Nx),
-                 clamp(j - dt*_lerp(v, p)/dy, 1.0, Ny),
-                 clamp(k - dt*_lerp(w, p)/dz, 1.0, Nz))
-            Tnew[i,j,k] = _lerp(T, q)
-        end
-    end
-    return Tnew
+@kernel function _advect_temperature!(Tnew, T, Δ, Velocity, dt)
+    I = @index(Global, Cartesian)
+    # RK2, backward in pseudo-time: half a step on the node velocity,
+    # then a full step on the velocity sampled where that landed.
+    p = map((i, v, h, n) -> clamp(i - 0.5*dt*v[I]/h, 1.0, n), Tuple(I), Velocity, Δ, size(T))
+    q = map((i, v, h, n) -> clamp(i - dt*_lerp(v, p)/h, 1.0, n), Tuple(I), Velocity, Δ, size(T))
+    Tnew[I] = _lerp(T, q)
 end
 
 "Multilinear read of `A` at the fractional *index* position `p`, which must lie within `[1, size(A,d)]` in every direction."

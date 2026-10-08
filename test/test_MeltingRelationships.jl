@@ -6,6 +6,9 @@ using Test
 
 
 const CreatePlots = false      # easy way to deactivate plotting throughout
+if CreatePlots
+    using CairoMakie: Figure, Axis, lines!, save
+end
 
 
 function test_SolidFraction()
@@ -38,10 +41,10 @@ function test_SolidFraction()
 
   
   if CreatePlots
-      p1          =   plot(T[:,1], Phi[:,1],  ylabel="Solid fraction ", xlabel="Temperature [C]",  dpi=150)
-      
-      plot(p1);
-      png("MeltingRelationship")
+      fig         =   Figure()
+      lines!(Axis(fig[1,1], ylabel="Solid fraction ", xlabel="Temperature [C]"), T[:,1], Phi[:,1])
+
+      save("MeltingRelationship.png", fig)
   end
 
   out = norm(Phi[:],2)

@@ -32,13 +32,13 @@ This mutable structure represents numerical parameters in the program. It is use
 - `time::Float64`: Current time.
 - `nt::Int64`: Total number of time steps.
 - `it::Int64`: Current iteration.
-- `ω::Float64`: Relaxation parameter for nonlinear iterations.
+- `ω::Float64`: Relaxation parameter for nonlinear iterations (default 0.5; values ≥ 0.7 may not converge at high resolution).
 - `max_iter::Int64`: Maximum number of nonlinear iterations.
 - `verbose::Bool`: Whether to print verbose output.
 - `convergence::Float64`: Convergence criterion for nonlinear iterations.
 - `deactivate_La_at_depth::Bool`: Whether to deactivate latent heating at the bottom of the model box.
 - `deactivationDepth::Float64`: Depth at which to deactivate latent heating.
-- `backend`: KernelAbstractions backend on which the model arrays live: `CPU()` (default), or e.g. `CUDABackend()` or `MetalBackend()` once CUDA.jl or Metal.jl is loaded.
+- `backend`: KernelAbstractions backend on which the model arrays live: `CPU()` (default), or e.g. `CUDABackend()` once CUDA.jl is loaded.
 - `FloatType`: Element type of the model arrays (default `Float64`).
 - `AnalyticalInitialGeo::Bool`: Whether to use an analytical initial geotherm.
 - `qs_anal::Float64`: Analytical surface heat flux.
@@ -88,7 +88,7 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     time::Float64             =   0.0;            # current time
     nt::Int64                       =   floor(maxTime/dt);
     it::Int64                       =   0;              # current iteration
-    ω::Float64                =   0.8;            # relaxation parameter for nonlinear iterations
+    ω::Float64                =   0.5;            # relaxation parameter for nonlinear iterations
     max_iter::Int64                 =   5000;           # max. number of nonlinear iterations
     verbose::Bool                   =   false;
     convergence::Float64      =   1e-5;           # nonlinear convergence criteria

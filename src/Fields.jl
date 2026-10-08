@@ -11,7 +11,7 @@ end
     Arrays = CreateArrays(SizeNames::AbstractDict; backend=CPU(), FloatType=Float64)
 
 Allocate the requested arrays on the KernelAbstractions `backend` (`CPU()`, or
-e.g. `CUDABackend()` or `MetalBackend()` once CUDA.jl or Metal.jl is loaded),
+e.g. `CUDABackend()` once CUDA.jl is loaded),
 with element type `FloatType`, and initialize them with the requested values.
 Returns a NamedTuple that contains all created arrays.
 """

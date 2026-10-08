@@ -75,7 +75,7 @@ function UpdateTracers(Tracers, Grid, T, Phi, InterpolationMethod="Quadratic")
     if isassigned(Tracers,1)        # only if the Tracers StructArray is non-empty
 
         # extract coordinates
-        coord = Tracers.coord; coord = hcat(coord...)';       # extract array with coordinates of tracers
+        coord = Tracers.coord; coord = reduce(hcat, coord)';       # extract array with coordinates of tracers
 
         x   = coord[:,1];
         z   = coord[:,end];
@@ -482,7 +482,7 @@ function PhaseRatioFromTracers(FullGrid, Grid, Tracers; InterpolationMethod="Con
     for idim=1:dim
         d[idim]     =   (FullGrid[idim][Ifirst+I1] -   FullGrid[idim][Ifirst]);         # spacing of grid cells
     end
-    coord           =   Tracers.coord; coord = hcat(coord...)';                         # extract array with coordinates of all tracers
+    coord           =   Tracers.coord; coord = reduce(hcat, coord)';                         # extract array with coordinates of all tracers
 
     # Correct coordinates of tracers (to stay within bounds of grid), to not mess up the interpolation below
     CorrectBounds_Array!(coord, Grid);
@@ -761,7 +761,7 @@ function PhasesFromTracers!(Phases::AbstractArray, Grid::GridData{_T,dim}, Trace
 
     for I in CartesianIndices(Phases)
         id       = Tuple(I)
-        maxPhase = argmax(PhaseRatio[id...,:])
+        maxPhase = argmax(@view PhaseRatio[id...,:])
         Phases[I] = maxPhase;
     end
 
@@ -829,7 +829,7 @@ function TracersToGrid!(Data, FullGrid, Grid, Tracers, Property="T", Interpolati
     for idim=1:dim
         d[idim]     =   (FullGrid[idim][Ifirst+I1] -   FullGrid[idim][Ifirst]);         # spacing of grid cells
     end
-    coord           =   Tracers.coord; coord = hcat(coord...)';                         # extract array with coordinates of all tracers
+    coord           =   Tracers.coord; coord = reduce(hcat, coord)';                         # extract array with coordinates of all tracers
 
     # Correct coordinates of tracers (to stay within bounds of grid), to not mess up the interpolation below
     CorrectBounds_Array!(coord, Grid);
@@ -1067,7 +1067,7 @@ function AdvectTracers!(Tracers, Grid, Velocity, dt, Method="RK2")
     # Advect tracers forward in time & interpolate T on them
 
     dim             =   length(Grid);
-    coord     =   hcat(Tracers.coord...)';    # extract array with coordinates of tracers
+    coord     =   reduce(hcat, Tracers.coord)';    # extract array with coordinates of tracers
 
     x   = coord[:,1];
     z   = coord[:,end];

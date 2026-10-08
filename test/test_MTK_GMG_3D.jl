@@ -11,33 +11,23 @@ using Random, GeoParams, GeophysicalModelGenerator
 const rng = Random.seed!(1234);     # same seed such that we can reproduce results
 
 @eval MTK_GMG begin
-function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters, Tracers::StructVector, Tnew_cpu)
+function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters, Tracers::StructVector)
     if floor(Num.time / Dikes.InjectionInterval) > Dikes.sill_inj
         Dikes.sill_inj = floor(Num.time / Dikes.InjectionInterval)
 
-        if Num.dim == 2
-            T_bottom = Array(@view Arrays.T[:, 1])
-        else
-            T_bottom = Array(@view Arrays.T[:, :, 1])
-        end
+        T_bottom = copy(selectdim(Arrays.T, Num.dim, 1))
 
         sill = _active_sill(Dikes)
         if Num.advect_polygon == true && isempty(Dikes.sill_poly)
             Dikes.sill_poly = InjectSills.dike_polygon(sill)
         end
 
-        copyto!(Tnew_cpu, Arrays.T)
-        Tracers, Tnew_cpu, Vol, _, _ = inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, Dikes.T_in_Celsius, Dikes.SillPhase, Dikes.nTr_dike)
+        Tracers, _, Vol, _, _ = inject_sills(Tracers, Arrays.T, Grid.coord1D, sill, Dikes.T_in_Celsius, Dikes.SillPhase, Dikes.nTr_dike)
 
         if Num.flux_bottom_BC == false
-            if Num.dim == 2
-                Tnew_cpu[:, 1] .= T_bottom
-            else
-                Tnew_cpu[:, :, 1] .= T_bottom
-            end
+            selectdim(Arrays.T, Num.dim, 1) .= T_bottom
         end
 
-        copyto!(Arrays.T, Tnew_cpu)
         Dikes.InjectVol += Vol
         Qrate = Dikes.InjectVol / Num.time
         Dikes.Qrate_km3_yr = Qrate * SecYear / km³

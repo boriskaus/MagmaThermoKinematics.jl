@@ -6,7 +6,7 @@ using MagmaThermoKinematics
 backend = CPU()
 using GeophysicalModelGenerator
 using GeoParams, Random
-using Plots                             # plots
+using CairoMakie                        # plots
 using MagmaThermoKinematics.MTK_GMG     # Allow overwriting user routines
 
 
@@ -33,19 +33,21 @@ else
         if mod(Num.it,Num.CreateFig_steps)==0
             x_1d        =   Grid.coord1D[1]/1e3;
             z_1d        =   Grid.coord1D[2]/1e3;
-            temp_data   =   Array(Arrays.Tnew)'
-            ϕ_data      =   Array(Arrays.ϕ)'
-            phase_data  =   Array(Arrays.Phases)'
+            temp_data   =   Array(Arrays.Tnew)
+            ϕ_data      =   Array(Arrays.ϕ)
+            phase_data  =   Array(Arrays.Phases)
 
             t   =   Num.time/SecYear;
-            p   =   plot(layout=grid(1,2) )
+            fig =   Figure(size=(1000,450))
 
-            Plots.heatmap!(p[1],x_1d, z_1d, temp_data, c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Temperature, t=$(round(t)) yrs", aspect_ratio=:equal, ylimits=(-20,0))
-    #        Plots.heatmap!(p[2],x_1d, z_1d, ϕ_data,    c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Melt fraction", clims=(0,1), aspect_ratio=:equal, ylimits=(-20,0))
-            Plots.heatmap!(p[2],x_1d, z_1d, phase_data,    c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Phases", aspect_ratio=:equal, ylimits=(-20,0))
+            ax1 =   Axis(fig[1,1], xlabel="x [km]", ylabel="z [km]", title="Temperature, t=$(round(t)) yrs", aspect=DataAspect(), limits=(nothing, (-20,0)))
+            Colorbar(fig[1,2], heatmap!(ax1, x_1d, z_1d, temp_data, colormap=:viridis))
+    #        ax2 =   Axis(fig[1,3], xlabel="x [km]", ylabel="z [km]", title="Melt fraction", aspect=DataAspect(), limits=(nothing, (-20,0)))
+    #        Colorbar(fig[1,4], heatmap!(ax2, x_1d, z_1d, ϕ_data, colormap=:viridis, colorrange=(0,1)))
+            ax2 =   Axis(fig[1,3], xlabel="x [km]", ylabel="z [km]", title="Phases", aspect=DataAspect(), limits=(nothing, (-20,0)))
+            Colorbar(fig[1,4], heatmap!(ax2, x_1d, z_1d, phase_data, colormap=:viridis))
 
-           # p = plot(ps, layout=(1,2))
-            display(p)
+            save("MTK_GMG_2D_example1_$(Num.it).png", fig)
         end
         return nothing
     end

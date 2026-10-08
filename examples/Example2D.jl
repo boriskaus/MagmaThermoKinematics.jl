@@ -3,7 +3,7 @@ using MagmaThermoKinematics
 backend = CPU()
 using InjectSills
 
-using Plots
+using CairoMakie
 
 #------------------------------------------------------------------------------------------
 @views function MainCode_2D();
@@ -34,7 +34,7 @@ using Plots
     nTr_dike                =   300;                        # number of tracers inserted per dike
 
     # Array initializations
-    Arrays = CreateArrays(Dict( (Nx,  Nz)=>(T=0,T_K=0, T_it_old=0, Tupdate=0, Tbuffer=0, K=1.5, Rho=2800, Cp=1050, Tnew=0,  Hr=0, Hl=0, Kc=1, P=0, X=0, Z=0, ϕₒ=0, ϕ=0, dϕdT=0)); backend)
+    Arrays = CreateArrays(Dict( (Nx,  Nz)=>(T=0,T_K=0, T_it_old=0, Tupdate=0, Rho=2800, Cp=1050, Tnew=0,  Hr=0, Hl=0, Kc=1, P=0, X=0, Z=0, ϕₒ=0, ϕ=0, dϕdT=0)); backend)
     # CPU buffers
     Tnew_cpu                =   Matrix{Float64}(undef, Grid.N...)
     Phi_melt_cpu            =   similar(Tnew_cpu)
@@ -45,7 +45,14 @@ using Plots
     Arrays.T               .=   -Arrays.Z.*GeoT;                                        # Initial (linear) temperature profile
 
     # Preparation of visualization
-    ENV["GKSwstype"]="nul"; if isdir("viz2D_out")==false mkdir("viz2D_out") end; loadpath = "./viz2D_out/"; anim = Animation(loadpath,String[])
+    x, z        =   Grid.coord1D[1]/1e3, Grid.coord1D[2]/1e3
+    T_plot, ϕ_plot, title = Observable(Array(Arrays.T)), Observable(Array(Arrays.ϕ)), Observable("0.0 kyrs")
+    fig         =   Figure(size=(1000,450))
+    ax1         =   Axis(fig[1,1], aspect=DataAspect(), xlabel="Width [km]", ylabel="Depth [km]", title=title)
+    Colorbar(fig[1,2], heatmap!(ax1, x, z, T_plot, colormap=:lajolla, colorrange=(0.,900.)), label="Temperature")
+    ax2         =   Axis(fig[1,3], aspect=DataAspect(), xlabel="Width [km]")
+    Colorbar(fig[1,4], heatmap!(ax2, x, z, ϕ_plot, colormap=:nuuk, colorrange=(0.,1.)), label="Melt Fraction")
+    anim        =   VideoStream(fig, framerate=15)
 
     time, dike_inj, InjectVol, Time_vec,Melt_Time = 0.0, 0.0, 0.0,zeros(nt,1),zeros(nt,1);
     for it = 1:nt   # Time loop
@@ -83,23 +90,22 @@ using Plots
         copy_arrays_GPU2CPU!(Tnew_cpu, Phi_melt_cpu, Arrays.Tnew, Arrays.ϕ)     # Copy arrays to CPU to update properties
         UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);      # Update info on tracers
 
-        Arrays.T .= Arrays.Tnew
-        Arrays.Tnew .= Arrays.T                                # Update temperature
+        Arrays.T .= Arrays.Tnew                                # Update temperature
         time                =   time + dt;                                      # Keep track of evolved time
         Melt_Time[it]       =   sum(Arrays.ϕ)/prod(Grid.N)                      # Melt fraction in crust
         Time_vec[it]        =   time;                                           # Vector with time
         println(" Timestep $it = $(round(time/kyr*100)/100) kyrs")
 
         if mod(it,20)==0  # Visualization
-            x,z         =   Grid.coord1D[1], Grid.coord1D[2]
-            p1          =   heatmap(x/1e3, z/1e3, Array(Arrays.T)',  aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:lajolla, clims=(0.,900.), xlabel="Width [km]",ylabel="Depth [km]", title="$(round(time/kyr, digits=2)) kyrs", dpi=200, fontsize=6, colorbar_title="Temperature")
-            p2          =   heatmap(x/1e3,z/1e3, Array(Arrays.ϕ)',  aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:nuuk,    clims=(0., 1. ), xlabel="Width [km]",             dpi=200, fontsize=6, colorbar_title="Melt Fraction")
-            plot(p1, p2, layout=(1,2)); frame(anim)
+            T_plot[]    =   Array(Arrays.T)
+            ϕ_plot[]    =   Array(Arrays.ϕ)
+            title[]     =   "$(round(time/kyr, digits=2)) kyrs"
+            recordframe!(anim)
         end
     end
-    gif(anim, "Example2D.gif", fps = 15)   # create gif animation
+    save("Example2D.gif", anim)   # create gif animation
     return Time_vec, Melt_Time, Tracers, Grid, Arrays;
 end # end of main function
 
 Time_vec, Melt_Time, Tracers, Grid, Arrays = MainCode_2D(); # start the main code
-plot(Time_vec/kyr, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example2D") # Create plot
+save("Time_vs_Melt_Example2D.png", lines(vec(Time_vec/kyr), vec(Melt_Time), axis=(xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten"))) # Create plot

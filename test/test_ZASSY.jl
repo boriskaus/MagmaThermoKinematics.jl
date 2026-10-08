@@ -40,7 +40,7 @@ using Printf        # pretty print
     fac_dt::Float64             =   0.4;            # prefactor with which dt is multiplied
     dt::Float64                 =   fac_dt*min(dx^2, dz^2)./κ_time/4;   # timestep
     nt::Int64                   =   floor(maxTime/dt);
-    ω::Float64                  =   0.8;            # relaxation parameter for nonlinear iterations
+    ω::Float64                  =   0.5;            # relaxation parameter for nonlinear iterations
     max_iter::Int64             =   5000;           # max. number of nonlinear iterations
     verbose::Bool               =   false;
     convergence::Float64        =   1e-5;           # nonlinear convergence criteria
@@ -83,7 +83,7 @@ end
 @views function MainCode_2D(Mat_tup, Num, Dikes);
 
     # Array & grid initializations ---------------
-    Arrays = CreateArrays(Dict( (Num.Nx,  Num.Nz  )=>(T=0,T_K=0,  Tupdate=0, Tbuffer=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0)))
+    Arrays = CreateArrays(Dict( (Num.Nx,  Num.Nz  )=>(T=0,T_K=0,  Tupdate=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0)))
 
     # Set up model geometry & initial T structure
     Grid    = CreateGrid(size=(Num.Nx,Num.Nz), extent=(Num.W, Num.H))
@@ -438,8 +438,8 @@ if 1==1
     # Call the main code with the specified material parameters
     x,z,T, Time_vec,Melt_Time, Tracers, dike_poly, Grid, Phases = MainCode_2D(MatParam, Num, Sill_params); # start the main code
 
-    @test sum(T)/prod(size(T)) ≈ 351.8179508143186 rtol= 1e-4
-    @test sum(Melt_Time)  ≈ 10.397557847237765 rtol= 1e-4
+    @test sum(T)/prod(size(T)) ≈ 351.82736709405805 rtol= 1e-4
+    @test sum(Melt_Time)  ≈ 10.401072714369263 rtol= 1e-4
 
 
  end
@@ -451,4 +451,4 @@ end
 
 
 
-#plot(Time_vec/kyr, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example2D") #Create plot
+#save("Time_vs_Melt_Example2D.png", lines(vec(Time_vec/kyr), vec(Melt_Time), axis=(xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten"))) #Create plot

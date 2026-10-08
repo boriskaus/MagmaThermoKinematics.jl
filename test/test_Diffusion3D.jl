@@ -2,6 +2,9 @@ using Test, LinearAlgebra, SpecialFunctions, Random
 using MagmaThermoKinematics
 
 const CreatePlots = false      # easy way to deactivate plotting throughout
+if CreatePlots
+    using CairoMakie: Figure, Axis, DataAspect, heatmap!, save
+end
 
 
 function Diffusion_Gaussian3D(Setup="3D")
@@ -51,8 +54,7 @@ function Diffusion_Gaussian3D(Setup="3D")
 
 
 
-    #ENV["GKSwstype"]="nul"; if isdir("viz2D_out")==false mkdir("viz2D_out") end; loadpath = "./viz2D_out/"; anim = Animation(loadpath,String[])
-    #println("Animation directory: $(anim.dir)")
+    #mkpath("viz2D_out")                            # directory for animation frames
 
     time,time_kyrs          = 0.0, 0.0;
     err = 100;
@@ -78,10 +80,11 @@ function Diffusion_Gaussian3D(Setup="3D")
         if mod(it,100)==0  # print progress
            # println(" Timestep $it = $(round(time/SecYear)/1e3) kyrs")
         #    x_km, z_km  =   x./1e3, z./1e3;
-        #    #p1          =   heatmap(x_km, z_km, T[:,Int(Ny/2),:]',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="Temperature, $(round(time_kyrs, digits=2)) kyrs",  dpi=150)
-        #    p1          =   heatmap(x_km, z_km, T[Int(Nx/2),:,:]',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="Temperature, $(round(time_kyrs, digits=2)) kyrs",  dpi=150)
+        #    fig = Figure()
+        #    #heatmap!(Axis(fig[1,1], title="Temperature, $(round(time_kyrs, digits=2)) kyrs", aspect=DataAspect()), x_km, z_km, T[:,Int(Ny/2),:], colormap=:inferno)
+        #    heatmap!(Axis(fig[1,1], title="Temperature, $(round(time_kyrs, digits=2)) kyrs", aspect=DataAspect()), y./1e3, z_km, T[Int(Nx/2),:,:], colormap=:inferno)
         #
-        #    plot(p1); frame(anim)
+        #    save("viz2D_out/Diffusion3D_$(it).png", fig)
         end
 
     end
@@ -103,11 +106,11 @@ function Diffusion_Gaussian3D(Setup="3D")
 
     if CreatePlots
         # create plot
-        p1          =   heatmap(x_km, z_km, Tslice',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="T  3D $(round(time_kyrs/1e3, digits=2)) Myrs",  dpi=150)
-        p2          =   heatmap(x_km, z_km, Tanal1',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="T anal 3D $(round(time_kyrs/1e3, digits=2)) Myrs",  dpi=150)
-        p3          =   heatmap(x_km, z_km, Terror1',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="T error 3D $(round(time_kyrs/1e3, digits=2)) Myrs",  dpi=150)
-        plot(p1,p2,p3);
-        png(fname)
+        fig = Figure(size=(1500,450))
+        heatmap!(Axis(fig[1,1], title="T  3D $(round(time_kyrs/1e3, digits=2)) Myrs",      aspect=DataAspect()), x_km, z_km, Tslice,  colormap=:inferno)
+        heatmap!(Axis(fig[1,2], title="T anal 3D $(round(time_kyrs/1e3, digits=2)) Myrs",  aspect=DataAspect()), x_km, z_km, Tanal1,  colormap=:inferno)
+        heatmap!(Axis(fig[1,3], title="T error 3D $(round(time_kyrs/1e3, digits=2)) Myrs", aspect=DataAspect()), x_km, z_km, Terror1, colormap=:inferno)
+        save("$(fname).png", fig)
     end
 
     error = norm(Terror[:],2)/length(Terror[:]);

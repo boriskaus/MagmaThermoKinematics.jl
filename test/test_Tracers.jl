@@ -6,6 +6,9 @@ using Test
 
 
 const CreatePlots = false      # easy way to deactivate plotting throughout
+if CreatePlots
+    using CairoMakie: Figure, Axis, DataAspect, contourf!, heatmap!, scatter!, save
+end
 
 function test_TracerUpdate(Dimension="2D", InterpolationMethod="Linear")
   # test interpolation methods from grid to tracers in 2D and 3D
@@ -59,15 +62,14 @@ function test_TracerUpdate(Dimension="2D", InterpolationMethod="Linear")
     Error       =   (Tanal - Tracers.T)  .+ (Phi_anal-Tracers.Phi_melt);
 
     if CreatePlots
-      p1          =   contourf(x, z,      T',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Grid",  dpi=300, levels=10)
-      p2          =   scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), title="Tracers", markersize=2.0,dpi=300)
+      fig         =   Figure(size=(1000,450))
+      contourf!(Axis(fig[1,1], title="Grid", aspect=DataAspect()), x, z, T, colormap=:inferno, levels=10)
+      scatter!(Axis(fig[1,2], title="Tracers", aspect=DataAspect()), Tr_coord[:,1], Tr_coord[:,2], color=Tracers.T, colormap=:inferno, alpha=0.8, markersize=4, strokewidth=0.01, strokecolor=:black)
 
-    #   p1          =   contourf(x, z,      (1.0-Phi)',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Grid",  dpi=150, levels=10)
-    #   p2          =   scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.Phi_melt, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), title="Tracers", markersize=5.0)
+    #   contourf!(Axis(fig[1,1], title="Grid", aspect=DataAspect()), x, z, 1.0 .- Phi, colormap=:inferno, levels=10)
+    #   scatter!(Axis(fig[1,2], title="Tracers", aspect=DataAspect()), Tr_coord[:,1], Tr_coord[:,2], color=Tracers.Phi_melt, colormap=:inferno, alpha=0.8, markersize=10, strokewidth=0.01, strokecolor=:black)
 
-      plot(p1,p2);
-
-     png("TracerUpdate_2D_$InterpolationMethod")
+     save("TracerUpdate_2D_$(InterpolationMethod).png", fig)
     end
 
   elseif Dimension=="3D"
@@ -76,11 +78,11 @@ function test_TracerUpdate(Dimension="2D", InterpolationMethod="Linear")
     Error       =   (Tanal - Tracers.T)  .+ (Phi_anal-Tracers.Phi_melt);
 
     if CreatePlots
-    #  p1          =   contourf(x, z,      Data_coarse1[1][:,10,:]', aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Grid",  dpi=150, levels=10)
-    #  p2          =   scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), title="Tracers", markersize=5.0)
+    #  fig         =   Figure(size=(1000,450))
+    #  contourf!(Axis(fig[1,1], title="Grid", aspect=DataAspect()), x, z, Data_coarse1[1][:,10,:], colormap=:inferno, levels=10)
+    #  scatter!(Axis(fig[1,2], title="Tracers", aspect=DataAspect()), Tr_coord[:,1], Tr_coord[:,2], color=Tracers.T, colormap=:inferno, alpha=0.8, markersize=10, strokewidth=0.01, strokecolor=:black)
 
-   #   plot(p1,p2);
-   #   png("TracerUpdate_2D_$InterpolationMethod")
+   #   save("TracerUpdate_2D_$(InterpolationMethod).png", fig)
     end
 
   end
@@ -186,36 +188,34 @@ function test_PhaseRatioFromTracers(Dimension="2D", InterpolationMethod="Linear"
   if Dimension=="2D"
     Data =   PhaseRatio[:,:,1];
     if CreatePlots
+      fig         =   Figure()
      # @show size(PhaseRatio)
-      #p1          =   contourf(x, z,      PhaseRatio[:,:,3]',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Grid",  dpi=300, levels=10)
-      #p1          =   heatmap(x, z,      PhaseRatio[:,:,3]',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Grid",  dpi=300)
+      #contourf!(Axis(fig[1,1], title="Grid", aspect=DataAspect()), x, z, PhaseRatio[:,:,3], colormap=:inferno, levels=10)
+      #heatmap!(Axis(fig[1,1], title="Grid", aspect=DataAspect()), x, z, PhaseRatio[:,:,3], colormap=:inferno)
 
-       p1          =   heatmap(x, z,      RockType',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="RockType",  dpi=300)
-      #p1          =   heatmap(x, z,      NumTracers',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="NumTracers",  dpi=300)
+       heatmap!(Axis(fig[1,1], title="RockType", aspect=DataAspect()), x, z, RockType, colormap=:inferno)
+      #heatmap!(Axis(fig[1,1], title="NumTracers", aspect=DataAspect()), x, z, NumTracers, colormap=:inferno)
 
-      #p2 = plot(X[:],Z[:],markershape = :plus, markersize=0.2)
-      p2          =   scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), title="Tracers", markersize=1.0,dpi=300)
-
-
-    #   p1          =   contourf(x, z,      (1.0-Phi)',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Grid",  dpi=150, levels=10)
-    #   p2          =   scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.Phi_melt, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), title="Tracers", markersize=5.0)
-
-      #plot(p1,p2);
-      plot(p1);
+      #scatter!(Axis(fig[1,2]), X[:], Z[:], marker=:cross, markersize=0.4)
+      #scatter!(Axis(fig[1,2], title="Tracers", aspect=DataAspect()), Tr_coord[:,1], Tr_coord[:,2], color=Tracers.T, colormap=:inferno, alpha=0.8, markersize=2, strokewidth=0.01, strokecolor=:black)
 
 
-      png("PhaseRatioFromTracers_2D_$(InterpolationMethod)_$(Method)")
+    #   contourf!(Axis(fig[1,1], title="Grid", aspect=DataAspect()), x, z, 1.0 .- Phi, colormap=:inferno, levels=10)
+    #   scatter!(Axis(fig[1,2], title="Tracers", aspect=DataAspect()), Tr_coord[:,1], Tr_coord[:,2], color=Tracers.Phi_melt, colormap=:inferno, alpha=0.8, markersize=10, strokewidth=0.01, strokecolor=:black)
+
+
+      save("PhaseRatioFromTracers_2D_$(InterpolationMethod)_$(Method).png", fig)
     end
 
   elseif Dimension=="3D"
     Data =   PhaseRatio[:,:,:,1];
 
     if CreatePlots
-    #  p1          =   contourf(x, z,      Data_coarse1[1][:,10,:]', aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Grid",  dpi=150, levels=10)
-    #  p2          =   scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), title="Tracers", markersize=5.0)
+    #  fig         =   Figure(size=(1000,450))
+    #  contourf!(Axis(fig[1,1], title="Grid", aspect=DataAspect()), x, z, Data_coarse1[1][:,10,:], colormap=:inferno, levels=10)
+    #  scatter!(Axis(fig[1,2], title="Tracers", aspect=DataAspect()), Tr_coord[:,1], Tr_coord[:,2], color=Tracers.T, colormap=:inferno, alpha=0.8, markersize=10, strokewidth=0.01, strokecolor=:black)
 
-   #   plot(p1,p2);
-   #   png("Tracer2Grid_2D_$InterpolationMethod")
+   #   save("Tracer2Grid_2D_$(InterpolationMethod).png", fig)
     end
 
   end
@@ -284,15 +284,14 @@ function test_TracerToGrid(Dimension="2D")
     Error       =   (Tanal - Tnew);
 
     if CreatePlots
-      p2          =   contourf(x, z,      Tnew',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Tnew",  dpi=300, levels=10)
-      p1          =   scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), title="T on Tracers", markersize=2.0,dpi=300)
+      fig         =   Figure(size=(1000,450))
+      scatter!(Axis(fig[1,1], title="T on Tracers", aspect=DataAspect()), Tr_coord[:,1], Tr_coord[:,2], color=Tracers.T, colormap=:inferno, alpha=0.8, markersize=4, strokewidth=0.01, strokecolor=:black)
+      contourf!(Axis(fig[1,2], title="Tnew", aspect=DataAspect()), x, z, Tnew, colormap=:inferno, levels=10)
 
-    #   p1          =   contourf(x, z,      (1.0-Phi)',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Grid",  dpi=150, levels=10)
-    #   p2          =   scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.Phi_melt, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), title="Tracers", markersize=5.0)
+    #   contourf!(Axis(fig[1,1], title="Grid", aspect=DataAspect()), x, z, 1.0 .- Phi, colormap=:inferno, levels=10)
+    #   scatter!(Axis(fig[1,2], title="Tracers", aspect=DataAspect()), Tr_coord[:,1], Tr_coord[:,2], color=Tracers.Phi_melt, colormap=:inferno, alpha=0.8, markersize=10, strokewidth=0.01, strokecolor=:black)
 
-      plot(p1,p2);
-
-     png("TracerToGrid_2D")
+     save("TracerToGrid_2D.png", fig)
     end
 
   elseif Dimension=="3D"
@@ -301,11 +300,11 @@ function test_TracerToGrid(Dimension="2D")
     Error       =   (Tanal - Tnew);
 
     if CreatePlots
-    #  p1          =   contourf(x, z,      Data_coarse1[1][:,10,:]', aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Grid",  dpi=150, levels=10)
-    #  p2          =   scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), title="Tracers", markersize=5.0)
+    #  fig         =   Figure(size=(1000,450))
+    #  contourf!(Axis(fig[1,1], title="Grid", aspect=DataAspect()), x, z, Data_coarse1[1][:,10,:], colormap=:inferno, levels=10)
+    #  scatter!(Axis(fig[1,2], title="Tracers", aspect=DataAspect()), Tr_coord[:,1], Tr_coord[:,2], color=Tracers.T, colormap=:inferno, alpha=0.8, markersize=10, strokewidth=0.01, strokecolor=:black)
 
-   #   plot(p1,p2);
-   #   png("TracerUpdate_2D_$InterpolationMethod")
+   #   save("TracerUpdate_2D_$(InterpolationMethod).png", fig)
     end
 
   end

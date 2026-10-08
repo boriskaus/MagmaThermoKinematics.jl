@@ -4,6 +4,9 @@ using MagmaThermoKinematics
 Random.seed!(1234);     # such that we can reproduce results
 
 const CreatePlots = false      # easy way to deactivate plotting throughout
+if CreatePlots
+    using CairoMakie: Figure, Axis, DataAspect, lines!, scatter!, heatmap!, axislegend, save
+end
 
 function Diffusion_SteadyState2D(Setup="Constant_Zdirection")
 # steady state diffusion in x and z-direction for constant and variable K
@@ -160,20 +163,26 @@ end
 if      Setup=="Constant_Zdirection" || Setup=="VariableK_Zdirection"
     if CreatePlots
         # create plot
-        plot(Tanal,z_km, label = "Analytics");
-        plot!(Tnum,z_km,ylabel="Depth [km]",xlabel="Temperature [C]", label = "Numerics",  marker = 2,   linewidth = 0);
+        fig = Figure()
+        ax  = Axis(fig[1,1], xlabel="Temperature [C]", ylabel="Depth [km]")
+        lines!(ax, Tanal, z_km, label = "Analytics")
+        scatter!(ax, Tnum, z_km, markersize = 4, label = "Numerics")
+        axislegend(ax)
     end
     error = norm(Array(T[1,:]) .- Tanal,2);
 else
     if CreatePlots
         # create plot
-        plot(x_km, Tanal,label = "Analytics");
-        plot!(x_km,Tnum, xlabel="Width [km]",ylabel="Temperature [C]", label = "Numerics",  marker = 2,   linewidth = 0);
+        fig = Figure()
+        ax  = Axis(fig[1,1], xlabel="Width [km]", ylabel="Temperature [C]")
+        lines!(ax, x_km, Tanal, label = "Analytics")
+        scatter!(ax, x_km, Tnum, markersize = 4, label = "Numerics")
+        axislegend(ax)
     end
     error = norm(Array(T[:,1]) .- Tanal,2);
 end
 if CreatePlots
-    png(fname)
+    save("$(fname).png", fig)
 end
 
 
@@ -262,10 +271,13 @@ function Diffusion_Halfspace2D()
 
     if CreatePlots
         # create plot
-        plot(Tanal,z_km, label = "Analytics");
-        plot!(Tnum,z_km,ylabel="Depth [km]",xlabel="Temperature [C]", label = "Numerics",  marker = 2,   linewidth = 0);
+        fig = Figure()
+        ax  = Axis(fig[1,1], xlabel="Temperature [C]", ylabel="Depth [km]")
+        lines!(ax, Tanal, z_km, label = "Analytics")
+        scatter!(ax, Tnum, z_km, markersize = 4, label = "Numerics")
+        axislegend(ax)
 
-        png(fname)
+        save("$(fname).png", fig)
     end
 
     error = norm(Array(T[1,:]) .- Tanal,2);
@@ -326,8 +338,7 @@ function Diffusion_Gaussian2D(Setup="2D")
 
     Tnew                   .=   T;
 
-    #ENV["GKSwstype"]="nul"; if isdir("viz2D_out")==false mkdir("viz2D_out") end; loadpath = "./viz2D_out/"; anim = Animation(loadpath,String[])
-    #println("Animation directory: $(anim.dir)")
+    #mkpath("viz2D_out")                            # directory for animation frames
 
     time,time_kyrs          = 0.0, 0.0;
     err = 100;
@@ -354,8 +365,9 @@ function Diffusion_Gaussian2D(Setup="2D")
         #    println(" Timestep $it = $(round(time/SecYear)/1e3) kyrs")
 
         #    x_km, z_km  =   x./1e3, z./1e3;
-        #    p1          =   heatmap(x_km, z_km, T',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="Temperature, $(round(time_kyrs, digits=2)) kyrs",  dpi=150)
-        #    plot(p1); frame(anim)
+        #    fig = Figure()
+        #    heatmap!(Axis(fig[1,1], title="Temperature, $(round(time_kyrs, digits=2)) kyrs", aspect=DataAspect()), x_km, z_km, T, colormap=:inferno)
+        #    save("viz2D_out/Diffusion2D_$(it).png", fig)
         end
 
     end
@@ -378,9 +390,9 @@ function Diffusion_Gaussian2D(Setup="2D")
 
     if CreatePlots
         # create plot
-        p1          =   heatmap(x_km, z_km, Terror',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="T error 2D $(round(time_kyrs/1e3, digits=2)) Myrs",  dpi=150)
-        plot(p1);
-        png(fname)
+        fig = Figure()
+        heatmap!(Axis(fig[1,1], title="T error 2D $(round(time_kyrs/1e3, digits=2)) Myrs", aspect=DataAspect()), x_km, z_km, Terror, colormap=:inferno)
+        save("$(fname).png", fig)
     end
 
     error = norm(Array(Terror[:]),2);

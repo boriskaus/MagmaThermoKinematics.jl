@@ -11,7 +11,7 @@ const MatFloat32 = (SetMaterialParams(Name="Rock", Phase=1,
 "Run `nsteps` nonlinear diffusion steps of a hot blob in a geotherm on an `N`-cell grid; returns the state arrays."
 function run_diffusion(N::Tuple, FT; nsteps=3, dt=1e9)
     dim = length(N)
-    names = (:T, :T_K, :Tupdate, :Tbuffer, :Tnew, :T_it_old, :Kc, :Rho, :Cp, :Hr, :Hl, :ϕ, :dϕdT, :P, :Z)
+    names = (:T, :T_K, :Tupdate, :Tnew, :T_it_old, :Kc, :Rho, :Cp, :Hr, :Hl, :ϕ, :dϕdT, :P, :Z)
     coords = dim == 2 ? (:X,) : (:X, :Y)
     Arrays = CreateArrays(Dict(N => NamedTuple{(names..., coords...)}(ntuple(_ -> 0, length(names) + length(coords)))); FloatType=FT)
     extent = ntuple(_ -> 20e3, dim)
@@ -38,9 +38,24 @@ end
         A32 = run_diffusion(N, Float32)
         A64 = run_diffusion(N, Float64)
         @testset "$(length(N))D" begin
-            for k in (:T, :Tnew, :ϕ, :Kc, :Rho, :Cp)
+            for k in (:T, :Tnew, :Kc, :Rho, :Cp)
                 @test A32[k] ≈ A64[k] rtol=1e-4
             end
+            # the 4th-order melting polynomial loses Float32 precision near the solidus
+            @test A32.ϕ ≈ A64.ϕ rtol=1e-3
         end
     end
+end
+
+@testset "Material laws evaluate in Float32" begin
+    args = (; T=1000.0f0, P=0.0f0)
+    for fn in (compute_meltfraction, compute_dϕdT, compute_density, compute_heatcapacity, compute_conductivity, compute_latent_heat)
+        @test fn(MatFloat32, 1, args) isa Float32
+    end
+    argsA = (; T=fill(1000.0f0, 3, 3), P=zeros(Float32, 3, 3))
+    A32, A64 = zeros(Float32, 3, 3), zeros(Float32, 3, 3)
+    compute_phase_param!(A32, compute_conductivity, MatFloat32, ones(Int32, 3, 3), argsA)
+    compute_phase_param!(A64, compute_conductivity, MatFloat32, ones(Int64, 3, 3), argsA)
+    @test A32 == A64
+    @test_throws "Phases must hold integer phase numbers" compute_phase_param!(A32, compute_density, MatFloat32, ones(Float32, 3, 3), argsA)
 end

@@ -8,6 +8,9 @@ using Test
 #using WriteVTK
 
 const CreatePlots = false      # easy way to deactivate plotting throughout
+if CreatePlots
+    using CairoMakie: Figure, Axis, DataAspect, heatmap!, scatter!, save
+end
 
 # ---------------------------------------------------------------------------
 # Helper: build the InjectSills AbstractSill that corresponds to a given MTK
@@ -88,15 +91,15 @@ function test_hostrock_velocity(Dimension="2D", DikeType="ElasticDike", DikeAngl
 
     if CreatePlots
       Vx,Vz       =   Velocity[1],Velocity[2];
-      p1          =   heatmap(x/1e3, z/1e3,      Vx',       aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:inferno, title="2D Vx",  dpi=300, levels=30)
-      p2          =   heatmap(x/1e3, z/1e3,      Vz',       aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:inferno, title="Vz",  dpi=300, levels=30)
+      fig         =   Figure(size=(1000,450))
+      ax1         =   Axis(fig[1,1], title="2D Vx", aspect=DataAspect())
+      heatmap!(ax1, x/1e3, z/1e3, Vx, colormap=:inferno)
+      heatmap!(Axis(fig[1,2], title="Vz", aspect=DataAspect()), x/1e3, z/1e3, Vz, colormap=:inferno)
 
       #st=100; Xv=X[:]; Zv=Z[:];
-      #quiver!(Xv[1:step:end]./1e3, Zv[1:step:end]./1e3, gradient=(Vx[1:step:end],Vz[1:step:end]), arrow = :arrow)
+      #arrows!(ax1, Xv[1:st:end]./1e3, Zv[1:st:end]./1e3, Vx[1:st:end], Vz[1:st:end])
 
-      plot(p1,p2);
-
-      png("HostRockVelocity_$(Dimension)_$(DikeType)")
+      save("HostRockVelocity_$(Dimension)_$(DikeType).png", fig)
     end
 
 
@@ -105,11 +108,11 @@ function test_hostrock_velocity(Dimension="2D", DikeType="ElasticDike", DikeAngl
 
     if CreatePlots
       Vx,Vy,Vz    =   Velocity[1],Velocity[2],Velocity[3];
-      p1          =   heatmap(x/1e3, z/1e3,      Vx[:,Int((Ny-1)/2),:]',       aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:inferno, title="2D Vx",  dpi=300, levels=30)
-      p2          =   heatmap(x/1e3, z/1e3,      Vz[:,Int((Ny-1)/2),:]',       aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:inferno, title="Vz",  dpi=300, levels=30)
+      fig         =   Figure(size=(1000,450))
+      heatmap!(Axis(fig[1,1], title="2D Vx", aspect=DataAspect()), x/1e3, z/1e3, Vx[:,Int((Ny-1)/2),:], colormap=:inferno)
+      heatmap!(Axis(fig[1,2], title="Vz",    aspect=DataAspect()), x/1e3, z/1e3, Vz[:,Int((Ny-1)/2),:], colormap=:inferno)
 
-      plot(p1,p2);
-      png("HostRockVelocity_$(Dimension)_$(DikeType)")
+      save("HostRockVelocity_$(Dimension)_$(DikeType).png", fig)
 
 
       # write this to a paraview VTK file, using the package WriteVTK.jl
@@ -189,14 +192,13 @@ function test_inject_sills(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45
       Vz = Velocity[2];
 
       Tr_coord    =   Tracers.coord; Tr_coord = hcat(Tr_coord...)';       # extract array with coordinates of tracers
-      p1          =   heatmap(x/1e3, z/1e3,      T',     aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:inferno, title="T",  dpi=300, levels=30)
-      p2          =   scatter(Tr_coord[:,1]/1e3, Tr_coord[:,2]/1e3, zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), markersize=5.0, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),title="Tracers")
-      p3          =   heatmap(x/1e3, z/1e3,      Vx',       aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:inferno, title="Vx",  dpi=300, levels=30)
-      p4          =   heatmap(x/1e3, z/1e3,      Vz',       aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:inferno, title="Vz",  dpi=300, levels=30)
+      fig = Figure(size=(1000,900))
+      heatmap!(Axis(fig[1,1], title="T",  aspect=DataAspect()), x/1e3, z/1e3, T,  colormap=:inferno)
+      scatter!(Axis(fig[1,2], title="Tracers", aspect=DataAspect(), limits=((x[1]/1e3,x[end]/1e3), (z[1]/1e3,z[end]/1e3))), Tr_coord[:,1]/1e3, Tr_coord[:,2]/1e3, color=Tracers.T, colormap=:inferno, alpha=0.8, markersize=10, strokewidth=0.01, strokecolor=:black)
+      heatmap!(Axis(fig[2,1], title="Vx", aspect=DataAspect()), x/1e3, z/1e3, Vx, colormap=:inferno)
+      heatmap!(Axis(fig[2,2], title="Vz", aspect=DataAspect()), x/1e3, z/1e3, Vz, colormap=:inferno)
 
-      plot(p1,p2,p3,p4);
-
-      png("InsertDike_$(Dimension)_$(DikeType)")
+      save("InsertDike_$(Dimension)_$(DikeType).png", fig)
     end
 
 
@@ -207,13 +209,13 @@ function test_inject_sills(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45
       Vz = Velocity[3];
 
       Tr_coord    =   Tracers.coord; Tr_coord = hcat(Tr_coord...)';       # extract array with coordinates of tracers
-      p1          =   heatmap(x/1e3, z/1e3,     T[:,Int(ceil(Ny/2)),:]',       aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:inferno, title="T",  dpi=300, levels=30)
-      p2          =   scatter(Tr_coord[:,1]/1e3, Tr_coord[:,3]/1e3, zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), markersize=5.0,title="Tracers",xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),)
-      p3          =   heatmap(x/1e3, z/1e3,      Vx[:,Int(ceil(Ny/2)),:]',       aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:inferno, title="Vx",  dpi=300, levels=30)
-      p4          =   heatmap(x/1e3, z/1e3,      Vz[:,Int(ceil(Ny/2)),:]',       aspect_ratio=1, xlims=(x[1]/1e3,x[end]/1e3), ylims=(z[1]/1e3,z[end]/1e3),   c=:inferno, title="Vz",  dpi=300, levels=30)
+      fig = Figure(size=(1000,900))
+      heatmap!(Axis(fig[1,1], title="T",  aspect=DataAspect()), x/1e3, z/1e3, T[:,Int(ceil(Ny/2)),:],  colormap=:inferno)
+      scatter!(Axis(fig[1,2], title="Tracers", aspect=DataAspect(), limits=((x[1]/1e3,x[end]/1e3), (z[1]/1e3,z[end]/1e3))), Tr_coord[:,1]/1e3, Tr_coord[:,3]/1e3, color=Tracers.T, colormap=:inferno, alpha=0.8, markersize=10, strokewidth=0.01, strokecolor=:black)
+      heatmap!(Axis(fig[2,1], title="Vx", aspect=DataAspect()), x/1e3, z/1e3, Vx[:,Int(ceil(Ny/2)),:], colormap=:inferno)
+      heatmap!(Axis(fig[2,2], title="Vz", aspect=DataAspect()), x/1e3, z/1e3, Vz[:,Int(ceil(Ny/2)),:], colormap=:inferno)
 
-      plot(p1,p2,p3,p4);
-      png("InsertDike_$(Dimension)_$(DikeType)")
+      save("InsertDike_$(Dimension)_$(DikeType).png", fig)
 
 
       # write this to a paraview VTK file, using the package WriteVTK.jl
@@ -303,6 +305,12 @@ end
         _, _, InjVol_s, _, _ = inject_sills(Tr_s, copy(T), Grid, sill, T_in, 2, 0)
         @test InjVol_s ≈ V_expected  rtol=1e-12
     end
+
+    # Sill radius used by the injection-rate printout
+    radius = MagmaThermoKinematics.MTK_GMG._sill_radius_m
+    @test radius(sill2d) == Wdike/2
+    @test radius(PlaneStrainSill(R=(Wdike/2)*m, H=Hdike*m, Center=Point2(cen[1], cen[2])*m)) == Wdike/2
+    @test radius(SquareDike(Center=Point2(cen[1], cen[2])*m, W=Wdike*m, H=Hdike*m)) == Wdike/2
   end
 
   # ------------------------------------------------------------------

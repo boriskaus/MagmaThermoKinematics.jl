@@ -7,6 +7,8 @@ using Test, Random
 using MagmaThermoKinematics
 using JLArrays
 JLArrays.allowscalar(false)
+# JLBackend runs kernels synchronously but has no `synchronize` method, which InjectSills calls.
+MagmaThermoKinematics.KernelAbstractions.synchronize(::JLArrays.JLBackend) = nothing
 
 const Mat_JL = (SetMaterialParams(Name="Rock", Phase=1,
                     Density      = ConstantDensity(ρ=2700kg/m^3),
@@ -44,7 +46,7 @@ end
 "One nonlinear diffusion step of a random temperature field on `backend`; returns `Tnew` on the host."
 function diffusion_step(backend, N, T0; axisymmetric=false)
     Grid   = CreateGrid(size=N, extent=ntuple(_ -> 20e3, length(N)))
-    names  = (:T, :T_K, :Tnew, :T_it_old, :Tupdate, :Tbuffer, :Kc, :Rho, :Cp, :Hr, :Hl, :ϕ, :dϕdT, :R, :Y, :Z, :P)
+    names  = (:T, :T_K, :Tnew, :T_it_old, :Tupdate, :Kc, :Rho, :Cp, :Hr, :Hl, :ϕ, :dϕdT, :R, :Y, :Z, :P)
     Arrays = CreateArrays(Dict(N => NamedTuple{names}(ntuple(_ -> 0, length(names)))); backend)
     length(N) == 2 ? GridArray!(Arrays.R, Arrays.Z, Grid) : GridArray!(Arrays.R, Arrays.Y, Arrays.Z, Grid)
     copyto!(Arrays.T, T0)

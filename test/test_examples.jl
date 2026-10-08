@@ -1,7 +1,7 @@
 # Runs every `examples/MTK_GMG_*.jl` script for a few time steps, each in its own
 # process. Opt-in (MTK_TEST_EXAMPLES=1): the scripts run in the package's own
 # environment stacked on the default one, which must provide the plotting packages
-# they load (Plots); the Lanin scripts, which need GMT and network access, are skipped.
+# they load (CairoMakie); the Lanin scripts, which need GMT and network access, are skipped.
 using Test
 
 if get(ENV, "MTK_TEST_EXAMPLES", "0") == "1"
