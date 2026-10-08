@@ -29,7 +29,7 @@ randomly distributed inside the sill.
 The sill's center and orientation are encoded in the `sill` object itself;
 no external rotation is required here.
 """
-function add_dike(Tfield, Tr, Grid, sill::InjectSills.AbstractSill, T_in::Float64, Phase_in::Int64, nTr_dike::Int64)
+function add_dike(Tfield, Tr, Grid, sill::InjectSills.AbstractSill, T_in::Real, Phase_in::Integer, nTr_dike::Integer)
 
     dim = length(Grid)
 
@@ -65,12 +65,9 @@ function add_dike(Tfield, Tr, Grid, sill::InjectSills.AbstractSill, T_in::Float6
 
         FT = isassigned(Tr, 1) ? eltype(Tr[1].time_vec) : Float32
         coord      = [Float64(pt[i]) for i in 1:dim]  # Vector{Float64}
-        new_tracer = Tracer{FT}(num=number, coord=coord, T=T_in, Phase=Phase_in)
+        new_tracer = Tracer{FT}(num=number, coord=coord, T=Float64(T_in), Phase=Int64(Phase_in))
 
         if !isassigned(Tr, 1)
-            if length(Tr) == 0
-                StructArrays.foreachfield(v -> deleteat!(v, 1), Tr)
-            end
             Tr = StructArray([new_tracer])
         else
             push!(Tr, new_tracer)
@@ -78,11 +75,6 @@ function add_dike(Tfield, Tr, Grid, sill::InjectSills.AbstractSill, T_in::Float6
     end
 
     return Tfield, Tr
-end
-
-# Accept generic numeric inputs and normalize to the concrete method used internally.
-function add_dike(Tfield, Tr, Grid, sill::InjectSills.AbstractSill, T_in::Real, Phase_in::Integer, nTr_dike::Integer)
-    return add_dike(Tfield, Tr, Grid, sill, Float64(T_in), Int64(Phase_in), Int64(nTr_dike))
 end
 
 
@@ -128,7 +120,7 @@ orientation of the intrusion — no external rotation is needed.
 """
 function inject_sills(Tracers, T::Array, Grid,
                       sill::InjectSills.AbstractSill,
-                      T_in::Float64, Phase_in::Int64, nTr_dike::Int64;
+                      T_in::Real, Phase_in::Integer, nTr_dike::Integer;
                       AdvectionMethod="RK2", InterpolationMethod="Linear",
                       dike_poly=[])
 
@@ -204,16 +196,4 @@ function inject_sills(Tracers, T::Array, Grid,
     end
 
     return Tracers, Tnew, InjectedVolume, dike_poly, Velocity
-end
-
-# Convenience overload to accept Int/Float combinations from user-facing scripts.
-function inject_sills(Tracers, T::Array, Grid,
-                      sill::InjectSills.AbstractSill,
-                      T_in::Real, Phase_in::Integer, nTr_dike::Integer;
-                      AdvectionMethod="RK2", InterpolationMethod="Linear",
-                      dike_poly=[])
-    return inject_sills(Tracers, T, Grid, sill, Float64(T_in), Int64(Phase_in), Int64(nTr_dike);
-                        AdvectionMethod=AdvectionMethod,
-                        InterpolationMethod=InterpolationMethod,
-                        dike_poly=dike_poly)
 end
