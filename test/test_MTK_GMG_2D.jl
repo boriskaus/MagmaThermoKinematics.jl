@@ -3,6 +3,7 @@ const USE_GPU=false;
 if USE_GPU
     using CUDA      # needs to be loaded before loading Parallkel=
 end
+using InjectSills
 
 using MagmaThermoKinematics
 @static if USE_GPU
@@ -22,7 +23,7 @@ import MagmaThermoKinematics.MTK_GMG
 
 @testset "MTK_GMG_2D" begin
 #=
-    function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::DikeParameters)
+    function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
         println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
         return nothing
     end
@@ -35,7 +36,7 @@ println("===============================================")
 # These are the final simulations for the ZASSy paper, but done @ a lower resolution
 Num         = NumParam( #Nx=269*1, Nz=269*1,
                         Nx=65*1, Nz=65*1,
-                        SimName="ZASSy_Geneva_9_1e_6", axisymmetric=false,
+                        SimName="MTK_GMG_2D_Geneva", axisymmetric=false,
                         #maxTime_Myrs=1.5,
                         maxTime_Myrs=0.025,
                         fac_dt=0.2, ω=0.5, verbose=false,
@@ -45,11 +46,11 @@ Num         = NumParam( #Nx=269*1, Nz=269*1,
                         FigTitle="Geneva Models, Geotherm 30/km",
                         USE_GPU=USE_GPU);
 
-Dike_params = DikeParam(Type="CylindricalDike_TopAccretion",
-                        InjectionInterval_year = 5000,       # flux= 14.9e-6 km3/km2/yr
-                        W_in=20e3, H_in=74.6269,
-                        nTr_dike=300*1
-                )
+Sill_params = SillParams(
+            sill=CylindricalDikeTopAccretion(Center=Point2(0.0, -7.0e3) * m, W=20e3 * m, H=74.6269 * m),
+            InjectionInterval_year = 5000,       # flux= 14.9e-6 km3/km2/yr
+            nTr_dike=300*1
+        )
 
 MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
                                 Density    = ConstantDensity(ρ=2700kg/m^3),
@@ -65,17 +66,18 @@ MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
                 )
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_2D.MTK_GeoParams_2D(MatParam, Num, Dike_params); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_2D.MTK_GeoParams_2D(MatParam, Num, Sill_params); # start the main code
 
 @test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 296.4607300089425  rtol= 1e-4
 @test sum(time_props.MeltFraction)  ≈ 0.0  rtol= 1e-5
+@test !isempty(Dikes.sill_poly)
 
 
 
 # -----------------------------
 
 
-Topo_cart = load_GMG("../examples/Topo_cart")       # Note: Laacher seee is around [10,20]
+Topo_cart = load_GMG(normpath(joinpath(@__DIR__, "..", "examples", "Topo_cart")))       # Note: Laacher seee is around [10,20]
 
 # Create 3D grid of the region
 X,Y,Z       =   xyz_grid(-23:.1:23,-19:.1:19,-20:.1:5)
@@ -111,14 +113,20 @@ Data_2D.fields.Temp[ind] .= 800.0
 """
 Randomly change orientation and location of a dike
 """
-function MTK_GMG.MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::DikeParameters, Num::NumericalParameters)
+function MTK_GMG.MTK_update_ArraysStructs!(Arrays::NamedTuple, Grid::GridData, Dikes::SillParameters, Num::NumericalParameters)
     if mod(Num.it,10)==0
         cen       =     (Grid.max .+ Grid.min)./2 .+ 0*rand(rng, -0.5:1e-3:0.5, 2).*[Dikes.W_ran; Dikes.H_ran];    # Randomly vary center of dike
         if cen[end]<-15e3;  Angle_rand = 0*rand(rng, 80.0:0.1:100.0)                                              # Orientation: near-vertical @ depth
         else                Angle_rand = 0*rand(rng,-10.0:0.1:10.0); end
 
-        Dikes.Center = cen;
-        Dikes.Angle = [Angle_rand];
+        if hasproperty(Dikes, :sill) && !isnothing(Dikes.sill)
+            Dikes.sill = InjectSills.update_abstractsill(Dikes.sill;
+                                                         Center=Point2(cen[1], cen[2]) * m,
+                                                         Angle=Vec1(Angle_rand) * NoUnits)
+        else
+            Dikes.Center = cen;
+            Dikes.Angle = [Angle_rand];
+        end
     end
     return nothing
 end
@@ -131,13 +139,13 @@ Num         = NumParam( SimName="Unzen1", axisymmetric=false,
                         USE_GPU=USE_GPU);
 
 # dike parameters
-Dike_params = DikeParam(Type="ElasticDike",
-                        InjectionInterval_year = 1000,       # flux= 14.9e-6 km3/km2/yr
-                        W_in=5e3, H_in=250,
-                        nTr_dike=300*1,
-                        H_ran = 5000, W_ran = 5000,
-                        DikePhase=3, BackgroundPhase=1,
-                )
+Sill_params = SillParams(
+            sill=EllipticalIntrusion(Center=Point2(0.0, -7.0e3) * m, W=5e3 * m, H=250 * m),
+            InjectionInterval_year = 1000,       # flux= 14.9e-6 km3/km2/yr
+            nTr_dike=300*1,
+            H_ran = 5000, W_ran = 5000,
+            SillPhase=3, BackgroundPhase=1,
+        )
 
 # Define parameters for the different phases
 MatParam     = (SetMaterialParams(Name="Air", Phase=0,
@@ -174,13 +182,20 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_2D.MTK_GeoParams_2D(MatParam, Num, Dike_params, CartData_input=Data_2D); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_2D.MTK_GeoParams_2D(MatParam, Num, Sill_params, CartData_input=Data_2D); # start the main code
 
-@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 251.7176457588078  rtol= 1e-4
-@test sum(time_props.MeltFraction)  ≈  0.22380478479632507 rtol= 1e-5
+@test sum(Arrays.Tnew)/prod(size(Arrays.Tnew)) ≈ 251.58206620240594  rtol= 1e-4
+@test sum(time_props.MeltFraction)  ≈  0.2238128607809668 rtol= 1e-5
+
+# Random sill placement moves the sill within the randomization zone
+Num.AddRandomSills, Num.it = true, 0
+MTK_GMG.MTK_update_ArraysStructs!(Arrays, Grid, Dikes, Num, MatParam)
+cen = [c.val for c in Dikes.sill.Center]
+@test Dikes.sill isa EllipticalIntrusion
+@test all(abs.(cen .- (Grid.max .+ Grid.min)./2) .<= [Dikes.W_ran, Dikes.H_ran]./2)
 
 # remove directory created by this test
-rm("ZASSy_Geneva_9_1e_6", recursive=true, force=true)
+rm("MTK_GMG_2D_Geneva", recursive=true, force=true)
 rm("Unzen1", recursive=true, force=true)
 
 end

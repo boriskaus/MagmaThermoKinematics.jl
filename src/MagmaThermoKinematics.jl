@@ -14,11 +14,12 @@ using Parameters                                # More flexible definition of pa
 using Interpolations                            # Fast interpolations
 using StaticArrays
 using JLD2                                      # Load/save data to disk
+@reexport using InjectSills                     # Re-export InjectSills API (sill constructors + helpers)
 @reexport using GeoParams                                 # Material parameters calculations
 @reexport using ParallelStencil
 
 abstract type NumericalParameters end
-abstract type DikeParameters end
+abstract type SillParameters end
 abstract type TimeDependentProperties end
 
 include("Units.jl")                             # various useful units
@@ -30,7 +31,7 @@ const Myr         = 1e6*SecYear
 const km³         = 1000^3
 export SecYear, kyr, Myr, km³
 
-export NumericalParameters, DikeParameters, TimeDependentProperties
+export NumericalParameters, SillParameters, TimeDependentProperties
 
 struct EnvironmentConfig
     model_device::Symbol
@@ -208,7 +209,7 @@ include("Tracers.jl")
 export UpdateTracers, AdvectTracers!, InitializeTracers,PhaseRatioFromTracers, CorrectTracersForTopography!
 export RockAssemblage, update_Tvec!
 export PhaseRatioFromTracers!, PhasesFromTracers!, UpdateTracers_T_ϕ!, UpdateTracers_Field! # new routines
-
+export Tracer, TracersToGrid!
 
 include("MeltingRelationships.jl")
 export SolidFraction, ComputeLithostaticPressure, LoadPhaseDiagrams, PhaseDiagramData, ComputeDensityAndPressure
@@ -218,10 +219,8 @@ export PhaseRatioAverage!, ComputeSeismicVelocities, SolidFraction_Parameterized
 export StructArray, LazyRow # useful
 export Tracer
 
-include("Dikes.jl")
-export Dike, DikePoly
-export Tracer, AddDike, HostRockVelocityFromDike, CreateDikePolygon, advect_dike_polygon!,
-       volume_dike, InjectDike, TracersToGrid!
+include("InjectSills_utils.jl")
+export inject_sills, add_dike
 
 # routines related to advection & interpolation
 include("Advection.jl")
@@ -233,7 +232,7 @@ include("Utils.jl")
 export Process_ZirconAges, simulate_zircon_growth_from_tracers, volume_averaged_age, copy_arrays_GPU2CPU!, copy_arrays_CPU2GPU!
 
 include("MTK_GMG_structs.jl")
-export NumParam, DikeParam, TimeDepProps
+export NumParam, SillParams, TimeDepProps
 
 include("MTK_GMG.jl")
 

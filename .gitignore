@@ -10,6 +10,7 @@ docs/src/man/code_of_conduct.md
 
 #JSON
 package.json
+!/docs/package.json
 package-lock.json
 
 # VSCODE

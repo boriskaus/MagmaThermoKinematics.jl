@@ -1,6 +1,6 @@
 # Numerics and Physics
 
-MagmaThermoKinematics.jl is built around a finite-difference energy solver with semi-Lagrangian advection and tracer-based tracking of injected sill material. 
+MagmaThermoKinematics.jl is built around a finite-difference energy solver with semi-Lagrangian advection and tracer-based tracking of injected sill material.
 
 ## Governing Equation
 The thermal state of the magmatic system is described by the advection–diffusion equation for temperature $T$ with latent heat release:
@@ -115,13 +115,13 @@ Three distinct emplacement modes are available for adding new melt to the system
 | **UCLA-HD (central injection)** | Melt is added at the centre of the intrusion; host rock is displaced radially outward while conserving volume. |
 | **Elastic dike** | An elliptical dike geometry is used and host rock is displaced by an analytically prescribed elastic displacement field. |
 
-All three modes inject a `Dike` object, update the velocity field $\mathbf{v}$ for one time step (used in the semi-Lagrangian advection step A2a), and add tracer particles at the new melt location.
+Each mode is described by an `InjectSills.AbstractSill` (`CylindricalDikeTopAccretion`, `EllipticalIntrusion` and `PennyShapedSill`, respectively). `inject_sills` uses the host-rock displacement of that sill as the velocity field $\mathbf{v}$ for one time step (used in the semi-Lagrangian advection step A2a) and adds tracer particles at the new melt location.
 
 ## Tracers and Temperature–Time Paths
 
 Passive tracer particles are advected with the host-rock velocity field using the same semi-Lagrangian scheme as the temperature field.  At each time step each tracer records its current temperature, producing a continuous $T$–$t$ path.  These paths are the primary input to the [ZirconGrowth integration](zircon_growth.md).
 
-Tracers are kept on the CPU, as they generally use a lot of memory. 
+Tracers are kept on the CPU, as they generally use a lot of memory.
 
 ## Dimensions and Geometry
 

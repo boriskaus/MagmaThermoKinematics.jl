@@ -97,7 +97,8 @@ grid (Grid), with constant spacing (Spacing) on which the velocity components (V
 Advection is done for the time dt, and can use different methods
 
 """
-function AdvectPoints(AdvPoints0, Grid,Velocity,dt, Method="RK2", InterpolationMethod="Linear", VelocityMethod="Interpolation", DikeStruct=[], Δ=1.0);
+function AdvectPoints(AdvPoints0, Grid,Velocity,dt, Method="RK2", InterpolationMethod="Linear", VelocityMethod="Interpolation");
+    VelocityMethod == "Interpolation" || error("Unknown VelocityMethod: $VelocityMethod; only \"Interpolation\" is supported")
     dim         = length(AdvPoints0);           # number of dimensions
     AdvPoints   = map(x->x.*0, AdvPoints0) ;    # initialize to 0
    
@@ -109,11 +110,7 @@ function AdvectPoints(AdvPoints0, Grid,Velocity,dt, Method="RK2", InterpolationM
 
     # Different advection schemes can be used
     if Method=="Euler"
-        if VelocityMethod=="Interpolation"
-            Interpolate!(Velocity_int, Grid, Velocity, AdvPoints0, InterpolationMethod);    
-        elseif VelocityMethod=="FromDike"
-            Velocity_int    =   HostRockVelocityFromDike(Grid, AdvPoints0, Δ, abs(dt), DikeStruct);          # compute velocity field
-        end
+        Interpolate!(Velocity_int, Grid, Velocity, AdvPoints0, InterpolationMethod);
 
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt;  
@@ -122,22 +119,14 @@ function AdvectPoints(AdvPoints0, Grid,Velocity,dt, Method="RK2", InterpolationM
         
     elseif Method=="RK2"
 
-        if VelocityMethod=="Interpolation"
-            Interpolate!(Velocity_int, Grid, Velocity, AdvPoints0, InterpolationMethod);    
-        elseif VelocityMethod=="FromDike"
-            Velocity_int    =   HostRockVelocityFromDike(Grid, AdvPoints0, Δ, abs(dt), DikeStruct);          # compute velocity field
-        end  
+        Interpolate!(Velocity_int, Grid, Velocity, AdvPoints0, InterpolationMethod);
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt/2.0;  
         end    
         CorrectBounds!( AdvPoints , Grid);                               # step k1
         
         # Interpolate velocity values on deformed grid
-        if VelocityMethod=="Interpolation"
-            Interpolate!(Velocity_int, Grid, Velocity, AdvPoints, InterpolationMethod);    
-        elseif VelocityMethod=="FromDike"
-            Velocity_int    =   HostRockVelocityFromDike(Grid, AdvPoints, Δ, abs(dt), DikeStruct);          # compute velocity field
-        end  
+        Interpolate!(Velocity_int, Grid, Velocity, AdvPoints, InterpolationMethod);
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt;  
         end    
@@ -145,44 +134,28 @@ function AdvectPoints(AdvPoints0, Grid,Velocity,dt, Method="RK2", InterpolationM
 
     elseif Method=="RK4"
         
-        if VelocityMethod=="Interpolation"
-            Interpolate!(Velocity_int, Grid, Velocity, AdvPoints0, InterpolationMethod);    
-        elseif VelocityMethod=="FromDike"
-            Velocity_int    =   HostRockVelocityFromDike(Grid, AdvPoints0, Δ, abs(dt), DikeStruct);          # compute velocity field
-        end   
+        Interpolate!(Velocity_int, Grid, Velocity, AdvPoints0, InterpolationMethod);
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt/2.0;  
         end    
         CorrectBounds!( AdvPoints , Grid);                               # step k1
         
         # Interpolate velocity values on deformed grid
-        if VelocityMethod=="Interpolation"
-            Interpolate!(Velocity_int, Grid, Velocity, AdvPoints, InterpolationMethod);    
-        elseif VelocityMethod=="FromDike"
-            Velocity_int    =   HostRockVelocityFromDike(Grid, AdvPoints, Δ, abs(dt), DikeStruct);          # compute velocity field
-        end   
+        Interpolate!(Velocity_int, Grid, Velocity, AdvPoints, InterpolationMethod);
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt/2.0;  
         end    
         CorrectBounds!( AdvPoints , Grid);                               # step k2
         
         # Interpolate velocity values on deformed grid
-        if VelocityMethod=="Interpolation"
-            Interpolate!(Velocity_int, Grid, Velocity, AdvPoints, InterpolationMethod);    
-        elseif VelocityMethod=="FromDike"
-            Velocity_int    =   HostRockVelocityFromDike(Grid, AdvPoints, Δ, abs(dt), DikeStruct);          # compute velocity field
-        end  
+        Interpolate!(Velocity_int, Grid, Velocity, AdvPoints, InterpolationMethod);
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt/2.0;  
         end    
         CorrectBounds!( AdvPoints , Grid);                               # step k3
 
         # Interpolate velocity values on deformed grid
-        if VelocityMethod=="Interpolation"
-            Interpolate!(Velocity_int, Grid, Velocity, AdvPoints, InterpolationMethod);    
-        elseif VelocityMethod=="FromDike"
-            Velocity_int    =   HostRockVelocityFromDike(Grid, AdvPoints, Δ, abs(dt), DikeStruct);          # compute velocity field
-        end    
+        Interpolate!(Velocity_int, Grid, Velocity, AdvPoints, InterpolationMethod);
         for i=1:dim; 
             AdvPoints[i]  .= AdvPoints0[i] .+ Velocity_int[i].*dt;  
         end             
@@ -220,13 +193,13 @@ end
 
         Method: can be "Euler","RK2" or "RK4", for 1th, 2nd or 4th order explicit advection scheme, respectively. 
 """
-function AdvectTemperature( T::Array,Grid, PointsAdv0, Velocity, dt, Method="RK2", DataInterpolationMethod="Quadratic", VelocityMethod="Interpolation", DikeStruct=[], Δ=1 );
+function AdvectTemperature( T::Array,Grid, PointsAdv0, Velocity, dt, Method="RK2", DataInterpolationMethod="Quadratic", VelocityMethod="Interpolation");
     
     dim  = length(Grid);
     Tnew = tuple(T);
     # 1) Use semi-lagrangian advection to advect temperature
     # Advect regular grid backwards in time
-    PointsAdv = AdvectPoints(PointsAdv0, Grid,Velocity,-dt,Method, "Linear", VelocityMethod, DikeStruct, Δ);
+    PointsAdv = AdvectPoints(PointsAdv0, Grid,Velocity,-dt,Method, "Linear", VelocityMethod);
 
     # 2) Interpolate temperature on deformed points
     Interpolate!( Tnew, Grid, tuple(T), PointsAdv, DataInterpolationMethod);    

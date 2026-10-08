@@ -5,6 +5,7 @@ end
 using ParallelStencil, ParallelStencil.FiniteDifferences2D
 
 using MagmaThermoKinematics
+using InjectSills
 @static if USE_GPU
     environment!(:gpu, Float64, 3)      # initialize parallel stencil in 2D
     @init_parallel_stencil(CUDA, Float64, 3)
@@ -36,7 +37,7 @@ using WriteVTK
 
     GeoT                    =   20.0/1e3;                   # Geothermal gradient [K/km]
     W_in, H_in              =   5e3,    0.5e3;              # Width and thickness of dike
-    T_in                    =   900;                        # Intrusion temperature
+    T_in                    =   900.0;                      # Intrusion temperature
     InjectionInterval       =   0.1kyr;                     # Inject a new dike every X kyrs
     maxTime                 =   15kyr;                      # Maximum simulation time in kyrs
     H_ran, W_ran            =   Grid.L[1]*0.3,Grid.L[3]*0.4;# Size of domain in which we randomly place dikes and range of angles
@@ -60,7 +61,6 @@ using WriteVTK
 
     @parallel (1:Nx,1:Ny,1:Nz) GridArray!(Arrays.X,Arrays.Y,Arrays.Z, Grid.coord1D[1], Grid.coord1D[2], Grid.coord1D[3])
     Tracers                 =   StructArray{Tracer{Float32}}(undef, 1)                   # Initialize tracers
-    dike                    =   Dike(W=W_in,H=H_in,Type=DikeType,T=T_in);               # "Reference" dike with given thickness,radius and T
     Arrays.T               .=   -Arrays.Z.*GeoT;                                        # Initial (linear) temperature profile
 
     # Preparation of VTK/Paraview output
@@ -81,9 +81,21 @@ using WriteVTK
             else
                 Angle_rand = [rand(-10.0:0.1:10.0); rand(0:360)]
             end                    # Sills at shallower depth
-            dike      =     Dike(dike, Center=cen[:],Angle=Angle_rand);                                 # Specify dike with random location/angle but fixed size/T
+            if DikeType == "CylindricalDike_TopAccretion"
+                sill = InjectSills.CylindricalDikeTopAccretion(Center=InjectSills.Point3(cen[1], cen[2], cen[3]) * m,
+                                                               Angle=InjectSills.Vec2(Angle_rand[1], Angle_rand[end]) * NoUnits,
+                                                               W=W_in * m,
+                                                               H=H_in * m)
+            elseif DikeType == "EllipticalIntrusion" || DikeType == "ElasticDike"
+                sill = InjectSills.EllipticalIntrusion(Center=InjectSills.Point3(cen[1], cen[2], cen[3]) * m,
+                                                       Angle=InjectSills.Vec2(Angle_rand[1], Angle_rand[end]) * NoUnits,
+                                                       W=W_in * m,
+                                                       H=H_in * m)
+            else
+                error("Unsupported DikeType for InjectSills in Example3D: $(DikeType)")
+            end
             Tnew_cpu .=     Array(Arrays.T)
-            Tracers, Tnew_cpu, Vol   =   InjectDike(Tracers, Tnew_cpu, Grid.coord1D, dike, nTr_dike);   # Add dike, move hostrocks
+            Tracers, Tnew_cpu, Vol, _, _ = inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, T_in, 2, nTr_dike);   # Add dike, move hostrocks
             Arrays.T .=     Data.Array(Tnew_cpu)
             InjectVol +=    Vol                                                                 # Keep track of injected volume
             println("Added new dike; total injected magma volume = $(round(InjectVol/km³,digits=2)) km³; rate Q=$(round(InjectVol/(time),digits=2)) m³/s")
