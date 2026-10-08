@@ -6,5 +6,5 @@ MagmaThermoKinematics = "e7fe3d1a-f102-40b5-a66b-64b14986c4c8"
 
 [compat]
 Documenter = "1"
-DocumenterVitepress = "0.2"
-GeoParams = "0.5, 0.6, 0.7"
+DocumenterVitepress = "0.3"
+GeoParams = "0.7, 0.8, 0.9"
