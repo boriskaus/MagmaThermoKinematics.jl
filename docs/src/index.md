@@ -38,7 +38,7 @@ features:
 
   - icon: "⚙️"
     title: CPU and GPU Backends
-    details: Built on ParallelStencil with a backend selection workflow for threaded CPU and CUDA GPU runs.
+    details: Built on KernelAbstractions, with the backend (threaded CPU or CUDA GPU) selected through `NumParam(backend=...)`. GPU backends are not tested in CI.
     link: /man/quickstart
 
   - icon: "📚"
@@ -52,7 +52,7 @@ features:
 
 MagmaThermoKinematics.jl is a Julia package for simulating the thermal evolution of magmatic systems in 2D and 3D. It supports intrusive events such as dike and sill emplacement, tracks tracers, and couples thermal transport with material properties and phase/melting effects.
 
-The package uses finite-difference discretizations and is designed for high-performance execution on CPUs and GPUs.
+The package uses finite-difference discretizations and runs on CPUs and GPUs.
 
 ## Start Here
 

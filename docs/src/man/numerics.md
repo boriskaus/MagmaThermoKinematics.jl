@@ -62,7 +62,7 @@ $$T^{n+1}_{i,j} = T^*_{i,j} + \frac{\Delta t}{\rho C_p^{\text{eff}}} \left[\left
 ### Staggered-Grid Finite Differences
 
 The spatial derivatives in (A4) are evaluated on a staggered grid:
-- Temperature $T$ and scalar material properties ($\rho$, $C_p$, $\phi$) are defined at cell centres.
+- Temperature $T$ and scalar material properties ($\rho$, $C_p$, $\phi$) are defined at cell centers.
 - Heat fluxes $q = -k\,\nabla T$ are defined on cell faces (half-integer indices).
 - Conductivity $k$ is harmonically averaged to cell faces to conserve flux continuity across material interfaces.
 
@@ -172,11 +172,9 @@ This design makes it straightforward to test sensitivity to melt models and ther
 
 ## Performance and Parallelism
 
-Backend selection through `environment!` configures CPU threads, or CUDA execution, and the package composes with ParallelStencil finite-difference modules.
+The model arrays live on a KernelAbstractions backend, selected with `NumParam(backend=...)`: `CPU()` (the default; multithreaded when julia is started with several threads) or `CUDABackend()` after `using CUDA`.
 
-- CPU and CUDA workflows are typically run with `Float64` precision.
-
-When your own script uses ParallelStencil macros directly (for example `@zeros` or `@parallel`), call `@init_parallel_stencil(...)` in script scope after `environment!(...)`.
+- The element type of the model arrays is set with `NumParam(FloatType=...)` (default `Float64`).
 
 If you run this on a CPU, you can run it in parallel by starting julia in multi-threading mode:
 

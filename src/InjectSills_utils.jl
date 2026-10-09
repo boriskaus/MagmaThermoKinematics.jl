@@ -6,7 +6,7 @@
 #   • inside                 – point-in-sill predicate
 #   • new_point_inside_sill  – random tracer placement
 #   • volume / area          – injected volume / area
-#   • dike_polygon           – 2-D plotting outline
+#   • dike_polygon           – plotting outline
 #
 # What is NOT stored in AbstractSill and must be supplied as arguments:
 #   • T_in     – temperature assigned to newly-intruded material [°C]
@@ -36,23 +36,7 @@ function add_dike(Tfield, Tr, Grid, sill::InjectSills.AbstractSill, T_in::Real, 
     # ------------------------------------------------------------------
     # 1.  Set temperature inside the sill
     # ------------------------------------------------------------------
-    if dim == 2
-        x, z = Grid[1], Grid[2]
-        for ix in eachindex(x), iz in eachindex(z)
-            pt = InjectSills.Point2{Float64}(x[ix], z[iz])
-            if InjectSills.inside(pt, sill)
-                Tfield[ix, iz] = T_in
-            end
-        end
-    elseif dim == 3
-        x, y, z = Grid[1], Grid[2], Grid[3]
-        for ix in eachindex(x), iy in eachindex(y), iz in eachindex(z)
-            pt = InjectSills.Point3{Float64}(x[ix], y[iy], z[iz])
-            if InjectSills.inside(pt, sill)
-                Tfield[ix, iy, iz] = T_in
-            end
-        end
-    end
+    _launch!(_fill_sill!, Tfield, size(Tfield), Tfield, Tuple(Grid), sill, T_in)   # ponytail: sills with array fields (FiniteEllipsoidalCavity) need Adapt for a GPU
 
     # ------------------------------------------------------------------
     # 2.  Seed new tracers inside the sill
@@ -64,8 +48,8 @@ function add_dike(Tfield, Tr, Grid, sill::InjectSills.AbstractSill, T_in::Real, 
         number = isassigned(Tr, 1) ? Tr.num[end] + 1 : 1
 
         FT = isassigned(Tr, 1) ? eltype(Tr[1].time_vec) : Float32
-        coord      = [Float64(pt[i]) for i in 1:dim]  # Vector{Float64}
-        new_tracer = Tracer{FT}(num=number, coord=coord, T=Float64(T_in), Phase=Int64(Phase_in))
+        coord = [Float64(pt[i]) for i in 1:dim]  # Vector{Float64}
+        new_tracer = Tracer{FT}(num = number, coord = coord, T = Float64(T_in), Phase = Int64(Phase_in))
 
         if !isassigned(Tr, 1)
             Tr = StructArray([new_tracer])
@@ -75,6 +59,26 @@ function add_dike(Tfield, Tr, Grid, sill::InjectSills.AbstractSill, T_in::Real, 
     end
 
     return Tfield, Tr
+end
+
+@kernel function _fill_sill!(T, Grid, sill::InjectSills.AbstractSill{N}, T_in) where {N}
+    I = @index(Global, Cartesian)
+    # `inside` requires the point type to match the sill's element type.
+    if InjectSills.inside(InjectSills.Point{N, typeof(sill.H.val)}(map(getindex, Grid, Tuple(I))), sill)
+        T[I] = eltype(T)(T_in)
+    end
+end
+
+"Move the points `(P[1][i], …, P[N][i])` to `x + u(x)`, with `u` the displacement of `sill`, clamped to `Grid`."
+function displace_points!(P, sill::InjectSills.AbstractSill{N}, Grid) where {N}
+    for i in eachindex(P[1])
+        x = InjectSills.Point{N, Float64}(ntuple(d -> P[d][i], Val(N)))
+        u = InjectSills.hostrock_displacement(sill, x)
+        for d in 1:N
+            P[d][i] = clamp(x[d] + u[d], first(Grid[d]), last(Grid[d]))
+        end
+    end
+    return P
 end
 
 
@@ -89,7 +93,7 @@ into the temperature field `T` defined on the regular grid `Grid`.
 
 # Arguments
 - `Tracers`             – `StructArray` of `Tracer` objects (may be unassigned on first call)
-- `T`                   – temperature array [°C], mutated in-place
+- `T`                   – temperature array [°C], mutated in-place; any backend
 - `Grid`                – 1-D coordinate vectors `(x, z)` in 2-D or `(x, y, z)` in 3-D
 - `sill`                – `AbstractSill` (e.g. `PennyShapedSill`) with the desired center,
                           orientation, size, and elastic parameters already set
@@ -100,80 +104,85 @@ into the temperature field `T` defined on the regular grid `Grid`.
 # Keyword arguments
 - `AdvectionMethod`     – `"RK2"` (default) or `"Euler"`
 - `InterpolationMethod` – `"Linear"`, `"Quadratic"`, or `"Cubic"` (default `"Linear"`)
-- `dike_poly`           – optional plotting polygon that is advected with the host rock
+- `dike_poly`           – optional plotting polygon (`InjectSills.dike_polygon`) that is advected with the host rock
 
 # Returns
 `(Tracers, Tnew, InjectedVolume, dike_poly, Velocity)`, where `InjectedVolume` is
 the equivalent 3D volume of `sill` in m³ (`InjectSills.volume`).
 
 ## Algorithm
-The sill is opened gradually over `nsteps` pseudo-time steps so that the
-displacement per step stays below `0.5 * min(dx, dz)`.  For each pseudo-step
-the temperature field and all existing tracers are advected using the
-displacement field returned by `InjectSills.hostrock_displacement`.  After
-pseudo-advection, `add_dike` sets `T = T_in` inside the sill and seeds the
-new tracers.
+The temperature field is advected by the displacement field of
+`InjectSills.hostrock_displacement!` over `nsteps` pseudo-time steps, so that
+the displacement per step stays below `0.5 * min(dx, dz)`. With the default
+RK2/linear scheme this runs on the backend of `T`; the other schemes need a
+CPU `Array`. Existing tracers and `dike_poly` move from `x` to `x + u(x)`,
+with `u` evaluated at their own positions. `add_dike` then sets `T = T_in`
+inside the sill and seeds the new tracers.
 
 The displacement field (= velocity for pseudo-time `dt_total = 1`) is
 obtained directly from the sill object, which already encodes the center and
 orientation of the intrusion — no external rotation is needed.
 """
-function inject_sills(Tracers, T::Array, Grid,
-                      sill::InjectSills.AbstractSill,
-                      T_in::Real, Phase_in::Integer, nTr_dike::Integer;
-                      AdvectionMethod="RK2", InterpolationMethod="Linear",
-                      dike_poly=[])
+function inject_sills(
+        Tracers, T::AbstractArray, Grid,
+        sill::InjectSills.AbstractSill,
+        T_in::Real, Phase_in::Integer, nTr_dike::Integer;
+        AdvectionMethod = "RK2", InterpolationMethod = "Linear",
+        dike_poly = []
+    )
 
     dim = length(Grid)
-    H   = sill.H.val           # maximum opening thickness [m]
-
-    # ------------------------------------------------------------------
-    # Build full-grid coordinate arrays
-    # ------------------------------------------------------------------
-    if dim == 2
-        coords   = collect(Iterators.product(Grid[1], Grid[2]))
-        X        = (c -> c[1]).(coords)
-        Z        = (c -> c[2]).(coords)
-        GridFull = (X, Z)
-    elseif dim == 3
-        coords   = collect(Iterators.product(Grid[1], Grid[2], Grid[3]))
-        X        = (c -> c[1]).(coords)
-        Y        = (c -> c[2]).(coords)
-        Z        = (c -> c[3]).(coords)
-        GridFull = (X, Y, Z)
-    end
+    H = sill.H.val           # maximum opening thickness [m]
 
     # ------------------------------------------------------------------
     # Number of pseudo-time steps (keeps displacement < 0.5 * min_dx)
     # ------------------------------------------------------------------
     Spacing = [Grid[i][2] - Grid[i][1] for i in 1:dim]
-    d       = minimum(Spacing) * 0.5
-    nsteps  = max(ceil(Int, H / d), 2)
-    dt      = 1.0 / nsteps
+    d = minimum(Spacing) * 0.5
+    nsteps = max(ceil(Int, H / d), 2)
+    dt = inv(oftype(float(one(eltype(T))), nsteps))
 
     # ------------------------------------------------------------------
-    # Displacement field (= velocity for pseudo-time dt_total = 1.0)
-    # hostrock_displacement handles centering + rotation internally.
+    # Displacement field (= velocity for pseudo-time dt_total = 1.0) on
+    # the backend of T; hostrock_displacement! handles centering + rotation.
     # ------------------------------------------------------------------
-    if dim == 2
-        Dx, Dz   = InjectSills.hostrock_displacement(sill, Float64.(X), Float64.(Z))
-        Velocity = (Dx, Dz)
-    elseif dim == 3
-        Dx, Dy, Dz = InjectSills.hostrock_displacement(sill, Float64.(X), Float64.(Y), Float64.(Z))
-        Velocity   = (Dx, Dy, Dz)
+    backend = get_backend(T)
+    GridFull = ntuple(dim) do k
+        X = KernelAbstractions.allocate(backend, eltype(T), size(T))
+        X .= reshape(Grid[k], ntuple(j -> j == k ? length(Grid[k]) : 1, dim))
     end
+    Velocity = InjectSills.hostrock_displacement!(map(similar, GridFull), sill, GridFull)
 
     # ------------------------------------------------------------------
-    # Pseudo-timestep advection: open the sill gradually
+    # Pseudo-timestep advection of T: open the sill gradually
     # ------------------------------------------------------------------
-    Tnew = zeros(size(T))
-    for _ in 1:nsteps
-        Tnew = AdvectTemperature(T, Grid, GridFull, Velocity, dt, AdvectionMethod, InterpolationMethod)
-        if isassigned(Tracers, 1)
-            AdvectTracers!(Tracers, Grid, Velocity, dt)
+    if AdvectionMethod == "RK2" && InterpolationMethod == "Linear"
+        buf = similar(T)
+        src, dst = T, buf
+        for _ in 1:nsteps
+            AdvectTemperature!(dst, src, Grid, Velocity, dt)
+            src, dst = dst, src
         end
-        T .= Tnew
+        src === T || copyto!(T, src)
+    else
+        T isa Array || throw(ArgumentError("inject_sills: AdvectionMethod=\"$AdvectionMethod\", InterpolationMethod=\"$InterpolationMethod\" needs a CPU Array; use RK2/Linear for $(typeof(T))"))
+        for _ in 1:nsteps
+            T .= AdvectTemperature(T, Grid, GridFull, Velocity, dt, AdvectionMethod, InterpolationMethod)
+        end
     end
+
+    # ------------------------------------------------------------------
+    # Move existing tracers and the plotting polygon with the host rock
+    # ------------------------------------------------------------------
+    if isassigned(Tracers, 1)
+        coord = Tracers.coord
+        P = ntuple(k -> getindex.(coord, k), dim)
+        displace_points!(P, sill, Grid)
+        for (c, i) in zip(coord, eachindex(coord))
+            c .= getindex.(P, i)
+        end
+    end
+    isempty(dike_poly) || displace_points!(dike_poly, sill, Grid)
 
     # ------------------------------------------------------------------
     # Set T = T_in inside the sill and seed new tracers
@@ -184,16 +193,6 @@ function inject_sills(Tracers, T::Array, Grid,
     # Injected volume [m³]: equivalent 3D volume of the sill type
     # ------------------------------------------------------------------
     InjectedVolume = ustrip(uconvert(m^3, InjectSills.volume(sill)))
-
-    # ------------------------------------------------------------------
-    # Optionally advect a plotting polygon
-    # ------------------------------------------------------------------
-    if !isempty(dike_poly)
-        poly_new = AdvectPoints((dike_poly[1], dike_poly[2]), Grid, Velocity, 1.0)   # advected coordinates
-        for i in eachindex(dike_poly)
-            dike_poly[i] .= poly_new[i]
-        end
-    end
 
     return Tracers, Tnew, InjectedVolume, dike_poly, Velocity
 end

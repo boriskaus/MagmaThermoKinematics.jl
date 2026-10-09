@@ -1,29 +1,17 @@
-using  Random
-const USE_GPU=false;
-if USE_GPU
-    using CUDA      # needs to be loaded before loading Parallkel=
-end
+using Random
 
 using MagmaThermoKinematics
-@static if USE_GPU
-    environment!(:gpu, Float64, 3)      # initialize parallel stencil in 2D
-    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
-else
-    environment!(:cpu, Float64, 3)      # initialize parallel stencil in 2D
-end
-using MagmaThermoKinematics.Diffusion3D # to load AFTER calling environment!()
-using MagmaThermoKinematics.Fields3D
+# using CUDA                        # for an NVIDIA GPU, then: backend = CUDABackend()
+backend = CPU()
 using MagmaThermoKinematics.MTK_GMG
-using MagmaThermoKinematics.MTK_GMG_3D
 using Random, GeoParams, GeophysicalModelGenerator
 
 const rng = Random.seed!(1234);     # same seed such that we can reproduce results
 
 
-
 function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
-    if mod(Num.it,10) == 0
-        println("$(Num.it), $(Num.time/SecYear/1e3) kyrs; max(T)=$(maximum(Arrays.Tnew))")
+    if mod(Num.it, 10) == 0
+        println("$(Num.it), $(Num.time / SecYear / 1.0e3) kyrs; max(T)=$(maximum(Arrays.Tnew))")
     end
     return nothing
 end
@@ -36,12 +24,12 @@ println("===============================================")
 
 
 # Create 3D grid of the region
-Topo_cart = load_GMG(joinpath(@__DIR__,"Topo_cart"))       # Note: Laacher seee is around [10,20]
-write_paraview(Topo_cart,"Topo_cart");
+Topo_cart = load_GMG(joinpath(@__DIR__, "Topo_cart"))       # Note: Laacher See is around [10,20]
+write_paraview(Topo_cart, "Topo_cart");
 # Create 3D grid of the region
-Nx,Ny,Nz = 100,100,100
-X,Y,Z       =   xyz_grid(range(-23,23, length=Nx),range(-19,19, length=Ny),range(-20,5, length=Nz))
-Data_3D     =   CartData(X,Y,Z,(Phases=zeros(Int64,size(X)),Temp=zeros(size(X))));       # 3D dataset
+Nx, Ny, Nz = 100, 100, 100
+X, Y, Z = xyz_grid(range(-23, 23, length = Nx), range(-19, 19, length = Ny), range(-20, 5, length = Nz))
+Data_3D = CartData(X, Y, Z, (Phases = zeros(Int64, size(X)), Temp = zeros(size(X))));       # 3D dataset
 
 # Intersect with topography
 Below = below_surface(Data_3D, Topo_cart)
@@ -53,40 +41,42 @@ Data_3D.fields.Phases[ind] .= 2
 
 # Set T:
 gradient = 30
-Data_3D.fields.Temp .= -Data_3D.z.val*gradient
+Data_3D.fields.Temp .= -Data_3D.z.val * gradient
 ind = findall(Data_3D.fields.Temp .< 10.0)
 Data_3D.fields.Temp[ind] .= 10.0
 
 # Set thermal anomaly
 x_c, y_c, z_c, r = -10, -10, -15, 2.5
-Volume  = 4/3*pi*r^3 # equivalent 3D volume of the anomaly [km^3]
-ind = findall((Data_3D.x.val .- x_c).^2 .+ (Data_3D.y.val .- y_c).^2 .+ (Data_3D.z.val .- z_c).^2 .< r^2)
+Volume = 4 / 3 * pi * r^3 # equivalent 3D volume of the anomaly [km^3]
+ind = findall((Data_3D.x.val .- x_c) .^ 2 .+ (Data_3D.y.val .- y_c) .^ 2 .+ (Data_3D.z.val .- z_c) .^ 2 .< r^2)
 Data_3D.fields.Temp[ind] .= 800.0
 
 
 # Define numerical parameters
-Num         = NumParam( SimName="Unzen3D", axisymmetric=false,
-                        maxTime_Myrs=0.025,
-                        fac_dt=0.2,
-                        SaveOutput_steps=20, CreateFig_steps=1000, plot_tracers=false, advect_polygon=false,
-                        USE_GPU=USE_GPU,
-                        AddRandomSills = true, RandomSills_timestep=5);
+Num = NumParam(
+    SimName = "Unzen3D", axisymmetric = false,
+    maxTime_Myrs = 0.025,
+    fac_dt = 0.2,
+    SaveOutput_steps = 20, CreateFig_steps = 1000, plot_tracers = false, advect_polygon = false,
+    backend = backend,
+    AddRandomSills = true, RandomSills_timestep = 5
+);
 
 # Default setup: ElasticDike equivalent via PennyShapedSill.
-sill = PennyShapedSill(Center=Point3(0.0, 0.0, -7.0e3) * m, Angle=Vec2(0.0, 0.0) * NoUnits, R=2.5e3 * m, H=1000 * m, E=1.5e10 * Pa, ν=0.3 * NoUnits)
+sill = PennyShapedSill(Center = Point3(0.0, 0.0, -7.0e3) * m, Angle = Vec2(0.0, 0.0) * NoUnits, R = 2.5e3 * m, H = 1000 * m, E = 1.5e10 * Pa, ν = 0.3 * NoUnits)
 
 # Alternative sill definitions (currently unused):
 # sill = CylindricalDikeTopAccretion(Center=Point3(0.0, 0.0, -7.0e3) * m, Angle=Vec2(0.0, 0.0) * NoUnits, W=5e3 * m, H=1000 * m)
 # sill = EllipticalIntrusion(Center=Point3(0.0, 0.0, -7.0e3) * m, Angle=Vec2(0.0, 0.0) * NoUnits, W=5e3 * m, H=1000 * m)
 
 Sill_params = SillParams(
-    sill                    = sill,
-    InjectionInterval_year  = 1000,
-    nTr_dike                = 300,
-    H_ran                   = 5000,
-    W_ran                   = 5000,
-    SillPhase               = 3,
-    BackgroundPhase         = 1,
+    sill = sill,
+    InjectionInterval_year = 1000,
+    nTr_dike = 300,
+    H_ran = 5000,
+    W_ran = 5000,
+    SillPhase = 3,
+    BackgroundPhase = 1,
 )
 
 # Keep random sill relocation and actual injection in sync.
@@ -96,44 +86,53 @@ if Num.AddRandomSills
 end
 
 # Define parameters for the different phases
-MatParam     = (SetMaterialParams(Name="Air", Phase=0,
-                                Density    = ConstantDensity(ρ=2700kg/m^3),
-                                LatentHeat = ConstantLatentHeat(Q_L=0.0J/kg),
-                                Conductivity = ConstantConductivity(k=300Watt/K/m),         # in case we use constant k
-                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
-                                Melting = SmoothMelting(MeltingParam_4thOrder())),          # Marxer & Ulmer melting
+MatParam = (
+    SetMaterialParams(
+        Name = "Air", Phase = 0,
+        Density = ConstantDensity(ρ = 2700kg / m^3),
+        LatentHeat = ConstantLatentHeat(Q_L = 0.0J / kg),
+        Conductivity = ConstantConductivity(k = 300Watt / K / m),         # in case we use constant k
+        HeatCapacity = ConstantHeatCapacity(Cp = 1000J / kg / K),
+        Melting = SmoothMelting(MeltingParam_4thOrder())
+    ),          # Marxer & Ulmer melting
 
-                SetMaterialParams(Name="Crust", Phase=1,
-                                Density    = ConstantDensity(ρ=2700kg/m^3),
-                                LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                                Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
-                                #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
-                                Melting = SmoothMelting(MeltingParam_4thOrder())),      # Marxer & Ulmer melting
+    SetMaterialParams(
+        Name = "Crust", Phase = 1,
+        Density = ConstantDensity(ρ = 2700kg / m^3),
+        LatentHeat = ConstantLatentHeat(Q_L = 3.13e5J / kg),
+        Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
+        #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
+        HeatCapacity = ConstantHeatCapacity(Cp = 1000J / kg / K),
+        Melting = SmoothMelting(MeltingParam_4thOrder())
+    ),      # Marxer & Ulmer melting
 
-                SetMaterialParams(Name="Mantle", Phase=2,
-                                Density    = ConstantDensity(ρ=2700kg/m^3),
-                                LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                                Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
-                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K)),
+    SetMaterialParams(
+        Name = "Mantle", Phase = 2,
+        Density = ConstantDensity(ρ = 2700kg / m^3),
+        LatentHeat = ConstantLatentHeat(Q_L = 3.13e5J / kg),
+        Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
+        HeatCapacity = ConstantHeatCapacity(Cp = 1000J / kg / K)
+    ),
 
-                SetMaterialParams(Name="Dikes", Phase=3,
-                                Density    = ConstantDensity(ρ=2700kg/m^3),
-                                LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                        #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
-                                Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
-                                #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
-                                Melting = SmoothMelting(MeltingParam_4thOrder()))      # Marxer & Ulmer melting
+    SetMaterialParams(
+        Name = "Dikes", Phase = 3,
+        Density = ConstantDensity(ρ = 2700kg / m^3),
+        LatentHeat = ConstantLatentHeat(Q_L = 3.13e5J / kg),
+        #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
+        Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
+        #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
+        HeatCapacity = ConstantHeatCapacity(Cp = 1000J / kg / K),
+        Melting = SmoothMelting(MeltingParam_4thOrder())
+    ),      # Marxer & Ulmer melting
 
-                )
+)
 
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Sill_params, CartData_input=Data_3D); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams(MatParam, Num, Sill_params, CartData_input = Data_3D); # start the main code
 Data_set3D_out = Data_3D;
-Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Temperature[C]",  Float32.(Array(Arrays.Tnew )));   # in MPa
-Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Temp",         Float32.(Array(Arrays.Tnew)));
-Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Phases",       Int32.(Array(Arrays.Phases)));
+Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Temperature[C]", Float32.(Array(Arrays.Tnew)));   # in MPa
+Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Temp", Float32.(Array(Arrays.Tnew)));
+Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Phases", Int32.(Array(Arrays.Phases)));
 Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "MeltFraction", Float32.(Array(Arrays.ϕ)));
-save_GMG(joinpath(Num.SimName,"Unzen3D_MTK_final"), Data_set3D_out)
+save_GMG(joinpath(Num.SimName, "Unzen3D_MTK_final"), Data_set3D_out)

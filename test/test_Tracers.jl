@@ -1,347 +1,109 @@
-# this file tests various aspects of the tracers routines
+# Tests for grid -> tracer interpolation and tracer -> grid phase ratios
 using MagmaThermoKinematics
-using ParallelStencil
-using ParallelStencil.FiniteDifferences3D
-using Plots
-using LinearAlgebra
-using SpecialFunctions
+using MagmaThermoKinematics: JLD2
+using ZirconGrowth
 using Test
 
-
-const CreatePlots = false      # easy way to deactivate plotting throughout
-
-function test_TracerUpdate(Dimension="2D", InterpolationMethod="Linear")
-  # test interpolation methods from grid to tracers in 2D and 3D
-
-  if Dimension=="2D"
-    # Model parameters
-    W,H                     =   1.,  1.;                                    # Width, Length, Height
-
-    # Define grid
-    Nx, Nz                  =   33, 33;                                     # resolution of coarse grid
-    dx,dz                   =   W/(Nx-1), H/(Nz-1);                         # grid size [m]
-    x,z                     =   0:dx:((Nx-1)*dx), 0:dz:((Nz-1)*dz);         # 1D coordinate arrays
-    coords                  =   collect(Iterators.product(x,z))             # generate coordinates from 1D coordinate vectors
-    X,Z                     =   (x->x[1]).(coords), (x->x[2]).(coords);     # transfer coords to 3D arrays
-    Grid,FullGrid,Spacing   =   (x,z), (X,Z), (dx,dz);
-
-    # Define function on grid
-    T                       =   cos.(pi.*X).*sin.(2*pi.*Z)
-
-  elseif Dimension=="3D"
-      # Model parameters
-      W,L,H                 =   1., 1., 1.;                                    # Width, Length, Height
-
-      # Define grid
-      Nx, Ny, Nz              =   33,33, 33;                                                    # resolution of coarse grid
-      dx,dy,dz                =   W/(Nx-1), L/(Ny-1), H/(Nz-1);                                 # grid size [m]
-      x,y,z                   =   0:dx:((Nx-1)*dx),  0:dy:((Ny-1)*dy), 0:dz:((Nz-1)*dz);        # 1D coordinate arrays
-      coords                  =   collect(Iterators.product(x,y,z))                             # generate coordinates from 1D coordinate vectors
-      X,Y,Z                   =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);   # transfer coords to 3D arrays
-      Grid, FullGrid, Spacing =   (x,y,z), (X,Y,Z), (dx,dy,dz);
-
-      # Define function on coarse grid
-      T                       =   cos.(pi.*X).*sin.(2*pi.*Z).*sin.(2*pi.*Y)
-
-  end
-
-  # Create tracer structure that fill te full grid
-  Tracers                     =   InitializeTracers(FullGrid,3, false);
-
-  Phi     =   Z./H;
-
-  # Perform interpolation from grid -> tracers
-  Tracers =  UpdateTracers(Tracers, Grid, T, Phi, InterpolationMethod);
-
-  # Compute error
-  Tr_coord    =   Tracers.coord; Tr_coord = hcat(Tr_coord...)';       # extract array with coordinates of tracers
-
-  if Dimension=="2D"
-    Tanal       =   cos.(pi.*Tr_coord[:,1]).*sin.(2*pi.*Tr_coord[:,2]);
-    Phi_anal    =    1 .- Tr_coord[:,end]/H;
-    Error       =   (Tanal - Tracers.T)  .+ (Phi_anal-Tracers.Phi_melt);
-
-    if CreatePlots
-      p1          =   contourf(x, z,      T',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Grid",  dpi=300, levels=10)
-      p2          =   scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), title="Tracers", markersize=2.0,dpi=300)
-
-    #   p1          =   contourf(x, z,      (1.0-Phi)',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Grid",  dpi=150, levels=10)
-    #   p2          =   scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.Phi_melt, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), title="Tracers", markersize=5.0)
-
-      plot(p1,p2);
-
-     png("TracerUpdate_2D_$InterpolationMethod")
+# Exact multilinear interpolation of `F` (sampled on the 1D coordinates `xs`) at point `p`
+function multilinear_reference(xs, F, p)
+    p = Tuple(p)
+    i = map((x, q) -> clamp(searchsortedlast(x, q), 1, length(x) - 1), xs, p)
+    t = map((x, q, j) -> (q - x[j]) / (x[j + 1] - x[j]), xs, p, i)
+    val = 0.0
+    for off in Iterators.product(ntuple(_ -> 0:1, length(xs))...)
+        w = prod(o == 1 ? tk : 1 - tk for (o, tk) in zip(off, t))
+        val += w * F[CartesianIndex(i .+ off)]
     end
-
-  elseif Dimension=="3D"
-    Tanal       =   cos.(pi.*Tr_coord[:,1]).*sin.(2*pi.*Tr_coord[:,3]).*sin.(2*pi.*Tr_coord[:,2]);
-    Phi_anal    =   1 .- Tr_coord[:,end]/H;
-    Error       =   (Tanal - Tracers.T)  .+ (Phi_anal-Tracers.Phi_melt);
-
-    if CreatePlots
-    #  p1          =   contourf(x, z,      Data_coarse1[1][:,10,:]', aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Grid",  dpi=150, levels=10)
-    #  p2          =   scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), title="Tracers", markersize=5.0)
-
-   #   plot(p1,p2);
-   #   png("TracerUpdate_2D_$InterpolationMethod")
-    end
-
-  end
-
-  error = norm(Error[:],2)/length(Error[:]);
-  return error;        # return error
+    return val
 end
 
-
-function test_PhaseRatioFromTracers(Dimension="2D", InterpolationMethod="Linear", Method="TracersEverywhere")
-  # test routines to go from tracers -> Grid
-
-  if Dimension=="2D"
-    dim                     = 2;
-    # Model parameters
-    W,H                     =   1.,  1.;                                    # Width, Length, Height
-
-    # Define grid
-    Nx, Nz                  =   65, 65;                                   # resolution of coarse grid
-    dx,dz                   =   W/(Nx-1), H/(Nz-1);                         # grid size [m]
-    x,z                     =   0:dx:((Nx-1)*dx), 0:dz:((Nz-1)*dz);         # 1D coordinate arrays
-    coords                  =   collect(Iterators.product(x,z))             # generate coordinates from 1D coordinate vectors
-    X,Z                     =   (x->x[1]).(coords), (x->x[2]).(coords);     # transfer coords to 3D arrays
-    Grid,FullGrid,Spacing   =   (x,z), (X,Z), (dx,dz);
-
-    # Define function on grid
-    T                       =   cos.(pi.*X).*sin.(2*pi.*Z)
-
-  elseif Dimension=="3D"
-      dim                   = 3;
-      # Model parameters
-      W,L,H                 =   1., 1., 1.;                                    # Width, Length, Height
-
-      # Define grid
-      Nx, Ny, Nz              =   33,33, 33;                                                    # resolution of coarse grid
-      dx,dy,dz                =   W/(Nx-1), L/(Ny-1), H/(Nz-1);                                 # grid size [m]
-      x,y,z                   =   0:dx:((Nx-1)*dx),  0:dy:((Ny-1)*dy), 0:dz:((Nz-1)*dz);        # 1D coordinate arrays
-      coords                  =   collect(Iterators.product(x,y,z))                             # generate coordinates from 1D coordinate vectors
-      X,Y,Z                   =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);   # transfer coords to 3D arrays
-      Grid, FullGrid, Spacing =   (x,y,z), (X,Y,Z), (dx,dy,dz);
-
-      # Define function on coarse grid
-      T                       =   cos.(pi.*X).*sin.(2*pi.*Z).*sin.(2*pi.*Y)
-
-  end
-
-  # Create tracer structure that fill the full grid
-  #println("InitializeTracers:")
-  if      Method=="TracersEverywhere"
-    Tracers                     =   InitializeTracers(FullGrid,3, false);   # tracers defined everywhere
-
-  elseif  Method=="TracersLimitedRegion"
-    # Tracers defined in a limited region only, with a default phase outside this area
-
-    # we use the same routine to initialize tracers but in a smaller square region
-    W_l, H_l      =   W/3.0, H/3.0;
-    dx_l,dz_l     =   W_l/(Nx-1), H_l/(Nz-1);                         # grid size [m]
-    xl,zl         =   0.3:dx_l:((Nx-1)*dx_l)+0.3, 0.3:dz_l:((Nz-1)*dz_l)+0.3;         # 1D coordinate arrays of limited region
-    if dim==3
-      L_l         =   L/3.0;
-      dy_l        =   L_l/(Ny-1);
-      yl          =   0.3:dy_l:((Ny-1)*dy_l)+0.3;
-      coords      =   collect(Iterators.product(xl,yl,zl))
-      X,Y,Z       =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);   # transfer coords to 3D arrays
-      FullGrid_l  =   (X,Y,Z)
-
-    else
-      coords      =   collect(Iterators.product(xl,zl))
-      X,Z         =   (x->x[1]).(coords), (x->x[2]).(coords);   # transfer coords to 2D arrays
-      FullGrid_l  =   (X,Z)
-    end
-    Tracers       =   InitializeTracers(FullGrid_l,2, false);   # tracers defined everywhere
-
-  else
-    error("unknown Method = $Method")
-  end
-
-  # Set different phases/temperatures on tracers (default Phase = 0)
-  # Sphere 1 (Phase=2)
-  if      dim==2; cen = [0.5; 0.5];
-  elseif  dim==3; cen = [0.5; 0.5; 0.5]; end
-  R = 0.1;
-  [Tracers.Phase[i]=2  for i=1:length(Tracers) if sum( (Tracers.coord[i]-cen).^2)<R^dim ]   # julia iterator to set props on Tracers
-
-  if      dim==2; cen = [0.15; 0.7];
-  elseif  dim==3; cen = [0.15; 0.1; 0.7]; end
-  R = 0.1;
-  [Tracers.Phase[i]=3  for i=1:length(Tracers) if sum( (Tracers.coord[i]-cen).^2)<R^dim ]
-
-  # Call main routine to compute phase fractions from particles
-  #println("PhaseRatioFromTracers:")
-  if      Method=="TracersEverywhere"
-    PhaseRatio, NumTracers  =   PhaseRatioFromTracers(FullGrid, Grid, Tracers, InterpolationMethod, true);
-  else
-    PhaseRatio,  NumTracers  =   PhaseRatioFromTracers(FullGrid, Grid, Tracers, InterpolationMethod, true, BackgroundPhase=4);
-  end
-
-  # Also test the Rocktype routine
-  RockType    =   RockAssemblage(PhaseRatio);
-
-
-  Tr_coord    =   Tracers.coord; Tr_coord = hcat(Tr_coord...)';       # extract array with coordinates of tracers
-  if Dimension=="2D"
-    Data =   PhaseRatio[:,:,1];
-    if CreatePlots
-     # @show size(PhaseRatio)
-      #p1          =   contourf(x, z,      PhaseRatio[:,:,3]',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Grid",  dpi=300, levels=10)
-      #p1          =   heatmap(x, z,      PhaseRatio[:,:,3]',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Grid",  dpi=300)
-
-       p1          =   heatmap(x, z,      RockType',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="RockType",  dpi=300)
-      #p1          =   heatmap(x, z,      NumTracers',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="NumTracers",  dpi=300)
-
-      #p2 = plot(X[:],Z[:],markershape = :plus, markersize=0.2)
-      p2          =   scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), title="Tracers", markersize=1.0,dpi=300)
-
-
-    #   p1          =   contourf(x, z,      (1.0-Phi)',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Grid",  dpi=150, levels=10)
-    #   p2          =   scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.Phi_melt, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), title="Tracers", markersize=5.0)
-
-      #plot(p1,p2);
-      plot(p1);
-
-
-      png("PhaseRatioFromTracers_2D_$(InterpolationMethod)_$(Method)")
+@testset "Tracers" begin
+    cases = (
+        (CreateGrid(size = (7, 9), x = (0.0, 1.0), z = (-2.0, 0.5)), (x, z) -> sin(3x) * cos(2z)),
+        (CreateGrid(size = (7, 6, 8), x = (0.0, 1.0), y = (1.0, 2.0), z = (-2.0, 0.5)), (x, y, z) -> sin(3x) * cos(2y) * exp(z)),
+    )
+    for (Grid, f) in cases
+        dim = length(Grid.N)
+        xs = Grid.coord1D
+        F = [f(ntuple(d -> xs[d][I[d]], dim)...) for I in CartesianIndices(Grid.N)]
+        G = 2 .* F .+ 1
+        # first cell, last cell, on min and max boundary, interior
+        pts = [
+            [Grid.min[d] + 0.5 * Grid.Δ[d] for d in 1:dim],
+            [Grid.max[d] - 0.5 * Grid.Δ[d] for d in 1:dim],
+            collect(Grid.min),
+            collect(Grid.max),
+            [Grid.min[d] + 0.37 * Grid.L[d] for d in 1:dim],
+        ]
+        for p in pts
+            Tr = StructArray([Tracer{Float64}(coord = copy(p))])
+            ref = multilinear_reference(xs, F, p)
+            UpdateTracers_T_ϕ!(Tr, xs, F, G)
+            @test Tr.T[1] ≈ ref atol = 1.0e-12
+            @test Tr.Phi[1] ≈ multilinear_reference(xs, G, p) atol = 1.0e-12
+            Tr = StructArray([Tracer{Float64}(coord = copy(p))])
+            UpdateTracers_Field!(Tr, Grid, F, :T)
+            @test Tr.T[1] ≈ ref atol = 1.0e-12
+            UpdateTracers_Field!(Tr, Grid, G, :Phi)
+            @test Tr.Phi[1] ≈ multilinear_reference(xs, G, p) atol = 1.0e-12
+        end
     end
 
-  elseif Dimension=="3D"
-    Data =   PhaseRatio[:,:,:,1];
-
-    if CreatePlots
-    #  p1          =   contourf(x, z,      Data_coarse1[1][:,10,:]', aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Grid",  dpi=150, levels=10)
-    #  p2          =   scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), title="Tracers", markersize=5.0)
-
-   #   plot(p1,p2);
-   #   png("Tracer2Grid_2D_$InterpolationMethod")
+    @testset "PhaseRatioFromTracers! DistanceWeighted, tracers on a node" begin
+        Grid = CreateGrid(size = (5, 5), x = (0.0, 1.0), z = (0.0, 1.0))
+        node = [Grid.coord1D[1][3], Grid.coord1D[2][3]]
+        Tr = StructArray([Tracer{Float64}(coord = copy(node), Phase = 1), Tracer{Float64}(coord = copy(node), Phase = 2)])
+        PhaseRatio = zeros(Grid.N..., 2)
+        PhaseRatioFromTracers!(PhaseRatio, Grid, Tr; InterpolationMethod = "DistanceWeighted")
+        @test PhaseRatio[3, 3, :] ≈ [0.5, 0.5]
     end
 
-  end
+    @testset "PhaseRatioFromTracers! 1D, background phase, out-of-grid tracer" begin
+        Grid = CreateGrid(size = 5, extent = 1.0)
+        Tr = StructArray([Tracer{Float64}(coord = [0.5], Phase = 2), Tracer{Float64}(coord = [1.5], Phase = 2)])
+        PhaseRatio = zeros(5, 2)
+        PhaseRatioFromTracers!(PhaseRatio, Grid, Tr; BackgroundPhase = 1)
+        @test PhaseRatio[:, 2] == [0, 0, 1, 0, 1]        # the tracer past x = 1 counts at the last node
+        @test PhaseRatio[:, 1] == [1, 1, 0, 1, 0]
 
-  return norm(RockType);        # return norm of data
+        @test_throws "Size of PhaseRatio array inconsistent with input grid" PhaseRatioFromTracers!(zeros(4, 2), Grid, Tr)
+        @test_throws "Size of last dimension of PhaseRatio is too small" PhaseRatioFromTracers!(zeros(5, 1), Grid, Tr)
+        G = Grid
+        Grid_var = typeof(G)(false, G.N, G.Δ, G.L, G.min, G.max, G.coord1D, G.coord1D_cen)
+        @test_throws "only works for constant spacing" PhaseRatioFromTracers!(zeros(5, 2), Grid_var, Tr)
+    end
+
+    @testset "zircon ages and growth from Tt-paths" begin
+        t = collect(0.0:0.002:0.1)              # Myr
+        cooling(Tstart) = Tracer{Float64}(coord = [0.0, 0.0], time_vec = copy(t), T_vec = collect(range(Tstart, 750.0, length(t))))
+        Tr = StructArray([cooling(1000.0), cooling(950.0), cooling(900.0)])
+        dir = mktempdir()
+        JLD2.jldsave(joinpath(dir, "Tracers_SimParams.jld2"); Tracers = Tr, Tav_magma_Time = [1.0], Time_vec = t)
+
+        redirect_stdout(devnull) do
+            Process_ZirconAges(dir)
+        end
+        d = JLD2.load(joinpath(dir, "ZirconAges.jld2"))
+        @test issubset(["Age_Ma", "cum_PDF", "norm_PDF", "T_av_time", "T_average_magma_time", "number_zircons"], keys(d))
+        @test issorted(d["cum_PDF"], rev = true)
+        @test extrema(d["cum_PDF"]) == (0.0, 1.0)
+
+        # a single-step tracer and one that never cools below zircon saturation are skipped
+        hot = Tracer{Float64}(coord = [0.0, 0.0], time_vec = copy(t), T_vec = fill(1100.0, length(t)))
+        short = Tracer{Float64}(coord = [0.0, 0.0], time_vec = [0.0], T_vec = [1000.0])
+        r = redirect_stdout(devnull) do
+            simulate_zircon_growth_from_tracers(StructArray([Tr..., hot, short]); nx = 20, return_results = true)
+        end
+        @test length(r.age_years) == length(r.zircon_radius_um) == length(r.results) == 3
+        @test all(0 .< r.age_years .< 1.0e5)               # within the 0.1 Myr Tt-path
+        @test issorted(r.zircon_radius_um, rev = true)     # longer above the solidus, larger crystal
+        @test volume_averaged_age(r.results) == r.age_years
+
+        r1, rdir = redirect_stdout(devnull) do
+            simulate_zircon_growth_from_tracers(Tr[1]; nx = 20), simulate_zircon_growth_from_tracers(dir; nx = 20)
+        end
+        @test r1.age_years == r.age_years[1:1]
+        @test rdir.age_years == r.age_years
+        @test JLD2.load(joinpath(dir, "ZirconGrowth.jld2"), "age_years") == r.age_years
+    end
 end
-
-function test_TracerToGrid(Dimension="2D")
-  # tests interpolating TracersToGrid! routine, which interpolates, e.g. temperature from tracers to the grid
-
-  if Dimension=="2D"
-    # Model parameters
-    W,H                     =   1.,  1.;                                    # Width, Length, Height
-
-    # Define grid
-    Nx, Nz                  =   33, 33;                                     # resolution of coarse grid
-    dx,dz                   =   W/(Nx-1), H/(Nz-1);                         # grid size [m]
-    x,z                     =   0:dx:((Nx-1)*dx), 0:dz:((Nz-1)*dz);         # 1D coordinate arrays
-    coords                  =   collect(Iterators.product(x,z))             # generate coordinates from 1D coordinate vectors
-    X,Z                     =   (x->x[1]).(coords), (x->x[2]).(coords);     # transfer coords to 3D arrays
-    Grid,FullGrid,Spacing   =   (x,z), (X,Z), (dx,dz);
-
-    # Define function on grid
-    T                       =   cos.(pi.*X).*sin.(2*pi.*Z)
-
-  elseif Dimension=="3D"
-      # Model parameters
-      W,L,H                 =   1., 1., 1.;                                    # Width, Length, Height
-
-      # Define grid
-      Nx, Ny, Nz              =   33,33, 33;                                                    # resolution of coarse grid
-      dx,dy,dz                =   W/(Nx-1), L/(Ny-1), H/(Nz-1);                                 # grid size [m]
-      x,y,z                   =   0:dx:((Nx-1)*dx),  0:dy:((Ny-1)*dy), 0:dz:((Nz-1)*dz);        # 1D coordinate arrays
-      coords                  =   collect(Iterators.product(x,y,z))                             # generate coordinates from 1D coordinate vectors
-      X,Y,Z                   =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);   # transfer coords to 3D arrays
-      Grid, FullGrid, Spacing =   (x,y,z), (X,Y,Z), (dx,dy,dz);
-
-      # Define function on coarse grid
-      T                       =   cos.(pi.*X).*sin.(2*pi.*Z).*sin.(2*pi.*Y)
-
-  end
-
-  # Create tracer structure that fill te full grid
-  Tracers                     =   InitializeTracers(FullGrid,3, false);
-  @time Tracers               =   InitializeTracers(FullGrid,3, false);
-
-  Phi     =   Z./H;
-
-  # Perform interpolation from grid -> tracers
-  Tracers =  UpdateTracers(Tracers, Grid, T, Phi, "Linear");
-
-
-  # Go back from tracers to a new grid
-  Tnew        =   copy(T)*.0;
-  NumTracers  =   TracersToGrid!(Tnew, FullGrid, Grid, Tracers, "T", "Constant", true);
-  NumTracers  =   TracersToGrid!(Tnew, FullGrid, Grid, Tracers, "T", "Constant", true);   # do it a second time, to make sire it doesn't double
-
-
-
-  # Compute error
-  Tr_coord    =   Tracers.coord; Tr_coord = hcat(Tr_coord...)';       # extract array with coordinates of tracers
-
-  if Dimension=="2D"
-    Tanal       =   cos.(pi.*X).*sin.(2*pi.*Z);
-    #Phi_anal    =    1 .- Tr_coord[:,end]/H;
-    Error       =   (Tanal - Tnew);
-
-    if CreatePlots
-      p2          =   contourf(x, z,      Tnew',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Tnew",  dpi=300, levels=10)
-      p1          =   scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), title="T on Tracers", markersize=2.0,dpi=300)
-
-    #   p1          =   contourf(x, z,      (1.0-Phi)',       aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Grid",  dpi=150, levels=10)
-    #   p2          =   scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.Phi_melt, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), title="Tracers", markersize=5.0)
-
-      plot(p1,p2);
-
-     png("TracerToGrid_2D")
-    end
-
-  elseif Dimension=="3D"
-    Tanal       =   cos.(pi.*X).*sin.(2*pi.*Z).*sin.(2*pi.*Y);
-    #Phi_anal    =   1 .- Tr_coord[:,end]/H;
-    Error       =   (Tanal - Tnew);
-
-    if CreatePlots
-    #  p1          =   contourf(x, z,      Data_coarse1[1][:,10,:]', aspect_ratio=1, xlims=(x[1],x[end]), ylims=(z[1],z[end]),   c=:inferno, title="Grid",  dpi=150, levels=10)
-    #  p2          =   scatter(Tr_coord[:,1], Tr_coord[:,2], zcolor = Tracers.T, m = (:inferno , 0.8, Plots.stroke(0.01, :black)), title="Tracers", markersize=5.0)
-
-   #   plot(p1,p2);
-   #   png("TracerUpdate_2D_$InterpolationMethod")
-    end
-
-  end
-
-  error = norm(Error[:],2)/length(Error[:]);
-  return error;        # return error
-end
-
-
-# ===================================================================================================
-if 1==0
-  @testset "Update Tracer" begin
-    @test test_TracerUpdate("2D", "Linear") ≈  2.2699573946787955e-5  atol=1e-8;
-    @test test_TracerUpdate("2D", "Cubic")  ≈  4.217098535399923e-7   atol=1e-8;
-    @test test_TracerUpdate("3D", "Linear") ≈  2.9095783218223196e-6  atol=1e-8;
-    @test test_TracerUpdate("3D", "Cubic")  ≈  3.252909873990004e-8   atol=1e-10;
-  end;
-
-  @testset "PhaseRatioFromTracers" begin
-    @test test_PhaseRatioFromTracers("2D", "DistanceWeighted")  ≈  74.96665925596525    atol=1e-3;
-    @test test_PhaseRatioFromTracers("2D", "Constant")          ≈  75.17978451685       atol=1e-3;
-    @test test_PhaseRatioFromTracers("3D", "DistanceWeighted")  ≈  189.66285877841239   atol=1e-3;
-    @test test_PhaseRatioFromTracers("3D", "Constant")          ≈  189.68658360569415   atol=1e-3;
-    @test test_PhaseRatioFromTracers("2D", "DistanceWeighted","TracersLimitedRegion") ≈  246.4710936398019 atol=1e-3;
-  end;
-
-
-  @testset "TracerToGrid" begin
-    @test test_TracerToGrid("2D")  ≈  0.0006078889344375056    atol=1e-8;
-    @test test_TracerToGrid("3D")  ≈  0.00010053219987571875   atol=1e-8;
-  end;
-
-end
-
-test_TracerToGrid("2D")
-test_TracerToGrid("3D")

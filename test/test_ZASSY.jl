@@ -1,24 +1,9 @@
 # This is a relatively complicated test, but is added to ensure that the simulations published in the ZASSY paper remain reproducible:
 #
 using Test, LinearAlgebra, SpecialFunctions, Random
-const USE_GPU=false;
-if USE_GPU
-    using CUDA      # needs to be loaded before loading Parallkel=
-end
 using InjectSills
-using ParallelStencil, ParallelStencil.FiniteDifferences2D
 
 using MagmaThermoKinematics
-@static if USE_GPU
-    environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
-    @init_parallel_stencil(CUDA, Float64, 2)
-else
-    environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
-    @init_parallel_stencil(Threads, Float64, 2)
-end
-using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
-using MagmaThermoKinematics.Fields2D
 
 
 Random.seed!(1234);     # such that we can reproduce results
@@ -31,44 +16,44 @@ using Printf        # pretty print
 """
 @with_kw struct NumParam
     SimName::String = "Zassy_UCLA_ellipticalIntrusion"    # name of simulation
-    FigTitle                    =   "UCLA setup"
-    Nx::Int64                   =   201
-    Nz::Int64                   =   201
-    W::Float64                  =   20e3
-    H::Float64                  =   20e3
-    dx::Float64                 =   W/(Nx-1)
-    dz::Float64                 =   H/(Nz-1)        # grid spacing in z
-    Tsurface_Celcius::Float64   =   0               # Surface T in celcius
-    Geotherm::Float64           =   40/1e3          # in K/m
-    maxTime_Myrs::Float64       =   1.5             # maximum timestep
-    maxTime::Float64            =   maxTime_Myrs*SecYear*1e6 # maximum timestep  in seconds
-    SaveOutput_steps::Int64     =   1e3;            # saves output every x steps
-    CreateFig_steps::Int64      =   500;            # Create a figure every X steps
-    flux_bottom_BC::Bool        =   false           # flux bottom BC?
-    flux_bottom::Float64        =   167e-3          # Flux in W/m2 in case flux_bottom_BC=true
-    deactivate_La_at_depth::Bool=   false           # deactivate latent heating @ the bottom of the model box?
-    deactivationDepth::Float64  =   -15e3           # deactivation depth
-    plot_tracers::Bool          =   true            # adds passive tracers to the plot
-    advect_polygon::Bool        =   false           # adds a polygon around the intrusion area
-    axisymmetric::Bool          =   true            # axisymmetric (if true) of 2D geometry?
-    κ_time::Float64             =   3.3/(1000*2700) # κ to determine the stable timestep
-    fac_dt::Float64             =   0.4;            # prefactor with which dt is multiplied
-    dt::Float64                 =   fac_dt*min(dx^2, dz^2)./κ_time/4;   # timestep
-    nt::Int64                   =   floor(maxTime/dt);
-    ω::Float64                  =   0.8;            # relaxation parameter for nonlinear iterations
-    max_iter::Int64             =   5000;           # max. number of nonlinear iterations
-    verbose::Bool               =   false;
-    convergence::Float64        =   1e-5;           # nonlinear convergence criteria
-    AnalyticalInitialGeo::Bool  =   false;
-    qs_anal::Float64            =   170e-3;
-    qm_anal::Float64            =   167e-3;
-    hr_anal::Float64            =   10e3;
-    k_anal::Float64             =   3.35;
-    InitialEllipse::Bool        =   false;
-    a_init::Float64             =   2.5e3;
-    b_init::Float64             =   1.5e3;
-    TrackTracersOnGrid::Bool    =   true;
-    TracerFloatType::DataType   =   Float32;
+    FigTitle = "UCLA setup"
+    Nx::Int64 = 201
+    Nz::Int64 = 201
+    W::Float64 = 20.0e3
+    H::Float64 = 20.0e3
+    dx::Float64 = W / (Nx - 1)
+    dz::Float64 = H / (Nz - 1)        # grid spacing in z
+    Tsurface_Celsius::Float64 = 0               # Surface T in Celsius
+    Geotherm::Float64 = 40 / 1.0e3          # in K/m
+    maxTime_Myrs::Float64 = 1.5             # maximum timestep
+    maxTime::Float64 = maxTime_Myrs * SecYear * 1.0e6 # maximum timestep  in seconds
+    SaveOutput_steps::Int64 = 1.0e3             # saves output every x steps
+    CreateFig_steps::Int64 = 500             # Create a figure every X steps
+    flux_bottom_BC::Bool = false           # flux bottom BC?
+    flux_bottom::Float64 = 167.0e-3          # Flux in W/m2 in case flux_bottom_BC=true
+    deactivate_La_at_depth::Bool = false           # deactivate latent heating @ the bottom of the model box?
+    deactivationDepth::Float64 = -15.0e3           # deactivation depth
+    plot_tracers::Bool = true            # adds passive tracers to the plot
+    advect_polygon::Bool = false           # adds a polygon around the intrusion area
+    axisymmetric::Bool = true            # axisymmetric (if true) of 2D geometry?
+    κ_time::Float64 = 3.3 / (1000 * 2700) # κ to determine the stable timestep
+    fac_dt::Float64 = 0.4             # prefactor with which dt is multiplied
+    dt::Float64 = fac_dt * min(dx^2, dz^2) ./ κ_time / 4    # timestep
+    nt::Int64 = floor(maxTime / dt)
+    ω::Float64 = 0.5             # relaxation parameter for nonlinear iterations
+    max_iter::Int64 = 5000            # max. number of nonlinear iterations
+    verbose::Bool = false
+    convergence::Float64 = 1.0e-5            # nonlinear convergence criteria
+    AnalyticalInitialGeo::Bool = false
+    qs_anal::Float64 = 170.0e-3
+    qm_anal::Float64 = 167.0e-3
+    hr_anal::Float64 = 10.0e3
+    k_anal::Float64 = 3.35
+    InitialEllipse::Bool = false
+    a_init::Float64 = 2.5e3
+    b_init::Float64 = 1.5e3
+    TrackTracersOnGrid::Bool = true
+    TracerFloatType::DataType = Float32
 end
 
 """
@@ -76,7 +61,7 @@ end
 """
 function AnalyticalGeotherm!(T, Z, Tsurf, qm, qs, k, hr)
 
-    T      .=  @. Tsurf - (qm/k)*Z + (qs-qm)*hr/k*( 1.0 - exp(Z/hr))
+    T .= @. Tsurf - (qm / k) * Z + (qs - qm) * hr / k * (1.0 - exp(Z / hr))
 
     return nothing
 end
@@ -85,229 +70,224 @@ end
 @inline _sill_w(Dikes) = Dikes.sill.W.val
 @inline _sill_h(Dikes) = Dikes.sill.H.val
 
-@inline function _build_sill_2d(Dikes; W=_sill_w(Dikes), H=_sill_h(Dikes), angle_deg=0.0)
+@inline function _build_sill_2d(Dikes; W = _sill_w(Dikes), H = _sill_h(Dikes), angle_deg = 0.0)
     c = _sill_center_2d(Dikes)
-    return InjectSills.update_abstractsill(Dikes.sill;
-                                           Center=Point2(c[1], c[2]) * m,
-                                           Angle=Vec1(angle_deg) * NoUnits,
-                                           W=W * m,
-                                           H=H * m)
+    return InjectSills.update_abstractsill(
+        Dikes.sill;
+        Center = Point2(c[1], c[2]) * m,
+        Angle = Vec1(angle_deg) * NoUnits,
+        W = W * m,
+        H = H * m
+    )
 end
 
 #------------------------------------------------------------------------------------------
-@views function MainCode_2D(Mat_tup, Num, Dikes);
+@views function MainCode_2D(Mat_tup, Num, Dikes)
 
     # Array & grid initializations ---------------
-    Arrays = CreateArrays(Dict( (Num.Nx,  Num.Nz  )=>(T=0,T_K=0,  Tupdate=0, Tbuffer=0, Tnew=0, T_init=0, T_it_old=0, Kc=1, Rho=1, Cp=1, Hr=0, Hl=0, ϕ=0, dϕdT=0,dϕdT_o=0, R=0, Z=0, P=0),
-                                (Num.Nx-1,Num.Nz  )=>(qx=0,Kx=0, Rc=0),
-                                (Num.Nx  ,Num.Nz-1)=>(qz=0,Kz=0 )
-                                ))
+    Arrays = CreateArrays(Dict((Num.Nx, Num.Nz) => (T = 0, T_K = 0, Tupdate = 0, Tnew = 0, T_init = 0, T_it_old = 0, Kc = 1, Rho = 1, Cp = 1, Hr = 0, Hl = 0, ϕ = 0, dϕdT = 0, dϕdT_o = 0, R = 0, Z = 0, P = 0)))
 
     # Set up model geometry & initial T structure
-    Grid    = CreateGrid(size=(Num.Nx,Num.Nz), extent=(Num.W, Num.H))
+    Grid = CreateGrid(size = (Num.Nx, Num.Nz), extent = (Num.W, Num.H))
     GridArray!(Arrays.R, Arrays.Z, Grid)
-    Arrays.Rc              .=   (Arrays.R[2:end,:] + Arrays.R[1:end-1,:])/2         # center points in x
-    Rc_CPU                  = Array(Arrays.Rc);                                 # on CPU
     # --------------------------------------------
 
-    println("Timestep Δt= $(Num.dt/SecYear) ")
+    println("Timestep Δt= $(Num.dt / SecYear) ")
 
-    FT                      =   Num.TracerFloatType
-    Tracers                 =   StructArray{Tracer{FT}}(undef, 1)                   # Initialize tracers
+    FT = Num.TracerFloatType
+    Tracers = StructArray{Tracer{FT}}(undef, 1)                   # Initialize tracers
     # Set initial geotherm -----------------------
     if Num.AnalyticalInitialGeo
         # Turcotte & Schubert  analytical geotherm which takes depth-dependent radioactive heating into account
         # This is used in the UCLA setup. Parameters in Mat_tup should be consistent with this (we don't check for that)
-        Arrays.T_init      .=  @. Num.Tsurface_Celcius - (Num.qm_anal/Num.k_anal)*Arrays.Z + (Num.qs_anal-Num.qm_anal)*Num.hr_anal/Num.k_anal*( 1.0 - exp(Arrays.Z/Num.hr_anal))
-        #AnalyticalGeotherm!(Arrays.T_init, Arrays.Z, Num.Tsurface_Celcius, Num.qm_anal, Num.qs_anal, Num.k_anal, Num.hr_anal)
+        Arrays.T_init .= @. Num.Tsurface_Celsius - (Num.qm_anal / Num.k_anal) * Arrays.Z + (Num.qs_anal - Num.qm_anal) * Num.hr_anal / Num.k_anal * (1.0 - exp(Arrays.Z / Num.hr_anal))
+        #AnalyticalGeotherm!(Arrays.T_init, Arrays.Z, Num.Tsurface_Celsius, Num.qm_anal, Num.qs_anal, Num.k_anal, Num.hr_anal)
 
-        Geothermalgradient_K_km = (maximum(Arrays.T_init) - minimum(Arrays.T_init))/(maximum(Arrays.Z) - minimum(Arrays.Z))*1e3
+        Geothermalgradient_K_km = (maximum(Arrays.T_init) - minimum(Arrays.T_init)) / (maximum(Arrays.Z) - minimum(Arrays.Z)) * 1.0e3
         # check that this is selected
-        H0  = (Num.qs_anal-Num.qm_anal)/Num.hr_anal
+        H0 = (Num.qs_anal - Num.qm_anal) / Num.hr_anal
         H0_num = Value(Mat_tup[1].RadioactiveHeat[1].H_0)
         println("Employing analytical initial geotherm that takes radioactive heating into account with H0=$(H0), H0_num=$(H0_num)")
         println(" This results in an effective geothermal gradient of $(Geothermalgradient_K_km) K/km")
 
     else
-        Arrays.T_init      .=   @. Num.Tsurface_Celcius - Arrays.Z*Num.Geotherm;                # Initial (linear) temperature profile
+        Arrays.T_init .= @. Num.Tsurface_Celsius - Arrays.Z * Num.Geotherm                 # Initial (linear) temperature profile
     end
     # --------------------------------------------
 
     # Update buffer & phases arrays --------------
-    if USE_GPU
-        # CPU buffers for advection
-        Tnew_cpu        =   Matrix{Float64}(undef, Num.Nx, Num.Nz)
-        Phi_melt_cpu    =   similar(Tnew_cpu)
-        Phases          =   CUDA.ones(Int64,Num.Nx,Num.Nz)
-    else
-        Tnew_cpu        =   similar(Arrays.T)
-        Phi_melt_cpu    =   similar(Arrays.ϕ)
-        Phases          =   ones(Int64,Num.Nx,Num.Nz)
-    end
+    Tnew_cpu = similar(Arrays.T)
+    Phi_melt_cpu = similar(Arrays.ϕ)
+    Phases = ones(Int64, Num.Nx, Num.Nz)
     # --------------------------------------------
 
     # Optionally set initial sill in models ------
-    InjectVol = 0.0;
-    dike_poly   = []
+    InjectVol = 0.0
+    dike_poly = []
     if Dikes.sill isa CylindricalDikeTopAccretion
         c = _sill_center_2d(Dikes)
-        ind = findall((Arrays.R .<= _sill_w(Dikes) / 2) .& (abs.(Arrays.Z .- c[2]) .< _sill_h(Dikes) / 2));
-        Arrays.T_init[ind] .= Dikes.T_in_Celsius;
+        ind = findall((Arrays.R .<= _sill_w(Dikes) / 2) .& (abs.(Arrays.Z .- c[2]) .< _sill_h(Dikes) / 2))
+        Arrays.T_init[ind] .= Dikes.T_in_Celsius
     end
     if Num.InitialEllipse
         c = _sill_center_2d(Dikes)
-        ind =  findall( ((Arrays.R.^2.0)/(Num.a_init^2.0) .+ ((Arrays.Z.-c[2]).^2.0)/((Num.b_init)^2.0)) .< 1.0); # ellipse
-        Arrays.T_init[ind] .= Dikes.T_in_Celsius;
+        ind = findall(((Arrays.R .^ 2.0) / (Num.a_init^2.0) .+ ((Arrays.Z .- c[2]) .^ 2.0) / ((Num.b_init)^2.0)) .< 1.0)  # ellipse
+        Arrays.T_init[ind] .= Dikes.T_in_Celsius
 
         #InjectVol += 4/3*pi*(Num.a_init)^2*Num.b_init;
 
 
         # Inject initial dike to the tracers
-        sill_initial        =   EllipticalIntrusion(Center=Point2(c[1], c[2]) * m,
-                                Angle=Vec1(0.0) * NoUnits,
-                                W=(Num.a_init*2) * m,
-                                H=(Num.b_init*2) * m)
-        if Num.advect_polygon==true && isempty(dike_poly)
+        sill_initial = EllipticalIntrusion(
+            Center = Point2(c[1], c[2]) * m,
+            Angle = Vec1(0.0) * NoUnits,
+            W = (Num.a_init * 2) * m,
+            H = (Num.b_init * 2) * m
+        )
+        if Num.advect_polygon == true && isempty(dike_poly)
             dike_poly = InjectSills.dike_polygon(sill_initial)
         end
-        Tnew_cpu           .=   Array(Arrays.T)
-        Tracers, Tnew_cpu,Vol,_, VEL  =   inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill_initial, Dikes.T_in_Celsius, 2, Dikes.nTr_dike);     # Add dike, move hostrocks
+        Tnew_cpu .= Array(Arrays.T)
+        Tracers, Tnew_cpu, Vol, _, VEL = inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill_initial, Dikes.T_in_Celsius, 2, Dikes.nTr_dike)      # Add dike, move hostrocks
 
-        Arrays.T           .=   Data.Array(Tnew_cpu)
-        InjectVol          +=   Vol                                                     # Keep track of injected volume
-        @printf "  Added initial dike; total injected magma volume = %.2f km³ \n"  InjectVol/km³
+        copyto!(Arrays.T, Tnew_cpu)
+        InjectVol += Vol                                                     # Keep track of injected volume
+        @printf "  Added initial dike; total injected magma volume = %.2f km³ \n"  InjectVol / km³
 
 
     end
     # --------------------------------------------
 
     # Initialise arrays --------------------------
-    @parallel assign!(Arrays.Tnew, Arrays.T_init)
-    @parallel assign!(Arrays.T, Arrays.T_init)
-    time, dike_inj, Time_vec,Melt_Time,Tav_magma_Time, Tav_3D_magma_Time, VolMelt_time,
-    Tav_all_Time, Tav_3D_all_Time, Tav_Phase2_Time, Tav_3D_Phase2_Time = 0.0, 0.0,zeros(Num.nt,1),zeros(Num.nt,1),zeros(Num.nt,1),
-                    zeros(Num.nt,1), zeros(Num.nt,1), zeros(Num.nt,1), zeros(Num.nt,1), zeros(Num.nt,1), zeros(Num.nt,1);
+    Arrays.Tnew .= Arrays.T_init
+    Arrays.T .= Arrays.T_init
+    time, dike_inj, Time_vec, Melt_Time, Tav_magma_Time, Tav_3D_magma_Time, VolMelt_time,
+        Tav_all_Time, Tav_3D_all_Time, Tav_Phase2_Time, Tav_3D_Phase2_Time = 0.0, 0.0, zeros(Num.nt, 1), zeros(Num.nt, 1), zeros(Num.nt, 1),
+        zeros(Num.nt, 1), zeros(Num.nt, 1), zeros(Num.nt, 1), zeros(Num.nt, 1), zeros(Num.nt, 1), zeros(Num.nt, 1)
 
-    if isdir(Num.SimName)==false mkdir(Num.SimName) end;    # create simulation directory if needed
+    if isdir(Num.SimName) == false
+        mkdir(Num.SimName)
+    end     # create simulation directory if needed
     # --------------------------------------------
 
     # Initialize sample points on the grid -------
     #  This tracks Tt evolution on fixed grid points in the same manner as the other codes do it (these tracers remain fixed in space)
-    if Num.TrackTracersOnGrid==true
-        X,Z = Array(Arrays.R), Array(Arrays.Z)
-        Tracers_grid     =   StructArray{Tracer{FT}}(undef, 1)
+    if Num.TrackTracersOnGrid == true
+        X, Z = Array(Arrays.R), Array(Arrays.Z)
+        Tracers_grid = StructArray{Tracer{FT}}(undef, 1)
         for i in eachindex(X)
-            Tracers0 = Tracer{FT}(coord=[X[i]-1e-3,Z[i]])   #
-            push!(Tracers_grid, Tracers0);
+            Tracers0 = Tracer{FT}(coord = [X[i] - 1.0e-3, Z[i]])   #
+            push!(Tracers_grid, Tracers0)
         end
         MagmaThermoKinematics.StructArrays.foreachfield(v -> deleteat!(v, 1), Tracers_grid)         # Delete first (undefined) row of tracer StructArray.
-        Tnew_cpu      .= Array(Arrays.T_init)
-        Phi_melt_cpu  .= Array(Arrays.ϕ)
+        Tnew_cpu .= Array(Arrays.T_init)
+        Phi_melt_cpu .= Array(Arrays.ϕ)
 
-        UpdateTracers_T_ϕ!(Tracers_grid, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);      # Initialize info on grid trcers
+        UpdateTracers_T_ϕ!(Tracers_grid, Grid.coord1D, Tnew_cpu, Phi_melt_cpu)       # Initialize info on grid trcers
     end
     # --------------------------------------------
 
 
-    for it = 1:Num.nt   # Time loop
-        time                =   time + Num.dt;                                     # Keep track of evolved time
+    for it in 1:Num.nt   # Time loop
+        time = time + Num.dt                                      # Keep track of evolved time
 
         # Add new dike every X years -----------------
-        if floor(time/Dikes.InjectionInterval)> dike_inj
-            dike_inj            =   floor(time/Dikes.InjectionInterval)                     # Keeps track on what was injected already
+        if floor(time / Dikes.InjectionInterval) > dike_inj
+            dike_inj = floor(time / Dikes.InjectionInterval)                     # Keeps track on what was injected already
             sill = _build_sill_2d(Dikes)
-            if Num.advect_polygon==true && isempty(dike_poly)
+            if Num.advect_polygon == true && isempty(dike_poly)
                 dike_poly = InjectSills.dike_polygon(sill)
             end
-            Tnew_cpu           .=   Array(Arrays.T)
-            Tracers, Tnew_cpu,Vol,_, VEL  =   inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, Dikes.T_in_Celsius, 2, Dikes.nTr_dike);     # Add dike, move hostrocks
+            Tnew_cpu .= Array(Arrays.T)
+            Tracers, Tnew_cpu, Vol, _, VEL = inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, Dikes.T_in_Celsius, 2, Dikes.nTr_dike)      # Add dike, move hostrocks
 
-            if Num.flux_bottom_BC==false
-                # Keep bottom T absolutey constant (advection modifies this)
-                Z               = Array(Arrays.Z)
-                Tnew_cpu[:,1]   .=   @. Num.Tsurface_Celcius - Z[:,1]*Num.Geotherm
+            if Num.flux_bottom_BC == false
+                # Keep bottom T absolutely constant (advection modifies this)
+                Z = Array(Arrays.Z)
+                Tnew_cpu[:, 1] .= @. Num.Tsurface_Celsius - Z[:, 1] * Num.Geotherm
             end
-            Arrays.T           .=   Data.Array(Tnew_cpu)
-            InjectVol          +=   Vol                                                     # Keep track of injected volume
-            Qrate               =   InjectVol/time
-            Qrate_km3_yr        =   Qrate*SecYear/km³
-            Qrate_km3_yr_km2    =   Qrate_km3_yr/(pi*(_sill_w(Dikes)/2/1e3)^2)
+            copyto!(Arrays.T, Tnew_cpu)
+            InjectVol += Vol                                                     # Keep track of injected volume
+            Qrate = InjectVol / time
+            Qrate_km3_yr = Qrate * SecYear / km³
+            Qrate_km3_yr_km2 = Qrate_km3_yr / (pi * (_sill_w(Dikes) / 2 / 1.0e3)^2)
 
-            @printf "  Added new dike; time=%.3f kyrs, total injected magma volume = %.2f km³; rate Q= %.2e km³yr⁻¹  \n" time/kyr InjectVol/km³ Qrate_km3_yr
+            @printf "  Added new dike; time=%.3f kyrs, total injected magma volume = %.2f km³; rate Q= %.2e km³yr⁻¹  \n" time / kyr InjectVol / km³ Qrate_km3_yr
 
-            if length(Mat_tup)>1
-               PhasesFromTracers!(Array(Phases), Grid, Tracers, BackgroundPhase=1, InterpolationMethod="Constant");    # update phases from grid
+            if length(Mat_tup) > 1
+                Phases_cpu = Array(Phases)
+                PhasesFromTracers!(Phases_cpu, Grid, Tracers, BackgroundPhase = 1, InterpolationMethod = "Constant")     # update phases from tracers
+                copyto!(Phases, Phases_cpu)
             end
         end
         # --------------------------------------------
 
         # Do a diffusion step, while taking T-dependencies into account
-        Nonlinear_Diffusion_step_2D!(Arrays, Mat_tup, Phases, Grid, Num.dt, Num)
+        Nonlinear_Diffusion_step!(Arrays, Mat_tup, Phases, Grid, Num.dt, Num)
         # --------------------------------------------
 
 
         # Update variables ---------------------------
         # copy to cpu
-        Tnew_cpu      .= Array(Arrays.Tnew)
-        Phi_melt_cpu  .= Array(Arrays.ϕ)
+        Tnew_cpu .= Array(Arrays.Tnew)
+        Phi_melt_cpu .= Array(Arrays.ϕ)
 
-        UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);     # Update info on tracers
-        update_Tvec!(Tracers, time/SecYear*1e-6)                                # update T & time vectors on tracers
+        UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu)      # Update info on tracers
+        update_Tvec!(Tracers, time / SecYear * 1.0e-6)                                # update T & time vectors on tracers
 
-        if (Num.TrackTracersOnGrid==true) &&  (mod(it,100)==0)
-            UpdateTracers_T_ϕ!(Tracers_grid, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);                             # Initialize info on grid tracers
-            update_Tvec!(Tracers_grid, time/SecYear*1e-6)                                                        # update T & time vectors on tracers
+        if (Num.TrackTracersOnGrid == true) &&  (mod(it, 100) == 0)
+            UpdateTracers_T_ϕ!(Tracers_grid, Grid.coord1D, Tnew_cpu, Phi_melt_cpu)                              # Initialize info on grid tracers
+            update_Tvec!(Tracers_grid, time / SecYear * 1.0e-6)                                                        # update T & time vectors on tracers
         end
 
         # copy back to gpu
-        Arrays.Tnew   .= Data.Array(Tnew_cpu)
-        Arrays.ϕ      .= Data.Array(Phi_melt_cpu)
+        copyto!(Arrays.Tnew, Tnew_cpu)
+        copyto!(Arrays.ϕ, Phi_melt_cpu)
 
-        @parallel assign!(Arrays.T, Arrays.Tnew)
-        @parallel assign!(Arrays.Tnew, Arrays.T)
-        Melt_Time[it]       =   sum( Arrays.ϕ)/(Num.Nx*Num.Nz)                      # Average melt fraction in crust
+        Arrays.T .= Arrays.Tnew
+        Melt_Time[it] = sum(Arrays.ϕ) / (Num.Nx * Num.Nz)                      # Average melt fraction in crust
 
-        ind = findall(Arrays.T.>700);
+        ind = findall(Arrays.T .> 700)
         if ~isempty(ind)
-            Tav_magma_Time[it] = sum(Arrays.T[ind])/length(ind)                     # average T of part with magma
+            Tav_magma_Time[it] = sum(Arrays.T[ind]) / length(ind)                     # average T of part with magma
         else
-            Tav_magma_Time[it] = NaN;
+            Tav_magma_Time[it] = NaN
         end
 
-        ind = findall((Arrays.T.>700) .& (Phases.==2));
+        ind = findall((Arrays.T .> 700) .& (Phases .== 2))
         if ~isempty(ind)
-            Tav_Phase2_Time[it] = sum(Arrays.T[ind])/length(ind)                     # average T of part with magma
+            Tav_Phase2_Time[it] = sum(Arrays.T[ind]) / length(ind)                     # average T of part with magma
         else
-            Tav_Phase2_Time[it] = NaN;
+            Tav_Phase2_Time[it] = NaN
         end
-        Tav_all_Time[it] = sum(Arrays.T)/length(Arrays.T)
+        Tav_all_Time[it] = sum(Arrays.T) / length(Arrays.T)
 
         # Store volume of melt (with T>0)
-        ind                 = findall(Tnew_cpu .> 700);
-        ix                  = [ind[i][1] for i=1:length(ind)]
-        rc                  = Grid.coord1D[1][ix]
-        VolCells            = 2*π*rc*Grid.Δ[1]*Grid.Δ[2];
-        VolMelt_time[it]    = sum(VolCells);
-        Tav_3D_magma_Time[it] = sum(VolCells.*Tnew_cpu[ind])/sum(VolCells)           # 3D average Temperature
+        ind = findall(Tnew_cpu .> 700)
+        ix = [ind[i][1] for i in 1:length(ind)]
+        rc = Grid.coord1D[1][ix]
+        VolCells = 2 * π * rc * Grid.Δ[1] * Grid.Δ[2]
+        VolMelt_time[it] = sum(VolCells)
+        Tav_3D_magma_Time[it] = sum(VolCells .* Tnew_cpu[ind]) / sum(VolCells)           # 3D average Temperature
 
 
-        ind                 = findall(Tnew_cpu .> 0);
-        ix                  = [ind[i][1] for i=1:length(ind)]
-        rc                  = Grid.coord1D[1][ix]
-        VolCells            = 2*π*rc*Grid.Δ[1]*Grid.Δ[2];
-        Tav_3D_all_Time[it] = sum(VolCells.*Tnew_cpu[ind])/sum(VolCells)           # 3D average Temperature
+        ind = findall(Tnew_cpu .> 0)
+        ix = [ind[i][1] for i in 1:length(ind)]
+        rc = Grid.coord1D[1][ix]
+        VolCells = 2 * π * rc * Grid.Δ[1] * Grid.Δ[2]
+        Tav_3D_all_Time[it] = sum(VolCells .* Tnew_cpu[ind]) / sum(VolCells)           # 3D average Temperature
 
-        ind                 = findall((Tnew_cpu .> 700) .& (Array(Phases).==2));
+        ind = findall((Tnew_cpu .> 700) .& (Array(Phases) .== 2))
         if ~isempty(ind)
-            ix                  = [ind[i][1] for i=1:length(ind)]
-            rc                  = Grid.coord1D[1][ix]
-            VolCells            = 2*π*rc*Grid.Δ[1]*Grid.Δ[2];
-            Tav_3D_Phase2_Time[it] = sum(VolCells.*Tnew_cpu[ind])/sum(VolCells)         # 3D average Temperature of phase 1
+            ix = [ind[i][1] for i in 1:length(ind)]
+            rc = Grid.coord1D[1][ix]
+            VolCells = 2 * π * rc * Grid.Δ[1] * Grid.Δ[2]
+            Tav_3D_Phase2_Time[it] = sum(VolCells .* Tnew_cpu[ind]) / sum(VolCells)         # 3D average Temperature of phase 1
         else
             Tav_3D_Phase2_Time[it] = NaN                                                # 3D average Temperature of phase 2
         end
 
-        Time_vec[it]        =   time;                                               # Vector with time
+        Time_vec[it] = time                                                # Vector with time
         # --------------------------------------------
 
         # Visualize results --------------------------
@@ -318,163 +298,171 @@ end
         # --------------------------------------------
 
     end
-    x,z = Grid.coord1D[1],Grid.coord1D[2]
-    return x,z,Arrays.T, Time_vec, Melt_Time, Tracers, dike_poly, Grid, Phases;
+    x, z = Grid.coord1D[1], Grid.coord1D[2]
+    return x, z, Arrays.T, Time_vec, Melt_Time, Tracers, dike_poly, Grid, Phases
 end # end of main function
 
 
 # Define material parameters for the simulation.
 @testset "ZASSY simulations" begin
 
-Random.seed!(1234);     # such that we can reproduce results
+    Random.seed!(1234)      # such that we can reproduce results
 
-if 1==1
-    # Geneva setup
-    println("===============================================")
-    println("Testing the underaccretion ZASSy setup")
-    println("===============================================")
-    # These are the final simulations for the ZASSy paper, but done @ a lower resolution
-    Num         = NumParam( #Nx=269*1, Nz=269*1,
-                            Nx=135*1, Nz=135*1,
-                            SimName="ZASSy_Geneva_9_1e_6", axisymmetric=true,
-                            #maxTime_Myrs=1.5,
-                            maxTime_Myrs=0.025,
-                            fac_dt=0.2, ω=0.5, verbose=false,
-                            flux_bottom_BC=false, flux_bottom=0, deactivate_La_at_depth=false,
-                            Geotherm=30/1e3, TrackTracersOnGrid=true,
-                            SaveOutput_steps=100000, CreateFig_steps=100000, plot_tracers=false, advect_polygon=true,
-                            FigTitle="Geneva Models, Geotherm 30/km");
-    Sill_params = SillParams(
-                            sill=CylindricalDikeTopAccretion(Center=Point2(0.0, -7.0e3) * m, W=20e3 * m, H=74.6269 * m),
-                            #InjectionInterval_year = 10e3,      # flux= 7.5e-6 km3/km2/yr
-                            #InjectionInterval_year = 7000,      # flux= 10.7e-6 km3/km2/yr
-                            InjectionInterval_year = 8200,       # flux= 9.1e-6 km3/km2/yr
-                            #InjectionInterval_year = 5000,       # flux= 14.9e-6 km3/km2/yr
-                            nTr_dike=300*1
-                )
-    MatParam     = (SetMaterialParams(Name="Rock & partial melt", Phase=1,
-                                    Density    = ConstantDensity(ρ=2700kg/m^3),
-                                    LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                                    #LatentHeat = ConstantLatentHeat(Q_L=0.0J/kg),
-                            #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
-                                Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
-                                #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
-                                    Melting = SmoothMelting(MeltingParam_4thOrder())),      # Marxer & Ulmer melting
-                                    # Melting = MeltingParam_Caricchi()),                     # Caricchi melting
-                    # add more parameters here, in case you have >1 phase in the model
-                    )
-    # Call the main code with the specified material parameters
-    x,z,T, Time_vec,Melt_Time, Tracers, dike_poly, Grid, Phases = MainCode_2D(MatParam, Num, Sill_params); # start the main code
-    @test sum(T)/prod(size(T)) ≈ 312.1505261202475  rtol= 1e-2
-    @test sum(Melt_Time)  ≈ 0.16694675188794647  rtol= 1e-5
+    if 1 == 1
+        # Geneva setup
+        println("===============================================")
+        println("Testing the underaccretion ZASSy setup")
+        println("===============================================")
+        # These are the final simulations for the ZASSy paper, but done @ a lower resolution
+        Num = NumParam( #Nx=269*1, Nz=269*1,
+            Nx = 135 * 1, Nz = 135 * 1,
+            SimName = "ZASSy_Geneva_9_1e_6", axisymmetric = true,
+            #maxTime_Myrs=1.5,
+            maxTime_Myrs = 0.025,
+            fac_dt = 0.2, ω = 0.5, verbose = false,
+            flux_bottom_BC = false, flux_bottom = 0, deactivate_La_at_depth = false,
+            Geotherm = 30 / 1.0e3, TrackTracersOnGrid = true,
+            SaveOutput_steps = 100000, CreateFig_steps = 100000, plot_tracers = false, advect_polygon = true,
+            FigTitle = "Geneva Models, Geotherm 30/km"
+        )
+        Sill_params = SillParams(
+            sill = CylindricalDikeTopAccretion(Center = Point2(0.0, -7.0e3) * m, W = 20.0e3 * m, H = 74.6269 * m),
+            #InjectionInterval_year = 10e3,      # flux= 7.5e-6 km3/km2/yr
+            #InjectionInterval_year = 7000,      # flux= 10.7e-6 km3/km2/yr
+            InjectionInterval_year = 8200,       # flux= 9.1e-6 km3/km2/yr
+            #InjectionInterval_year = 5000,       # flux= 14.9e-6 km3/km2/yr
+            nTr_dike = 300 * 1
+        )
+        MatParam = (
+            SetMaterialParams(
+                Name = "Rock & partial melt", Phase = 1,
+                Density = ConstantDensity(ρ = 2700kg / m^3),
+                LatentHeat = ConstantLatentHeat(Q_L = 3.13e5J / kg),
+                #LatentHeat = ConstantLatentHeat(Q_L=0.0J/kg),
+                #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
+                Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
+                #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
+                HeatCapacity = ConstantHeatCapacity(Cp = 1000J / kg / K),
+                Melting = SmoothMelting(MeltingParam_4thOrder())
+            ),      # Marxer & Ulmer melting
+            # Melting = MeltingParam_Caricchi()),                     # Caricchi melting
+            # add more parameters here, in case you have >1 phase in the model
+        )
+        # Call the main code with the specified material parameters
+        x, z, T, Time_vec, Melt_Time, Tracers, dike_poly, Grid, Phases = MainCode_2D(MatParam, Num, Sill_params)  # start the main code
+        @test sum(T) / prod(size(T)) ≈ 312.1505261202475  rtol = 1.0e-2
+        @test sum(Melt_Time) ≈ 0.16694675188794647  rtol = 1.0e-5
 
 
-    # compute zircon ages for a few tracers
-    time_vec    = Tracers.time_vec*1e6;
-    T_vec       = Tracers.T_vec;
-    time_vec    = time_vec[1:10];
-    T_vec       = T_vec[1:10];
+        # compute zircon ages for a few tracers
+        time_vec = Tracers.time_vec * 1.0e6
+        T_vec = Tracers.T_vec
+        time_vec = time_vec[1:10]
+        T_vec = T_vec[1:10]
 
-    #ZirconData  	=   ZirconAgeData(Tsat=820, Tmin=700, Tsol=700, Tcal_max=800, Tcal_step=1.0, max_x_zr=0.001, zircon_number=100, time_zr_growth=100);	 # note that we use a much longer zr_growth in the real calculations (700kyrs)
-    #time_years, prob, ages_eruptible, number_zircons, T_av_time, T_sd_time = compute_zircons_Ttpath(time_vec, T_vec, ZirconData=ZirconData)
-    #@show sum(prob), sum(number_zircons)
+        #ZirconData  	=   ZirconAgeData(Tsat=820, Tmin=700, Tsol=700, Tcal_max=800, Tcal_step=1.0, max_x_zr=0.001, zircon_number=100, time_zr_growth=100);	 # note that we use a much longer zr_growth in the real calculations (700kyrs)
+        #time_years, prob, ages_eruptible, number_zircons, T_av_time, T_sd_time = compute_zircons_Ttpath(time_vec, T_vec, ZirconData=ZirconData)
+        #@show sum(prob), sum(number_zircons)
+
+    end
+
+    if 1 == 1
+        # 2D, UCLA-type models as used in the ZASSy paper (see above for benchmark setups)
+        println("===============================================")
+        println("Testing the central intrusion ZASSy setup")
+        println("===============================================")
+
+        Num = NumParam( #Nx=301, Nz=201,
+            Nx = 151, Nz = 101,
+            W = 30.0e3, SimName = "ZASSy_UCLA_10_7e_6_v2",
+            SaveOutput_steps = 200000, CreateFig_steps = 1000, axisymmetric = false,
+            flux_bottom_BC = true, flux_bottom = 30 / 1.0e3 * 1.9, fac_dt = 0.2,
+            ω = 0.5,
+            convergence = 1.0e-2,
+            verbose = false,
+            maxTime_Myrs = 0.025, # for testing
+            #maxTime_Myrs=1.1,  # Fig. 11, Fig. 12B
+            #maxTime_Myrs=0.7,  # Fig. 12A
+            #maxTime_Myrs=1.3,  # Fig. 12C
+            #maxTime_Myrs=1.25,  # Fig. 12C
+
+            AnalyticalInitialGeo = true, Tsurface_Celsius = 25, qs_anal = 100.0e-3, qm_anal = 100.0e-3, hr_anal = 10.0e3, k_anal = 3.3453,
+            InitialEllipse = true, a_init = 6.7e3, b_init = 1.67e3,       # reference case, Fig. 12B, Fig. 11
+
+            FigTitle = "UCLA Models", plot_tracers = true, advect_polygon = true, TrackTracersOnGrid = true
+        )
+
+
+        # Reference case:
+        Flux = 9.1e-6                               # in km3/km2/a
+
+        Total_r_km = 10                                   # final radius of area
+
+        Total_A_km2 = pi * Total_r_km^2                      # final area in km^2
+        Flux_km3_a = Flux * Total_A_km2                     # flux in km3/year
+        V_total_km3 = Flux_km3_a * Num.maxTime_Myrs * 1.0e6
+
+        mid_depth_km = -7.0                                            # mid depth of injection area [km]
+        AspectRatio = Num.a_init / Num.b_init                           # Aspect ratio of initial sill (kept constant)
+        V_initial = (4 / 3) * π * (Num.a_init / 1.0e3)^2 * (Num.b_init / 1.0e3)      # initial injected volume in km3
+        Vol_inj_year = (V_total_km3 - V_initial) / (Num.maxTime_Myrs * 1.0e6)   # Injected volume per year
+
+        V_initial_opt_a = (0.1 * V_total_km3 * AspectRatio / ((4 / 3) * π))^(1 / 3)
+        V_initial_opt_b = V_initial_opt_a / AspectRatio
+
+        RatioInitialTotal = V_initial / V_total_km3
+        println("Starting simulation with flux: $(Flux) km³km⁻²yr⁻¹, total time= $(Num.maxTime_Myrs * 1.0e3) kyrs, max. volume=$(round(V_total_km3))km³, Initial/Total volume = $(V_initial / V_total_km3)")
+
+        InjectionInterval_yr = 5000                                            # Injection interval
+
+        Vol_inj = Vol_inj_year * InjectionInterval_yr               # Volume injected every injection event
+        #V_inj_a             =   (Vol_inj*AspectRatio/((4/3)*π))^(1/3)           # a-axis of injected ellipse
+        #V_inj_b             =   V_inj_a/AspectRatio;                            # b axis in km
+
+        V_inj_a = 2.3098358683516853
+        V_inj_b = 0.5757352089772111
+
+        # Use the parameters. Note that we specify the diameter of the ellipse in here
+        Sill_params = SillParams(
+            sill = EllipticalIntrusion(Center = Point2(0.0, mid_depth_km * 1.0e3) * m, W = V_inj_a * 2 * 1.0e3 * m, H = V_inj_b * 2 * 1.0e3 * m),
+            InjectionInterval_year = InjectionInterval_yr,
+            nTr_dike = 300 * 4
+        )
+
+        MatParam = (
+            SetMaterialParams(
+                Name = "Host rock", Phase = 1,
+                Density = ConstantDensity(ρ = 2700kg / m^3),                    # used in the parameterisation of Whittington
+                LatentHeat = ConstantLatentHeat(Q_L = 2.55e5J / kg),
+                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0 = 0.0e-7Watt / m^3),
+                Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
+                HeatCapacity = T_HeatCapacity_Whittington(),                      # T-dependent cp
+                Melting = MeltingParam_Assimilation()                              # Quadratic parameterization as in Tierney et al.
+            ),
+            SetMaterialParams(
+                Name = "Intruded rocks", Phase = 2,
+                Density = ConstantDensity(ρ = 2700kg / m^3),                     # used in the parameterisation of Whittington
+                LatentHeat = ConstantLatentHeat(Q_L = 2.67e5J / kg),
+                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0 = 0.0e-7Watt / m^3),
+                Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
+                HeatCapacity = T_HeatCapacity_Whittington(),                       # T-dependent cp
+                Melting = SmoothMelting(MeltingParam_Quadratic(T_s = (700 + 273.15)K, T_l = (1100 + 273.15)K))
+            ),
+        )
+
+        # Call the main code with the specified material parameters
+        x, z, T, Time_vec, Melt_Time, Tracers, dike_poly, Grid, Phases = MainCode_2D(MatParam, Num, Sill_params)  # start the main code
+
+        @test sum(T) / prod(size(T)) ≈ 351.82736709405805 rtol = 1.0e-4
+        @test sum(Melt_Time) ≈ 10.401072714369263 rtol = 1.0e-4
+
+
+    end
+
+    rm("ZASSy_Geneva_9_1e_6", force = true, recursive = true)
+    rm("ZASSy_UCLA_10_7e_6_v2", force = true, recursive = true)
 
 end
 
-if 1==1
-    # 2D, UCLA-type models as used in the ZASSy paper (see above for benchmark setups)
-    println("===============================================")
-    println("Testing the central intrusion ZASSy setup")
-    println("===============================================")
 
-    Num          = NumParam( #Nx=301, Nz=201,
-                            Nx=151, Nz=101,
-                            W=30e3, SimName="ZASSy_UCLA_10_7e_6_v2",
-                         SaveOutput_steps=200000, CreateFig_steps=1000, axisymmetric=false,
-                         flux_bottom_BC=true, flux_bottom=30/1e3*1.9, fac_dt=0.2,
-                         ω=0.5,
-                         convergence=1e-2,
-                         verbose=false,
-                         maxTime_Myrs= 0.025, # for testing
-                         #maxTime_Myrs=1.1,  # Fig. 11, Fig. 12B
-                         #maxTime_Myrs=0.7,  # Fig. 12A
-                         #maxTime_Myrs=1.3,  # Fig. 12C
-                         #maxTime_Myrs=1.25,  # Fig. 12C
-
-                         AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=100e-3, qm_anal=100e-3, hr_anal=10e3, k_anal=3.3453,
-                         InitialEllipse =   true, a_init= 6.7e3,  b_init  =   1.67e3,       # reference case, Fig. 12B, Fig. 11
-
-                         FigTitle="UCLA Models", plot_tracers=true, advect_polygon=true, TrackTracersOnGrid=true);
-
-
-    # Reference case:
-    Flux         = 9.1e-6;                              # in km3/km2/a
-
-    Total_r_km   = 10;                                  # final radius of area
-
-    Total_A_km2  = pi*Total_r_km^2;                     # final area in km^2
-    Flux_km3_a   = Flux*Total_A_km2;                    # flux in km3/year
-    V_total_km3  = Flux_km3_a*Num.maxTime_Myrs*1e6
-
-    mid_depth_km        =   -7.0;                                           # mid depth of injection area [km]
-    AspectRatio         =   Num.a_init/Num.b_init;                          # Aspect ratio of initial sill (kept constant)
-    V_initial           =  (4/3)*π*(Num.a_init/1e3)^2*(Num.b_init/1e3)      # initial injected volume in km3
-    Vol_inj_year        =  (V_total_km3-V_initial)/(Num.maxTime_Myrs*1e6);  # Injected volume per year
-
-    V_initial_opt_a     =   (0.1*V_total_km3*AspectRatio/((4/3)*π))^(1/3)
-    V_initial_opt_b     =   V_initial_opt_a/AspectRatio
-
-    RatioInitialTotal   =   V_initial/V_total_km3;
-    println("Starting simulation with flux: $(Flux) km³km⁻²yr⁻¹, total time= $(Num.maxTime_Myrs*1e3) kyrs, max. volume=$(round(V_total_km3))km³, Initial/Total volume = $(V_initial/V_total_km3)")
-
-    InjectionInterval_yr=   5000;                                           # Injection interval
-
-    Vol_inj             =   Vol_inj_year*InjectionInterval_yr;              # Volume injected every injection event
-    #V_inj_a             =   (Vol_inj*AspectRatio/((4/3)*π))^(1/3)           # a-axis of injected ellipse
-    #V_inj_b             =   V_inj_a/AspectRatio;                            # b axis in km
-
-    V_inj_a = 2.3098358683516853
-    V_inj_b = 0.5757352089772111
-
-     # Use the parameters. Note that we specify the diameter of the ellipse in here
-    Sill_params  = SillParams(
-                        sill=EllipticalIntrusion(Center=Point2(0.0, mid_depth_km*1e3) * m, W=V_inj_a*2*1e3 * m, H=V_inj_b*2*1e3 * m),
-                        InjectionInterval_year = InjectionInterval_yr,
-                        nTr_dike=300*4)
-
-     MatParam     = (SetMaterialParams(Name="Host rock", Phase=1,
-                                     Density    = ConstantDensity(ρ=2700kg/m^3),                    # used in the parameterisation of Whittington
-                                     LatentHeat = ConstantLatentHeat(Q_L=2.55e5J/kg),
-                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=0e-7Watt/m^3),
-                                 Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
-                                  HeatCapacity = T_HeatCapacity_Whittington(),                      # T-dependent cp
-                                 Melting = MeltingParam_Assimilation()                              # Quadratic parameterization as in Tierney et al.
-                                  ),
-                     SetMaterialParams(Name="Intruded rocks", Phase=2,
-                                     Density    = ConstantDensity(ρ=2700kg/m^3),                     # used in the parameterisation of Whittington
-                                     LatentHeat = ConstantLatentHeat(Q_L=2.67e5J/kg),
-                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=0e-7Watt/m^3),
-                                  Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
-                                  HeatCapacity = T_HeatCapacity_Whittington(),                       # T-dependent cp
-                                        Melting = SmoothMelting(MeltingParam_Quadratic(T_s=(700+273.15)K, T_l=(1100+273.15)K))
-                                        )
-             )
-
-    # Call the main code with the specified material parameters
-    x,z,T, Time_vec,Melt_Time, Tracers, dike_poly, Grid, Phases = MainCode_2D(MatParam, Num, Sill_params); # start the main code
-
-    @test sum(T)/prod(size(T)) ≈ 351.6708073949723 rtol= 1e-4
-    @test sum(Melt_Time)  ≈ 11.49101091357911 rtol= 1e-4
-
-
- end
-
-rm("ZASSy_Geneva_9_1e_6", force=true, recursive =true)
-rm("ZASSy_UCLA_10_7e_6_v2", force=true, recursive =true)
-
-end
-
-
-
-#plot(Time_vec/kyr, Melt_Time, xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten", label=:none); png("Time_vs_Melt_Example2D") #Create plot
+#save("Time_vs_Melt_Example2D.png", lines(vec(Time_vec/kyr), vec(Melt_Time), axis=(xlabel="Time [kyrs]", ylabel="Fraction of crust that is molten"))) #Create plot

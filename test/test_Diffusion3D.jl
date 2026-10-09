@@ -1,141 +1,123 @@
 using Test, LinearAlgebra, SpecialFunctions, Random
-const USE_GPU=false;
-if USE_GPU
-    using CUDA      # needs to be loaded before loading Parallkel=
-end
-using ParallelStencil, ParallelStencil.FiniteDifferences3D
-
 using MagmaThermoKinematics
-@static if USE_GPU
-    environment!(:gpu, Float64, 3)      # initialize parallel stencil in 2D
-    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
-    @init_parallel_stencil(CUDA, Float64, 3)
-else
-    environment!(:cpu, Float64, 3)      # initialize parallel stencil in 2D
-    @init_parallel_stencil(Threads, Float64, 3)
-end
-using MagmaThermoKinematics.Diffusion3D # to load AFTER calling environment!()
-#using MagmaThermoKinematics.Fields3D
-
 
 const CreatePlots = false      # easy way to deactivate plotting throughout
+if CreatePlots
+    using CairoMakie: Figure, Axis, DataAspect, heatmap!, save
+end
 
 
-function Diffusion_Gaussian3D(Setup="3D")
+function Diffusion_Gaussian3D(Setup = "3D")
     # Test the
 
     # Model parameters
-    W,L,H                   =   300., 300., 300.;                               # Width, Length,    Height in km
-    k_rock1                 =   3;
-    Nx, Ny, Nz              =   100, 100, 100;                                  # resolution
-    Tbot                    =   0;
-    SecYear                 =   365.25*24*3600
-    σ                       =   15e3;                                           # halfwidth of gaussian
-    Tmax                    =   1000;                                           # max. of gaussian
-    TotalTime               =   3e6*SecYear;                                    # thermal cooling age
-    ρ                       =   2800;                                           # Density
-    cp                      =   1050;                                           # Heat capacity
-    La                      =   350e3;                                          # Latent heat J/kg/K
-    dx,dy,dz                =   W/(Nx-1)*1e3, L/(Ny-1)*1e3, H*1e3/(Nz-1);       # grid size [m]
-    κ                       =   k_rock1./(ρ*cp);                                # thermal diffusivity
-    dt                      =   min(dx^2,dy^2,dz^2)./κ/2;                       # stable timestep (required for explicit FD)
+    W, L, H = 300.0, 300.0, 300.0                                # Width, Length,    Height in km
+    k_rock1 = 3
+    Nx, Ny, Nz = 100, 100, 100                                   # resolution
+    Tbot = 0
+    SecYear = 365.25 * 24 * 3600
+    σ = 15.0e3                                            # halfwidth of gaussian
+    Tmax = 1000                                            # max. of gaussian
+    TotalTime = 3.0e6 * SecYear                                     # thermal cooling age
+    ρ = 2800                                            # Density
+    cp = 1050                                            # Heat capacity
+    La = 350.0e3                                           # Latent heat J/kg/K
+    dx, dy, dz = W / (Nx - 1) * 1.0e3, L / (Ny - 1) * 1.0e3, H * 1.0e3 / (Nz - 1)        # grid size [m]
+    κ = k_rock1 ./ (ρ * cp)                                 # thermal diffusivity
+    dt = min(dx^2, dy^2, dz^2) ./ κ / 2                        # stable timestep (required for explicit FD)
 
-    numTime                 =   ceil(TotalTime/dt);
-    dt                      =   TotalTime/numTime/20;
-    nt                      =   Int(numTime);
+    numTime = ceil(TotalTime / dt)
+    dt = TotalTime / numTime / 20
+    nt = Int(numTime)
 
     # Array initializations (1 - main arrays on which we can initialize properties)
-    T                       =   @ones(Nx,Ny,Nz)*Tbot;
-    K                       =   @ones(Nx,Ny,Nz)*k_rock1;
-    Rho                     =   @ones(Nx,Ny,Nz)*ρ;
-    Cp                      =   @ones(Nx,Ny,Nz)*cp;
-    dPhi_dt                 =   @zeros(Nx,Ny,Nz);
-    Hs                      =   @zeros(Nx,Ny,Nz);
-    Hl                      =   @ones(Nx,Ny,Nz)*La;
+    T = fill(Float64(Tbot), Nx, Ny, Nz)
+    K = fill(Float64(k_rock1), Nx, Ny, Nz)
+    Rho = fill(Float64(ρ), Nx, Ny, Nz)
+    Cp = fill(Float64(cp), Nx, Ny, Nz)
+    dPhi_dt = zeros(Nx, Ny, Nz)
+    Hs = zeros(Nx, Ny, Nz)
+    Hl = fill(Float64(La), Nx, Ny, Nz)
 
     # Work array initialization
-    Tnew, qx,qy,qz          =   @zeros(Nx,Ny,Nz),       @zeros(Nx-1,Ny,Nz),     @zeros(Nx, Ny-1, Nz),   @zeros(Nx,Ny,Nz-1)  # thermal solver
-    Kx, Ky, Kz              =                           @zeros(Nx-1, Ny, Nz),   @zeros(Nx,Ny-1,Nz),     @zeros(Nx,Ny,Nz-1)  # thermal conductivities
-    X,Y,Z                   =   @zeros(Nx,Ny,Nz),       @zeros(Nx,Ny,Nz),       @zeros(Nx,Ny,Nz)                            # 3D gridpoints
-    @parallel MagmaThermoKinematics.Diffusion3D.diffusion3D_conductivity!(Kx, Ky, Kz, K)
+    Tnew = zeros(Nx, Ny, Nz)                                                         # thermal solver
+    X, Y, Z = zeros(Nx, Ny, Nz), zeros(Nx, Ny, Nz), zeros(Nx, Ny, Nz)                             # 3D gridpoints
 
 
     # Set up model geometry & initial T structure
-    x,y,z                   =   -W/2*1e3:dx:(-W/2*1e3+(Nx-1)*dx), -L/2*1e3:dy:(-L/2*1e3+(Ny-1)*dy), -H/2*1e3:dz:(-H/2*1e3+(Nz-1)*dz);
-    coords                  =   collect(Iterators.product(x,y,z))                               # generate coordinates from 1D coordinate vectors
-    X,Y,Z                   =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);     # transfer coords to 3D arrays
-    Grid, Spacing           =   (X,Y,Z), (dx,dy,dz);
-    T                      .=   Data.Array(Tmax.*exp.(  -((X.^2 .+ Y.^2 .+ Z.^2)./(σ^2)) ));                 # initial gaussian profile
-    Tnew                   .=   T;
+    x, y, z = (-W / 2 * 1.0e3):dx:(-W / 2 * 1.0e3 + (Nx - 1) * dx), (-L / 2 * 1.0e3):dy:(-L / 2 * 1.0e3 + (Ny - 1) * dy), (-H / 2 * 1.0e3):dz:(-H / 2 * 1.0e3 + (Nz - 1) * dz)
+    coords = collect(Iterators.product(x, y, z))                               # generate coordinates from 1D coordinate vectors
+    X, Y, Z = (x -> x[1]).(coords), (x -> x[2]).(coords), (x -> x[3]).(coords)      # transfer coords to 3D arrays
+    Grid, Spacing = (X, Y, Z), (dx, dy, dz)
+    T .= (Tmax .* exp.(-((X .^ 2 .+ Y .^ 2 .+ Z .^ 2) ./ (σ^2))))                  # initial gaussian profile
+    Tnew .= T
 
 
+    #mkpath("viz2D_out")                            # directory for animation frames
 
-    #ENV["GKSwstype"]="nul"; if isdir("viz2D_out")==false mkdir("viz2D_out") end; loadpath = "./viz2D_out/"; anim = Animation(loadpath,String[])
-    #println("Animation directory: $(anim.dir)")
-
-    time,time_kyrs          = 0.0, 0.0;
-    err = 100;
-    it = 0;
+    time, time_kyrs = 0.0, 0.0
+    err = 100
+    it = 0
     nt = 500
-    for it=1:nt
+    for it in 1:nt
 
         # Perform a diffusion step
-        if Setup=="3D"
-            diffusion3D_step_varK!(Tnew, T, qx, qy, qz, K, Kx, Ky, Kz, Rho, Cp, Hs, Hl, dt, dx, dy, dz, dPhi_dt);
-            #@parallel diffusion3D_step!(Tnew, T, K, 1.0/(ρ*cp), dt, dx, dy, dz)
+        if Setup == "3D"
+            diffusion_step!(Tnew, T, K, Rho, Cp, Hs, Hl, dt, (dx, dy, dz), dPhi_dt)
         end
 
         # diffusion in z-direction
-        @parallel (1:size(T,2), 1:size(T,3)) bc3D_x!(Tnew);                                         # set lateral boundary conditions (flux-free)
-        @parallel (1:size(T,1), 1:size(T,3)) bc3D_y!(Tnew);                                         # set lateral boundary conditions (flux-free)
+        bc_zero_flux!(Tnew, 1)                                                            # set lateral boundary conditions (flux-free)
+        bc_zero_flux!(Tnew, 2)                                                            # set lateral boundary conditions (flux-free)
 
-        Tnew[:,:,1] .= Tbot; Tnew[:,:,end] .= 0.0;                                                  # bottom & top temperature (constant)
+        Tnew[:, :, 1] .= Tbot; Tnew[:, :, end] .= 0.0                                                   # bottom & top temperature (constant)
 
 
-        T, Tnew         =   Tnew, T;                                                                # Update temperature
-        time, time_kyrs =   time + dt, time/SecYear/1e3;                                            # Keep track of evolved time
+        T, Tnew = Tnew, T                                                                 # Update temperature
+        time, time_kyrs = time + dt, time / SecYear / 1.0e3                                             # Keep track of evolved time
 
-        if mod(it,100)==0  # print progress
-           # println(" Timestep $it = $(round(time/SecYear)/1e3) kyrs")
-        #    x_km, z_km  =   x./1e3, z./1e3;
-        #    #p1          =   heatmap(x_km, z_km, T[:,Int(Ny/2),:]',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="Temperature, $(round(time_kyrs, digits=2)) kyrs",  dpi=150)
-        #    p1          =   heatmap(x_km, z_km, T[Int(Nx/2),:,:]',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="Temperature, $(round(time_kyrs, digits=2)) kyrs",  dpi=150)
-        #
-        #    plot(p1); frame(anim)
+        if mod(it, 100) == 0  # print progress
+            # println(" Timestep $it = $(round(time/SecYear)/1e3) kyrs")
+            #    x_km, z_km  =   x./1e3, z./1e3;
+            #    fig = Figure()
+            #    #heatmap!(Axis(fig[1,1], title="Temperature, $(round(time_kyrs, digits=2)) kyrs", aspect=DataAspect()), x_km, z_km, T[:,Int(Ny/2),:], colormap=:inferno)
+            #    heatmap!(Axis(fig[1,1], title="Temperature, $(round(time_kyrs, digits=2)) kyrs", aspect=DataAspect()), y./1e3, z_km, T[Int(Nx/2),:,:], colormap=:inferno)
+            #
+            #    save("viz2D_out/Diffusion3D_$(it).png", fig)
         end
 
     end
 
-    x_km, z_km  =   x./1e3, z./1e3;
+    x_km, z_km = x ./ 1.0e3, z ./ 1.0e3
 
 
     # compute analytical solution
 
-    if Setup=="3D"
-        Tanal  =  Tmax./(1 + 4*time*κ/σ^2)^(3/2).*exp.(  -(X.^2 .+ Y.^2 .+ Z.^2)./(σ^2 + 4*time*κ));                     # initial gaussian profile
-        fname = "Diffusion_3D_Gaussian";
+    if Setup == "3D"
+        Tanal = Tmax ./ (1 + 4 * time * κ / σ^2)^(3 / 2) .* exp.(-(X .^ 2 .+ Y .^ 2 .+ Z .^ 2) ./ (σ^2 + 4 * time * κ))                      # initial gaussian profile
+        fname = "Diffusion_3D_Gaussian"
     end
-    Terror =  Array(T) - Tanal
+    Terror = Array(T) - Tanal
 
-    Tslice  = T[:,Int(Ny/2),:];
-    Tanal1  = Tanal[:,Int(Ny/2),:];
-    Terror1 = Terror[:,Int(Ny/2),:];
+    Tslice = T[:, Int(Ny / 2), :]
+    Tanal1 = Tanal[:, Int(Ny / 2), :]
+    Terror1 = Terror[:, Int(Ny / 2), :]
 
     if CreatePlots
         # create plot
-        p1          =   heatmap(x_km, z_km, Tslice',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="T  3D $(round(time_kyrs/1e3, digits=2)) Myrs",  dpi=150)
-        p2          =   heatmap(x_km, z_km, Tanal1',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="T anal 3D $(round(time_kyrs/1e3, digits=2)) Myrs",  dpi=150)
-        p3          =   heatmap(x_km, z_km, Terror1',         aspect_ratio=1, xlims=(x_km[1],x_km[end]), ylims=(z_km[1],z_km[end]),   c=:inferno, title="T error 3D $(round(time_kyrs/1e3, digits=2)) Myrs",  dpi=150)
-        plot(p1,p2,p3);
-        png(fname)
+        fig = Figure(size = (1500, 450))
+        heatmap!(Axis(fig[1, 1], title = "T  3D $(round(time_kyrs / 1.0e3, digits = 2)) Myrs", aspect = DataAspect()), x_km, z_km, Tslice, colormap = :inferno)
+        heatmap!(Axis(fig[1, 2], title = "T anal 3D $(round(time_kyrs / 1.0e3, digits = 2)) Myrs", aspect = DataAspect()), x_km, z_km, Tanal1, colormap = :inferno)
+        heatmap!(Axis(fig[1, 3], title = "T error 3D $(round(time_kyrs / 1.0e3, digits = 2)) Myrs", aspect = DataAspect()), x_km, z_km, Terror1, colormap = :inferno)
+        save("$(fname).png", fig)
     end
 
-    error = norm(Terror[:],2)/length(Terror[:]);
+    error = norm(Terror[:], 2) / length(Terror[:])
 
-    return error;        # return error
+    return error         # return error
 end # end of gaussian diffusion test
 
 # Create a range of diffusion tests which calls the routines above
 @testset "3D Gaussian diffusion" begin
-    @test Diffusion_Gaussian3D("3D")           ≈  1.74e-5 atol=1e-4;
+    @test Diffusion_Gaussian3D("3D") ≈ 1.74e-5 atol = 1.0e-4
 end;
