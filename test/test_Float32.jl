@@ -63,3 +63,14 @@ end
     @test A32 == A64
     @test_throws "Phases must hold integer phase numbers" compute_phase_param!(A32, compute_density, MatFloat32, ones(Float32, 3, 3), argsA)
 end
+
+@testset "inject_sills stays Float32" begin
+    using InjectSills, StructArrays
+    x, z = range(0.0, 3.0e4, 33), range(-3.0e4, 0.0, 33)
+    T = Float32[-zz / 1.0e3 * 20 for _ in x, zz in z]
+    sill = PennyShapedSill(Center = Point2(1.5f4, -1.5f4) * InjectSills.m, Angle = Vec1(0.0f0), R = 5.0f3 * InjectSills.m, H = 500.0f0 * InjectSills.m, E = 1.5f10 * InjectSills.Pa, ν = 0.3f0 * InjectSills.NoUnits)
+    Tr = StructArray{Tracer{Float32}}(undef, 1)
+    _, Tnew, _, _, Vel = inject_sills(Tr, T, (x, z), sill, 900.0, 2, 10)
+    @test eltype(Tnew) == Float32
+    @test eltype(Vel[1]) == Float32
+end

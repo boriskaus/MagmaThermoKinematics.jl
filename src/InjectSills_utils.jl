@@ -63,8 +63,9 @@ end
 
 @kernel function _fill_sill!(T, Grid, sill::InjectSills.AbstractSill{N}, T_in) where {N}
     I = @index(Global, Cartesian)
-    if InjectSills.inside(InjectSills.Point{N, Float64}(map(getindex, Grid, Tuple(I))), sill)
-        T[I] = T_in
+    # `inside` requires the point type to match the sill's element type.
+    if InjectSills.inside(InjectSills.Point{N, typeof(sill.H.val)}(map(getindex, Grid, Tuple(I))), sill)
+        T[I] = eltype(T)(T_in)
     end
 end
 
@@ -139,7 +140,7 @@ function inject_sills(
     Spacing = [Grid[i][2] - Grid[i][1] for i in 1:dim]
     d = minimum(Spacing) * 0.5
     nsteps = max(ceil(Int, H / d), 2)
-    dt = 1.0 / nsteps
+    dt = inv(oftype(float(one(eltype(T))), nsteps))
 
     # ------------------------------------------------------------------
     # Displacement field (= velocity for pseudo-time dt_total = 1.0) on
@@ -147,7 +148,7 @@ function inject_sills(
     # ------------------------------------------------------------------
     backend = get_backend(T)
     GridFull = ntuple(dim) do k
-        X = KernelAbstractions.allocate(backend, Float64, size(T))
+        X = KernelAbstractions.allocate(backend, eltype(T), size(T))
         X .= reshape(Grid[k], ntuple(j -> j == k ? length(Grid[k]) : 1, dim))
     end
     Velocity = InjectSills.hostrock_displacement!(map(similar, GridFull), sill, GridFull)

@@ -232,8 +232,9 @@ end
     I = @index(Global, Cartesian)
     # RK2, backward in pseudo-time: half a step on the node velocity,
     # then a full step on the velocity sampled where that landed.
-    p = map((i, v, h, n) -> clamp(i - 0.5 * dt * v[I] / h, 1.0, n), Tuple(I), Velocity, Δ, size(T))
-    q = map((i, v, h, n) -> clamp(i - dt * _lerp(v, p) / h, 1.0, n), Tuple(I), Velocity, Δ, size(T))
+    FT = eltype(T)
+    p = map((i, v, h, n) -> clamp(i - FT(0.5) * FT(dt) * v[I] / FT(h), one(FT), FT(n)), Tuple(I), Velocity, Δ, size(T))
+    q = map((i, v, h, n) -> clamp(i - FT(dt) * _lerp(v, p) / FT(h), one(FT), FT(n)), Tuple(I), Velocity, Δ, size(T))
     Tnew[I] = _lerp(T, q)
 end
 
