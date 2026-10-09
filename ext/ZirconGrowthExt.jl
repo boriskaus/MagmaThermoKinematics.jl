@@ -22,7 +22,8 @@ Three call forms are supported:
 - Pass a directory path; `dirname/Tracers_SimParams.jld2` is loaded automatically
   (saves to `dirname/ZirconGrowth.jld2` by default).
 
-Tracers with fewer than 2 time steps are skipped.
+Tracers with fewer than 2 time steps, and tracers whose zircon never grew (`NaN` age),
+are skipped.
 `Tracer.time_vec` must be in **Myr** and `Tracer.T_vec` in **°C**.
 The loop runs on all available Julia threads (`julia --threads auto`).
 
@@ -116,8 +117,9 @@ function MagmaThermoKinematics.simulate_zircon_growth_from_tracers(
         k % interval == 0 && print("\r  $k / $n done...")
     end
 
-    age_years = Float64[v for v in age_years        if !isnothing(v)]
-    zircon_radius_um = Float64[v for v in zircon_radius_um if !isnothing(v)]
+    keep = [!isnothing(a) && !isnan(a) for a in age_years]
+    age_years = Float64[v for v in age_years[keep]]
+    zircon_radius_um = Float64[v for v in zircon_radius_um[keep]]
     println("\rDone: $(length(age_years)) / $n tracers simulated.          ")
 
     if !isnothing(filename)
@@ -126,7 +128,7 @@ function MagmaThermoKinematics.simulate_zircon_growth_from_tracers(
     end
 
     if return_results
-        results = ZirconGrowth.SimulationResult[r for r in _results if !isnothing(r)]
+        results = ZirconGrowth.SimulationResult[r for r in _results[keep]]
         return (; age_years, zircon_radius_um, results)
     end
 
@@ -166,7 +168,7 @@ Each concentric shell crystallised at a different time. The shell between radii
 `time_years[end] − time_years[i]` (measured back from the end of the simulation).
 Shells with zero or negative growth are excluded.
 
-Returns the volume-weighted mean age in **years**.
+Returns the volume-weighted mean age in **years**, or `NaN` if no shell grew.
 """
 function MagmaThermoKinematics.volume_averaged_age(result::ZirconGrowth.SimulationResult)
     t = result.time_years
@@ -184,7 +186,7 @@ function MagmaThermoKinematics.volume_averaged_age(result::ZirconGrowth.Simulati
         vol_sum += dV
     end
 
-    return vol_sum > 0 ? age_sum / vol_sum : 0.0
+    return vol_sum > 0 ? age_sum / vol_sum : NaN
 end
 
 """

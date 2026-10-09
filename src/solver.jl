@@ -86,10 +86,6 @@ There are a few functions that you can overwrite in your user code to customize 
         end
     end
 
-    if any(isnan, Arrays.T)
-        error("NaNs in T; something is wrong")
-    end
-
     # Optionally set initial sill in models ------
     if hasproperty(Dikes, :sill) && !isnothing(Dikes.sill) && Dikes.sill isa InjectSills.CylindricalDikeTopAccretion
         c = [Dikes.sill.Center[i].val for i in 1:Num.dim]
@@ -115,6 +111,7 @@ There are a few functions that you can overwrite in your user code to customize 
     # Initialize arrays --------------------------
     Arrays.Tnew .= Arrays.T_init
     Arrays.T .= Arrays.T_init
+    any(isnan, Arrays.T) && error("NaNs in T; something is wrong")
 
     if isdir(Num.SimName) == false
         mkdir(Num.SimName)          # create simulation directory if needed
