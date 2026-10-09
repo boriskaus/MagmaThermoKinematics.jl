@@ -14,7 +14,7 @@ This mutable structure represents numerical parameters in the program. It is use
 - `H::Float64`: Height of the domain.
 - `dx::Float64`: Grid spacing in the x direction.
 - `dz::Float64`: Grid spacing in the z direction.
-- `Tsurface_Celcius::Float64`: Surface temperature in Celsius.
+- `Tsurface_Celsius::Float64`: Surface temperature in Celsius.
 - `Geotherm::Float64`: Geothermal gradient in K/m.
 - `maxTime_Myrs::Float64`: Maximum simulation time in Myrs.
 - `maxTime::Float64`: Maximum simulation time in seconds.
@@ -70,7 +70,7 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     dx::Float64 = W / (Nx - 1)
     dy::Float64 = L / (Ny - 1)
     dz::Float64 = H / (Nz - 1)        # grid spacing in z
-    Tsurface_Celcius::Float64 = 0               # Surface T in celcius
+    Tsurface_Celsius::Float64 = 0               # Surface T in Celsius
     Geotherm::Float64 = 40 / 1.0e3          # in K/m
     maxTime_Myrs::Float64 = 1.5             # maximum timestep
     maxTime::Float64 = maxTime_Myrs * SecYear * 1.0e6 # maximum timestep  in seconds

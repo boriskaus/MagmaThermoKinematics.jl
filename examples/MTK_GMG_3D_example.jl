@@ -24,7 +24,7 @@ println("===============================================")
 
 
 # Create 3D grid of the region
-Topo_cart = load_GMG(joinpath(@__DIR__, "Topo_cart"))       # Note: Laacher seee is around [10,20]
+Topo_cart = load_GMG(joinpath(@__DIR__, "Topo_cart"))       # Note: Laacher See is around [10,20]
 write_paraview(Topo_cart, "Topo_cart");
 # Create 3D grid of the region
 Nx, Ny, Nz = 100, 100, 100

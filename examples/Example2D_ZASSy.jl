@@ -27,7 +27,7 @@ using TimerOutputs
     H::Float64 = 20.0e3
     dx::Float64 = W / (Nx - 1)
     dz::Float64 = H / (Nz - 1)        # grid spacing in z
-    Tsurface_Celcius::Float64 = 0               # Surface T in celcius
+    Tsurface_Celsius::Float64 = 0               # Surface T in Celsius
     Geotherm::Float64 = 40 / 1.0e3          # in K/m
     maxTime_Myrs::Float64 = 1.5             # maximum timestep
     maxTime::Float64 = maxTime_Myrs * SecYear * 1.0e6 # maximum timestep  in seconds
@@ -109,8 +109,8 @@ end
     if Num.AnalyticalInitialGeo
         # Turcotte & Schubert  analytical geotherm which takes depth-dependent radioactive heating into account
         # This is used in the UCLA setup. Parameters in Mat_tup should be consistent with this (we don't check for that)
-        Arrays.T_init .= @. Num.Tsurface_Celcius - (Num.qm_anal / Num.k_anal) * Arrays.Z + (Num.qs_anal - Num.qm_anal) * Num.hr_anal / Num.k_anal * (1.0 - exp(Arrays.Z / Num.hr_anal))
-        #AnalyticalGeotherm!(Arrays.T_init, Arrays.Z, Num.Tsurface_Celcius, Num.qm_anal, Num.qs_anal, Num.k_anal, Num.hr_anal)
+        Arrays.T_init .= @. Num.Tsurface_Celsius - (Num.qm_anal / Num.k_anal) * Arrays.Z + (Num.qs_anal - Num.qm_anal) * Num.hr_anal / Num.k_anal * (1.0 - exp(Arrays.Z / Num.hr_anal))
+        #AnalyticalGeotherm!(Arrays.T_init, Arrays.Z, Num.Tsurface_Celsius, Num.qm_anal, Num.qs_anal, Num.k_anal, Num.hr_anal)
 
         Geothermalgradient_K_km = (maximum(Arrays.T_init) - minimum(Arrays.T_init)) / (maximum(Arrays.Z) - minimum(Arrays.Z)) * 1.0e3
         # check that this is selected
@@ -120,7 +120,7 @@ end
         println(" This results in an effective geothermal gradient of $(Geothermalgradient_K_km) K/km")
 
     else
-        Arrays.T_init .= @. Num.Tsurface_Celcius - Arrays.Z * Num.Geotherm                 # Initial (linear) temperature profile
+        Arrays.T_init .= @. Num.Tsurface_Celsius - Arrays.Z * Num.Geotherm                 # Initial (linear) temperature profile
     end
     # --------------------------------------------
 
@@ -211,9 +211,9 @@ end
             @timeit to "Dike intrusion" Tracers, Tnew_cpu, Vol, dike_poly, _ = inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, Dikes.T_in_Celsius, 2, Dikes.nTr_dike, dike_poly = dike_poly)      # Add dike, move hostrocks
 
             if Num.flux_bottom_BC == false
-                # Keep bottom T absolutey constant (advection modifies this)
+                # Keep bottom T absolutely constant (advection modifies this)
                 Z = Array(Arrays.Z)
-                Tnew_cpu[:, 1] .= @. Num.Tsurface_Celcius - Z[:, 1] * Num.Geotherm
+                Tnew_cpu[:, 1] .= @. Num.Tsurface_Celsius - Z[:, 1] * Num.Geotherm
             end
             copyto!(Arrays.T, Tnew_cpu)
             InjectVol += Vol                                                     # Keep track of injected volume
@@ -473,7 +473,7 @@ if 1 == 0
                             SaveOutput_steps=1000, CreateFig_steps=1000, axisymmetric=false,
                             flux_bottom_BC=true, flux_bottom=167e-3, fac_dt=0.4,  ω=0.7, verbose=false, dt = 20*SecYear,
                             maxTime_Myrs=0.7,
-                            AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=170e-3, qm_anal=167e-3, hr_anal=10e3, k_anal=3.3453,
+                            AnalyticalInitialGeo=true, Tsurface_Celsius=25,   qs_anal=170e-3, qm_anal=167e-3, hr_anal=10e3, k_anal=3.3453,
                             InitialEllipse =   true, a_init= 2.5e3,  b_init  =   1.5e3,
                             FigTitle="UCLA Models", plot_tracers=false, advect_polygon=true);
   =#
@@ -497,25 +497,25 @@ if 1 == 0
         # Initial benchmark:
         #maxTime_Myrs=0.5,
         #flux_bottom_BC=true, flux_bottom=50/1e3*1.84, fac_dt=0.2, ω=0.6, verbose=false,
-        #AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=170e-3, qm_anal=167e-3, hr_anal=10e3, k_anal=3.3453,
+        #AnalyticalInitialGeo=true, Tsurface_Celsius=25,   qs_anal=170e-3, qm_anal=167e-3, hr_anal=10e3, k_anal=3.3453,
         #InitialEllipse =   true, a_init= 2.5e3,  b_init  =   1.5e3,
 
         # Fig 12A:
         maxTime_Myrs = 0.75,
         flux_bottom_BC = true, flux_bottom = 40 / 1.0e3 * 1.89, fac_dt = 0.2, ω = 0.7, verbose = false,
-        AnalyticalInitialGeo = true, Tsurface_Celcius = 25, qs_anal = 130.0e-3, qm_anal = 130.0e-3, hr_anal = 10.0e3, k_anal = 3.3453,
+        AnalyticalInitialGeo = true, Tsurface_Celsius = 25, qs_anal = 130.0e-3, qm_anal = 130.0e-3, hr_anal = 10.0e3, k_anal = 3.3453,
         InitialEllipse = true, a_init = 2.33e3, b_init = 0.44e3,
 
         # Fig 12B:
         #maxTime_Myrs=1.5,
         #flux_bottom_BC=true, flux_bottom=40/1e3*1.89, fac_dt=0.2, ω=0.6, verbose=false,
-        #AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=130e-3, qm_anal=130e-3, hr_anal=10e3, k_anal=3.3453,
+        #AnalyticalInitialGeo=true, Tsurface_Celsius=25,   qs_anal=130e-3, qm_anal=130e-3, hr_anal=10e3, k_anal=3.3453,
         #InitialEllipse =   true, a_init= 1.62e3,  b_init  =   0.91e3,
 
         # Fig 12C:
         #maxTime_Myrs=1.21,
         #flux_bottom_BC=true, flux_bottom=40/1e3*1.89, fac_dt=0.2, ω=0.6, verbose=false,
-        #AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=130e-3, qm_anal=130e-3, hr_anal=10e3, k_anal=3.3453,
+        #AnalyticalInitialGeo=true, Tsurface_Celsius=25,   qs_anal=130e-3, qm_anal=130e-3, hr_anal=10e3, k_anal=3.3453,
         #InitialEllipse =   true, a_init= 1.64e3,  b_init  =   0.89e3,
 
         FigTitle = "UCLA Models", plot_tracers = false, advect_polygon = true
@@ -604,7 +604,7 @@ if 1 == 1
                      SaveOutput_steps=200000, CreateFig_steps=1000, axisymmetric=false,
                      flux_bottom_BC=true, flux_bottom=30/1e3*1.9, fac_dt=0.2, ω=0.7, verbose=false,
                      maxTime_Myrs=1.1,
-                     AnalyticalInitialGeo=true, Tsurface_Celcius=25,   qs_anal=100e-3, qm_anal=100e-3, hr_anal=10e3, k_anal=3.3453,
+                     AnalyticalInitialGeo=true, Tsurface_Celsius=25,   qs_anal=100e-3, qm_anal=100e-3, hr_anal=10e3, k_anal=3.3453,
                      InitialEllipse =   true, a_init= 6.7e3,  b_init  =   1.67e3,
                      FigTitle="UCLA Models", plot_tracers=true, advect_polygon=true, TrackTracersOnGrid=true);
     =#
@@ -619,7 +619,7 @@ if 1 == 1
         maxTime_Myrs = 1.25,  # Fig. 12C
 
 
-        AnalyticalInitialGeo = true, Tsurface_Celcius = 25, qs_anal = 100.0e-3, qm_anal = 100.0e-3, hr_anal = 10.0e3, k_anal = 3.3453,
+        AnalyticalInitialGeo = true, Tsurface_Celsius = 25, qs_anal = 100.0e-3, qm_anal = 100.0e-3, hr_anal = 10.0e3, k_anal = 3.3453,
         #InitialEllipse =   true, a_init= 6.7e3,  b_init  =   1.67e3,       # reference case, Fig. 12B
         #InitialEllipse =   true, a_init= 5.39e3,  b_init  =   1.348e3,     # Fig. 12A
         #InitialEllipse =   true, a_init= 8.35e3,  b_init  =   2.088e3,     # Fig. 12C

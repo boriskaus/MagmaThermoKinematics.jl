@@ -1,0 +1,6 @@
+[default.extend-words]
+iy = "iy"
+iz = "iz"
+
+[files]
+extend-exclude = ["*.pvsm"]

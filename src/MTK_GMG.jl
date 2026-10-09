@@ -115,9 +115,9 @@ end
 Initialize temperature and phases
 """
 function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters)
-    # Initalize T
+    # Initialize T
     FT = eltype(Arrays.T_init)
-    Tsurf, Geotherm = FT(Num.Tsurface_Celcius), FT(Num.Geotherm)
+    Tsurf, Geotherm = FT(Num.Tsurface_Celsius), FT(Num.Geotherm)
     Arrays.T_init .= @. Tsurf - Arrays.Z * Geotherm                 # Initial (linear) temperature profile
 
     # Open pvd file if requested
@@ -152,7 +152,7 @@ end
 Initialize temperature and phases
 """
 function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters, CartData_input::Union{Nothing, CartData})
-    # Initalize T and phases from the CartData set
+    # Initialize T and phases from the CartData set
     if Num.dim == 2
         Temp, Phases = CartData_input.fields.Temp[:, :, 1], CartData_input.fields.Phases[:, :, 1]
     else

@@ -17,7 +17,7 @@ In practice, this means `MagmaThermoKinematics.jl` can move from synthetic bench
 
 ## Example 1: Unzen3D
 
-This section documents the script in [examples/MTK_GMG_3D_example.jl](https://github.com/boriskaus/MagmaThermoKinematics.jl/blob/main/examples/MTK_GMG_3D_example.jl) which focusses on [Mount Unzen](https://en.wikipedia.org/wiki/Mount_Unzen) in Japan and produces the following script:
+This section documents the script in [examples/MTK_GMG_3D_example.jl](https://github.com/boriskaus/MagmaThermoKinematics.jl/blob/main/examples/MTK_GMG_3D_example.jl) which focuses on [Mount Unzen](https://en.wikipedia.org/wiki/Mount_Unzen) in Japan and produces the following script:
 ![](../assets/movies/Unzen3D.gif)
 
 #### Imports and Backend

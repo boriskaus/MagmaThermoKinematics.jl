@@ -59,8 +59,8 @@ end
 Initialize temperature and phases of the grid
 """
 function MTK_GMG.MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters)
-    # Initalize T
-    Arrays.T_init .= @. Num.Tsurface_Celcius - Arrays.Z * Num.Geotherm                 # Initial (linear) temperature profile
+    # Initialize T
+    Arrays.T_init .= @. Num.Tsurface_Celsius - Arrays.Z * Num.Geotherm                 # Initial (linear) temperature profile
 
     # Initialize Phases
     @views  Arrays.Phases[Arrays.Z .> -5000] .= 0

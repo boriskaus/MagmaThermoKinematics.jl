@@ -119,7 +119,7 @@ function Diffusion_SteadyState2D(Setup = "Constant_Zdirection")
         fname = "Diffusion_2D_SS_constantK_Z"
 
     elseif Setup == "VariableK_Zdirection"
-        # 1D steady steate analytical solution for variable K is given by the folliwing balance equations
+        # 1D steady state analytical solution for variable K is given by the following balance equations
         #   k1*dT/dz|_1                     =   k2*dT/dz|_2     (heat flux)
         #   dT/dz|_1 * H1 + dT/dz|_2 * H2 =   Tbot            (assuming Ttop=0)
         #   H1 + H2                         =   H               (total thickness)

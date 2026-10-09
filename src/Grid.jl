@@ -88,7 +88,7 @@ function CreateGrid(;
     Xₙ = X₁ .+ L
     Δ = L ./ (N .- 1)
 
-    # Generate 1D coordinate arrays of vertexes in all directions
+    # Generate 1D coordinate arrays of vertices in all directions
     coord1D = ()
     for idim in 1:dim
         coord1D = (coord1D..., range(X₁[idim], Xₙ[idim]; length = N[idim]))

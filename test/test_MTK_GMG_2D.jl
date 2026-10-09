@@ -69,7 +69,7 @@ import MagmaThermoKinematics.MTK_GMG
     # -----------------------------
 
 
-    Topo_cart = load_GMG(normpath(joinpath(@__DIR__, "..", "examples", "Topo_cart")))       # Note: Laacher seee is around [10,20]
+    Topo_cart = load_GMG(normpath(joinpath(@__DIR__, "..", "examples", "Topo_cart")))       # Note: Laacher See is around [10,20]
 
     # Create 3D grid of the region
     X, Y, Z = xyz_grid(-23:0.1:23, -19:0.1:19, -20:0.1:5)

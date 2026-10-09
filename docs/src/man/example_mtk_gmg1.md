@@ -23,7 +23,7 @@ function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arra
 end
 
 function MTK_GMG.MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters)
-    Arrays.T_init   .=   @. Num.Tsurface_Celcius - Arrays.Z*Num.Geotherm
+    Arrays.T_init   .=   @. Num.Tsurface_Celsius - Arrays.Z*Num.Geotherm
     @views  Arrays.Phases[Arrays.Z .> -5000] .= 0
     Arrays.Phases_init .= Arrays.Phases
     return nothing
