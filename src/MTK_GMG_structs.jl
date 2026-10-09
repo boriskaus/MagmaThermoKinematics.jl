@@ -48,6 +48,7 @@ This mutable structure represents numerical parameters in the program. It is use
 - `a_init::Float64`: Semi-major axis of initial ellipse.
 - `b_init::Float64`: Semi-minor axis of initial ellipse.
 - `TrackTracersOnGrid::Bool`: Whether to track tracers on the grid.
+- `TtPath_steps::Int64`: Number of time steps between samples of the tracer temperature–time paths (`time_vec`, `T_vec`).
 
 # Examples
 
@@ -113,6 +114,7 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     a_init::Float64 = 2.5e3
     b_init::Float64 = 1.5e3
     TrackTracersOnGrid::Bool = true
+    TtPath_steps::Int64 = 10              # time steps between samples of the tracer T-t paths
     TracerFloatType::DataType = Float32     # float type for Tracer time_vec/T_vec (Float32 saves memory)
 end
 

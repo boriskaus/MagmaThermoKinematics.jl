@@ -150,6 +150,9 @@ end
     A[I] = fn(MatParam, Int64(Phases[I]), argsI)   # GeoParams' phase lookup takes an Int64
 end
 
+# GeoParams' radioactive heat takes the depth `z` (positive downward); the model coordinate `Z` is negative below the surface.
+radioactive_heat_at_Z(MatParam, phase, args) = compute_radioactive_heat(MatParam, phase, (; z = -args.Z))
+
 """
     Nonlinear_Diffusion_step!(Arrays, Mat_tup, Phases, Grid, dt, Num = Numeric_params())
 
@@ -172,7 +175,7 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
     @. Arrays.T_K = Arrays.T + T₀
     Arrays.T_it_old .= Arrays.T
     args1 = haskey(Arrays, :index) ? (; T = Arrays.T_K, P = Arrays.P, index = Arrays.index) : (; T = Arrays.T_K, P = Arrays.P)
-    compute_phase_param!(Arrays.Hr, compute_radioactive_heat, Mat_tup, Phases, (; z = -Arrays.Z))   # independent of T
+    compute_phase_param!(Arrays.Hr, radioactive_heat_at_Z, Mat_tup, Phases, (; Z = Arrays.Z))   # independent of T
     err, iter = 1.0, 1
     while err > Num.convergence && iter < Num.max_iter
         compute_phase_param!(Arrays.ϕ, compute_meltfraction, Mat_tup, Phases, args1)

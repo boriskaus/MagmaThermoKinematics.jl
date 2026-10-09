@@ -104,3 +104,4 @@ Arrays.T .= Arrays.Tnew
 - `time_props.MeltFraction` is the mean melt fraction of the whole model in 3D. In v0.7 it was `Ny` times too large.
 - A 2D `NumParam` with `Ny > 0` now runs a 3D model in `MTK_GeoParams`. Leave `Ny` at its default `0` for 2D models.
 - `Numeric_params` has a new field `deactivationDepth` (default `-15e3` m). In v0.7, `deactivate_La_at_depth=true` with `Numeric_params` failed because this field was missing.
+- `NumParam` has a new field `TtPath_steps` (default `10`, as in v0.7): the number of time steps between samples of the tracer temperature–time paths (`time_vec`, `T_vec`).

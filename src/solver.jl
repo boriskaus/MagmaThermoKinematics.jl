@@ -62,9 +62,10 @@ There are a few functions that you can overwrite in your user code to customize 
 
     Tracers = StructArray{Tracer{Num.TracerFloatType}}(undef, 1)   # Initialize tracers
 
-    # Host buffers for advection & phases --------
-    Tnew_cpu = Array{eltype(Arrays.T)}(undef, size(Arrays.T))
-    Phi_melt_cpu = similar(Tnew_cpu)
+    # Host arrays for the tracer update: `Tnew` and `ϕ` themselves when they are host
+    # `Array`s, host copies otherwise.
+    Tnew_host, ϕ_host = Arrays.Tnew isa Array ? (Arrays.Tnew, Arrays.ϕ) : (Array(Arrays.Tnew), Array(Arrays.ϕ))
+
     Phases = KernelAbstractions.ones(Num.backend, Int64, size(Arrays.T)...)
     Phases_init = KernelAbstractions.ones(Num.backend, Int64, size(Arrays.T)...)
     Arrays = (Arrays..., Phases = Phases, Phases_init = Phases_init)
@@ -132,10 +133,11 @@ There are a few functions that you can overwrite in your user code to customize 
         # Update variables ---------------------------
         # Copy fields only when tracers are active.
         if isassigned(Tracers, 1)
-            copyto!(Tnew_cpu, Arrays.Tnew)
-            copyto!(Phi_melt_cpu, Arrays.ϕ)
-
-            UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu)      # Update info on tracers
+            if Tnew_host !== Arrays.Tnew
+                copyto!(Tnew_host, Arrays.Tnew)
+                copyto!(ϕ_host, Arrays.ϕ)
+            end
+            UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_host, ϕ_host)      # Update info on tracers
         end
 
         Arrays.T .= Arrays.Tnew
