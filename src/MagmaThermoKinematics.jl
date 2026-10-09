@@ -25,10 +25,10 @@ abstract type TimeDependentProperties end
 include("Units.jl")                             # various useful units
 
 # Few useful parameters
-const SecYear     = 3600*24*365.25
-const kyr         = 1000*SecYear
-const Myr         = 1e6*SecYear
-const km³         = 1000^3
+const SecYear = 3600 * 24 * 365.25
+const kyr = 1000 * SecYear
+const Myr = 1.0e6 * SecYear
+const km³ = 1000^3
 export SecYear, kyr, Myr, km³
 
 export NumericalParameters, SillParameters, TimeDependentProperties
@@ -39,7 +39,7 @@ export GridData, CreateGrid
 
 # Routines that deal with tracers
 include("Tracers.jl")
-export UpdateTracers, AdvectTracers!, InitializeTracers,PhaseRatioFromTracers, CorrectTracersForTopography!
+export UpdateTracers, AdvectTracers!, InitializeTracers, PhaseRatioFromTracers, CorrectTracersForTopography!
 export RockAssemblage, update_Tvec!
 export PhaseRatioFromTracers!, PhasesFromTracers!, UpdateTracers_T_ϕ!, UpdateTracers_Field! # new routines
 export Tracer, TracersToGrid!
@@ -81,7 +81,6 @@ export CPU
 
 # Routines related to Parameters.jl, which come in handy in the main routine
 export @unpack, @with_kw
-
 
 
 end # module

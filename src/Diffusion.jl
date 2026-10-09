@@ -8,15 +8,15 @@
 Parameters that control the nonlinear diffusion solver.
 """
 @with_kw struct Numeric_params
-    ω::Float64                  =   0.5;            # relaxation parameter for nonlinear iterations
-    max_iter::Int64             =   1500;           # max. number of nonlinear iterations
-    verbose::Bool               =   false;          # print info?
-    convergence::Float64        =   1e-4;           # nonlinear convergence criteria
-    axisymmetric::Bool          =   false;          # Axisymmetric or 2D?
-    flux_bottom_BC::Bool        =   false;          # Flux bottom BC?
-    flux_bottom::Float64        =   0.0;            # flux @ bottom, in case flux_bottom_BC=true
-    deactivate_La_at_depth::Bool=   false;          # no latent heat and melt below `deactivationDepth`?
-    deactivationDepth::Float64  =   -15e3;          # depth [m] below which latent heat and melt are switched off
+    ω::Float64 = 0.5             # relaxation parameter for nonlinear iterations
+    max_iter::Int64 = 1500            # max. number of nonlinear iterations
+    verbose::Bool = false           # print info?
+    convergence::Float64 = 1.0e-4            # nonlinear convergence criteria
+    axisymmetric::Bool = false           # Axisymmetric or 2D?
+    flux_bottom_BC::Bool = false           # Flux bottom BC?
+    flux_bottom::Float64 = 0.0             # flux @ bottom, in case flux_bottom_BC=true
+    deactivate_La_at_depth::Bool = false           # no latent heat and melt below `deactivationDepth`?
+    deactivationDepth::Float64 = -15.0e3           # depth [m] below which latent heat and melt are switched off
 end
 
 "Launch the KernelAbstractions kernel `kernel!` over `ndrange` on the backend of `A`."
@@ -53,7 +53,7 @@ Explicit update of the interior cells of `Tnew` for
 the two neighboring cells. `Δ` holds the grid spacing per dimension. With the
 cell radii `R`, the first dimension is radial (2D axisymmetric).
 """
-function diffusion_step!(Tnew, T, K, Rho, Cp, H, Hl, dt, Δ, dϕdT; R=nothing)
+function diffusion_step!(Tnew, T, K, Rho, Cp, H, Hl, dt, Δ, dϕdT; R = nothing)
     axes(Tnew) == axes(T) || throw(DimensionMismatch("Tnew and T must match: $(axes(Tnew)) vs $(axes(T))"))
     _launch!(_diffusion_step!, T, size(T) .- 2, Tnew, T, K, Rho, Cp, H, Hl, dt, Tuple(Δ), dϕdT, R)
     return nothing
@@ -74,13 +74,13 @@ end
 
 "Contribution of the step `e` to `∇⋅(K ∇T)`; with radii `R`, the cylindrical (1/r) ∂(r K ∂T/∂r)/∂r."
 @inline function _∂q(T, K, I, e, Δ, ::Nothing)
-    qp = (K[I] + K[I+e]) / 2 * (T[I+e] - T[I]) / Δ
-    qm = (K[I-e] + K[I]) / 2 * (T[I] - T[I-e]) / Δ
+    qp = (K[I] + K[I + e]) / 2 * (T[I + e] - T[I]) / Δ
+    qm = (K[I - e] + K[I]) / 2 * (T[I] - T[I - e]) / Δ
     return (qp - qm) / Δ
 end
 @inline function _∂q(T, K, I, e, Δ, R)
-    qp = (R[I] + R[I+e]) / 2 * ((K[I] + K[I+e]) / 2) * (T[I+e] - T[I]) / Δ
-    qm = (R[I-e] + R[I]) / 2 * ((K[I-e] + K[I]) / 2) * (T[I] - T[I-e]) / Δ
+    qp = (R[I] + R[I + e]) / 2 * ((K[I] + K[I + e]) / 2) * (T[I + e] - T[I]) / Δ
+    qm = (R[I - e] + R[I]) / 2 * ((K[I - e] + K[I]) / 2) * (T[I] - T[I - e]) / Δ
     return inv(R[I]) * (qp - qm) / Δ
 end
 
@@ -171,25 +171,25 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
 
     @. Arrays.T_K = Arrays.T + T₀
     Arrays.T_it_old .= Arrays.T
-    args1 = haskey(Arrays, :index) ? (; T=Arrays.T_K, P=Arrays.P, index=Arrays.index) : (; T=Arrays.T_K, P=Arrays.P)
-    compute_phase_param!(Arrays.Hr, compute_radioactive_heat, Mat_tup, Phases, (; z=-Arrays.Z))   # independent of T
+    args1 = haskey(Arrays, :index) ? (; T = Arrays.T_K, P = Arrays.P, index = Arrays.index) : (; T = Arrays.T_K, P = Arrays.P)
+    compute_phase_param!(Arrays.Hr, compute_radioactive_heat, Mat_tup, Phases, (; z = -Arrays.Z))   # independent of T
     err, iter = 1.0, 1
     while err > Num.convergence && iter < Num.max_iter
-        compute_phase_param!(Arrays.ϕ,    compute_meltfraction,     Mat_tup, Phases, args1)
-        compute_phase_param!(Arrays.dϕdT, compute_dϕdT,             Mat_tup, Phases, args1)
-        compute_phase_param!(Arrays.Rho,  compute_density,          Mat_tup, Phases, args1)
-        compute_phase_param!(Arrays.Cp,   compute_heatcapacity,     Mat_tup, Phases, args1)
-        compute_phase_param!(Arrays.Kc,   compute_conductivity,     Mat_tup, Phases, args1)
-        compute_phase_param!(Arrays.Hl,   compute_latent_heat,      Mat_tup, Phases, args1)
+        compute_phase_param!(Arrays.ϕ, compute_meltfraction, Mat_tup, Phases, args1)
+        compute_phase_param!(Arrays.dϕdT, compute_dϕdT, Mat_tup, Phases, args1)
+        compute_phase_param!(Arrays.Rho, compute_density, Mat_tup, Phases, args1)
+        compute_phase_param!(Arrays.Cp, compute_heatcapacity, Mat_tup, Phases, args1)
+        compute_phase_param!(Arrays.Kc, compute_conductivity, Mat_tup, Phases, args1)
+        compute_phase_param!(Arrays.Hl, compute_latent_heat, Mat_tup, Phases, args1)
 
         if Num.deactivate_La_at_depth       # no latent heat and melt below `deactivationDepth`
             minZ = FT(Num.deactivationDepth)
             @. Arrays.dϕdT = ifelse(Arrays.Z < minZ, zero(FT), Arrays.dϕdT)
-            @. Arrays.ϕ    = ifelse(Arrays.Z < minZ, zero(FT), Arrays.ϕ)
+            @. Arrays.ϕ = ifelse(Arrays.Z < minZ, zero(FT), Arrays.ϕ)
         end
 
         diffusion_step!(Arrays.Tnew, Arrays.T, Arrays.Kc, Arrays.Rho, Arrays.Cp, Arrays.Hr, Arrays.Hl, dt, Δ, Arrays.dϕdT; R)
-        for d in 1:N-1                      # flux-free lateral boundaries
+        for d in 1:(N - 1)                      # flux-free lateral boundaries
             bc_zero_flux!(Arrays.Tnew, d)
         end
         if Num.flux_bottom_BC
@@ -208,7 +208,7 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
         iter += 1
     end
     (isfinite(err) && err <= Num.convergence) ||
-        error("$(N)D nonlinear diffusion did not converge after $(iter-1) iterations (error=$(err), tolerance=$(Num.convergence)); reduce Δt or the relaxation parameter Num.ω=$(Num.ω) [0-1]")
+        error("$(N)D nonlinear diffusion did not converge after $(iter - 1) iterations (error=$(err), tolerance=$(Num.convergence)); reduce Δt or the relaxation parameter Num.ω=$(Num.ω) [0-1]")
     Num.verbose && println("  ----")
     return nothing
 end

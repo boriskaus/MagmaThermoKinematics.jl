@@ -1,4 +1,4 @@
-using  Random
+using Random
 
 using MagmaThermoKinematics
 # using CUDA                        # for an NVIDIA GPU, then: backend = CUDABackend()
@@ -11,8 +11,8 @@ const rng = Random.seed!(1234);     # same seed such that we can reproduce resul
 
 if !(backend isa CPU)
     function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
-        if mod(Num.it,10) == 0
-            println("$(Num.it), $(Num.time/SecYear/1e3) kyrs; max(T)=$(maximum(Arrays.Tnew))")
+        if mod(Num.it, 10) == 0
+            println("$(Num.it), $(Num.time / SecYear / 1.0e3) kyrs; max(T)=$(maximum(Arrays.Tnew))")
         end
         return nothing
     end
@@ -25,29 +25,29 @@ println("===============================================")
 
 
 # Create 3D grid of the region
-if !isfile(joinpath(@__DIR__,"Topo_cart_Lanin3D.jld2"))
+if !isfile(joinpath(@__DIR__, "Topo_cart_Lanin3D.jld2"))
     using GMT, Statistics
     println("Creating topography grid from GMG for Lanin 3D example...")
-    Topo       =   import_topo(lon = [-71.9, -71.1], lat=[-39.95, -39.35], file="@earth_relief_01s.grd")
-    proj       =   ProjectionPoint(; Lat=mean(Topo.lat.val), Lon=mean(Topo.lon.val))
-    Topo_cart  =   convert2CartData(Topo, proj)
+    Topo = import_topo(lon = [-71.9, -71.1], lat = [-39.95, -39.35], file = "@earth_relief_01s.grd")
+    proj = ProjectionPoint(; Lat = mean(Topo.lat.val), Lon = mean(Topo.lon.val))
+    Topo_cart = convert2CartData(Topo, proj)
 
-    Xt,Yt,Zt   =   xyz_grid(-20:.025:20,-20:.025:20,0)
-    Topo_cart  =   project_CartData(CartData(Xt,Yt,Zt,(Zt=Zt,)), Topo, proj)
-    write_paraview(Topo_cart,joinpath(@__DIR__,"Topo_cart_Lanin3D"));
+    Xt, Yt, Zt = xyz_grid(-20:0.025:20, -20:0.025:20, 0)
+    Topo_cart = project_CartData(CartData(Xt, Yt, Zt, (Zt = Zt,)), Topo, proj)
+    write_paraview(Topo_cart, joinpath(@__DIR__, "Topo_cart_Lanin3D"))
 
-    save_GMG(joinpath(@__DIR__,"Topo_cart_Lanin3D"), Topo_cart)
+    save_GMG(joinpath(@__DIR__, "Topo_cart_Lanin3D"), Topo_cart)
 end
 
-Topo_cart = load_GMG(joinpath(@__DIR__,"Topo_cart_Lanin3D"))
-!isfile(joinpath(@__DIR__,"Topo_cart_Lanin3D.vts")) ? write_paraview(Topo_cart,joinpath(@__DIR__,"Topo_cart_Lanin3D")) : nothing
-x_range     =   (-20,20)
-z_range     =   (-40,5)
-Nx          =   128
-Ny          =   128
-Nz          =   128
-X,Y,Z       =   xyz_grid(range(x_range[1],x_range[2], length=Nx),range(x_range[1],x_range[2], length=Ny),range(z_range[1],z_range[2], length=Nz))
-Data_3D     =   CartData(X,Y,Z,(Phases=zeros(Int64,size(X)),Temp=zeros(size(X))));       # 3D dataset
+Topo_cart = load_GMG(joinpath(@__DIR__, "Topo_cart_Lanin3D"))
+!isfile(joinpath(@__DIR__, "Topo_cart_Lanin3D.vts")) ? write_paraview(Topo_cart, joinpath(@__DIR__, "Topo_cart_Lanin3D")) : nothing
+x_range = (-20, 20)
+z_range = (-40, 5)
+Nx = 128
+Ny = 128
+Nz = 128
+X, Y, Z = xyz_grid(range(x_range[1], x_range[2], length = Nx), range(x_range[1], x_range[2], length = Ny), range(z_range[1], z_range[2], length = Nz))
+Data_3D = CartData(X, Y, Z, (Phases = zeros(Int64, size(X)), Temp = zeros(size(X))));       # 3D dataset
 
 # Intersect with topography
 Below = below_surface(Data_3D, Topo_cart)
@@ -59,43 +59,45 @@ Data_3D.fields.Phases[ind] .= 2
 
 # Set T:
 gradient = 30
-Data_3D.fields.Temp .= -Data_3D.z.val*gradient
+Data_3D.fields.Temp .= -Data_3D.z.val * gradient
 ind = findall(Data_3D.fields.Temp .< 10.0)
 Data_3D.fields.Temp[ind] .= 10.0
 
 # Set thermal anomaly
 x_c, y_c, z_c, r = -10, -10, -15, 2.5
-Volume  = 4/3*pi*r^3 # equivalent 3D volume of the anomaly [km^3]
-ind = findall((Data_3D.x.val .- x_c).^2 .+ (Data_3D.y.val .- y_c).^2 .+ (Data_3D.z.val .- z_c).^2 .< r^2)
+Volume = 4 / 3 * pi * r^3 # equivalent 3D volume of the anomaly [km^3]
+ind = findall((Data_3D.x.val .- x_c) .^ 2 .+ (Data_3D.y.val .- y_c) .^ 2 .+ (Data_3D.z.val .- z_c) .^ 2 .< r^2)
 Data_3D.fields.Temp[ind] .= 800.0
 
-!isfile(joinpath(@__DIR__,"Initial_Setup_Lanin3D.vts")) ? write_paraview(Data_3D, joinpath(@__DIR__,"Initial_Setup_Lanin3D")) : nothing
+!isfile(joinpath(@__DIR__, "Initial_Setup_Lanin3D.vts")) ? write_paraview(Data_3D, joinpath(@__DIR__, "Initial_Setup_Lanin3D")) : nothing
 
 
 # Define numerical parameters
-Num         = NumParam( SimName="Lanin3D_$(Nx)^3", axisymmetric=false,
-                        maxTime_Myrs=0.025,
-                        Nx = Nx, Ny = Ny, Nz = Nz,
-                        fac_dt=0.2,
-                        SaveOutput_steps=20, CreateFig_steps=1000, plot_tracers=false, advect_polygon=false,
-                        backend=backend,
-                        AddRandomSills = true, RandomSills_timestep=5);
+Num = NumParam(
+    SimName = "Lanin3D_$(Nx)^3", axisymmetric = false,
+    maxTime_Myrs = 0.025,
+    Nx = Nx, Ny = Ny, Nz = Nz,
+    fac_dt = 0.2,
+    SaveOutput_steps = 20, CreateFig_steps = 1000, plot_tracers = false, advect_polygon = false,
+    backend = backend,
+    AddRandomSills = true, RandomSills_timestep = 5
+);
 
 # Default setup: ElasticDike equivalent via PennyShapedSill.
-sill = PennyShapedSill(Center=Point3(0.0, 0.0, -7.0e3) * m, Angle=Vec2(0.0, 0.0) * NoUnits, R=2.5e3 * m, H=1000 * m, E=1.5e10 * Pa, ν=0.3 * NoUnits)
+sill = PennyShapedSill(Center = Point3(0.0, 0.0, -7.0e3) * m, Angle = Vec2(0.0, 0.0) * NoUnits, R = 2.5e3 * m, H = 1000 * m, E = 1.5e10 * Pa, ν = 0.3 * NoUnits)
 
 # Alternative sill definitions (currently unused):
 # sill = CylindricalDikeTopAccretion(Center=Point3(0.0, 0.0, -7.0e3) * m, Angle=Vec2(0.0, 0.0) * NoUnits, W=5e3 * m, H=1000 * m)
 # sill = EllipticalIntrusion(Center=Point3(0.0, 0.0, -7.0e3) * m, Angle=Vec2(0.0, 0.0) * NoUnits, W=5e3 * m, H=1000 * m)
 
 Sill_params = SillParams(
-    sill                    = sill,
-    InjectionInterval_year  = 500,
-    nTr_dike                = 300,
-    H_ran                   = 5000,
-    W_ran                   = 5000,
-    SillPhase               = 3,
-    BackgroundPhase         = 1,
+    sill = sill,
+    InjectionInterval_year = 500,
+    nTr_dike = 300,
+    H_ran = 5000,
+    W_ran = 5000,
+    SillPhase = 3,
+    BackgroundPhase = 1,
 )
 
 # Keep random sill relocation and actual injection in sync.
@@ -105,46 +107,55 @@ if Num.AddRandomSills
 end
 
 # Define parameters for the different phases
-MatParam     = (SetMaterialParams(Name="Air", Phase=0,
-                                Density    = ConstantDensity(ρ=2700kg/m^3),
-                                LatentHeat = ConstantLatentHeat(Q_L=0.0J/kg),
-                                Conductivity = ConstantConductivity(k=3Watt/K/m),          # in case we use constant k
-                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
-                                Melting = SmoothMelting(MeltingParam_4thOrder())),          # Marxer & Ulmer melting
+MatParam = (
+    SetMaterialParams(
+        Name = "Air", Phase = 0,
+        Density = ConstantDensity(ρ = 2700kg / m^3),
+        LatentHeat = ConstantLatentHeat(Q_L = 0.0J / kg),
+        Conductivity = ConstantConductivity(k = 3Watt / K / m),          # in case we use constant k
+        HeatCapacity = ConstantHeatCapacity(Cp = 1000J / kg / K),
+        Melting = SmoothMelting(MeltingParam_4thOrder())
+    ),          # Marxer & Ulmer melting
 
-                SetMaterialParams(Name="Crust", Phase=1,
-                                Density    = ConstantDensity(ρ=2700kg/m^3),
-                                LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                                Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
-                                #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
-                                Melting = SmoothMelting(MeltingParam_4thOrder())),      # Marxer & Ulmer melting
+    SetMaterialParams(
+        Name = "Crust", Phase = 1,
+        Density = ConstantDensity(ρ = 2700kg / m^3),
+        LatentHeat = ConstantLatentHeat(Q_L = 3.13e5J / kg),
+        Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
+        #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
+        HeatCapacity = ConstantHeatCapacity(Cp = 1000J / kg / K),
+        Melting = SmoothMelting(MeltingParam_4thOrder())
+    ),      # Marxer & Ulmer melting
 
-                SetMaterialParams(Name="Mantle", Phase=2,
-                                Density    = ConstantDensity(ρ=2700kg/m^3),
-                                LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                                Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
-                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K)),
+    SetMaterialParams(
+        Name = "Mantle", Phase = 2,
+        Density = ConstantDensity(ρ = 2700kg / m^3),
+        LatentHeat = ConstantLatentHeat(Q_L = 3.13e5J / kg),
+        Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
+        HeatCapacity = ConstantHeatCapacity(Cp = 1000J / kg / K)
+    ),
 
-                SetMaterialParams(Name="Dikes", Phase=3,
-                                Density    = ConstantDensity(ρ=2700kg/m^3),
-                                LatentHeat = ConstantLatentHeat(Q_L=3.13e5J/kg),
-                        #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
-                                Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
-                                #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
-                                HeatCapacity = ConstantHeatCapacity(Cp=1000J/kg/K),
-                                Melting = SmoothMelting(MeltingParam_4thOrder()))      # Marxer & Ulmer melting
+    SetMaterialParams(
+        Name = "Dikes", Phase = 3,
+        Density = ConstantDensity(ρ = 2700kg / m^3),
+        LatentHeat = ConstantLatentHeat(Q_L = 3.13e5J / kg),
+        #     Conductivity = ConstantConductivity(k=3.3Watt/K/m),          # in case we use constant k
+        Conductivity = T_Conductivity_Whittington_parameterised(),   # T-dependent k
+        #Conductivity = T_Conductivity_Whittington(),                 # T-dependent k
+        HeatCapacity = ConstantHeatCapacity(Cp = 1000J / kg / K),
+        Melting = SmoothMelting(MeltingParam_4thOrder())
+    ),      # Marxer & Ulmer melting
 
-                )
+)
 
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams(MatParam, Num, Sill_params, CartData_input=Data_3D); # start the main code
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams(MatParam, Num, Sill_params, CartData_input = Data_3D); # start the main code
 
 Data_set3D_out = Data_3D;
-Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Temperature[C]",  Float32.(Array(Arrays.Tnew )));   # in MPa
-Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Temp",         Float32.(Array(Arrays.Tnew)));
-Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Phases",       Int32.(Array(Arrays.Phases)));
+Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Temperature[C]", Float32.(Array(Arrays.Tnew)));   # in MPa
+Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Temp", Float32.(Array(Arrays.Tnew)));
+Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "Phases", Int32.(Array(Arrays.Phases)));
 Data_set3D_out = MTK_GMG.add_data_CartData(Data_set3D_out, "MeltFraction", Float32.(Array(Arrays.ϕ)));
-save_GMG(joinpath(Num.SimName,"Lanin3D_MTK_final"), Data_set3D_out)
-write_paraview(Data_3D, joinpath(Num.SimName,"Lanin3D_MTK_final"))
+save_GMG(joinpath(Num.SimName, "Lanin3D_MTK_final"), Data_set3D_out)
+write_paraview(Data_3D, joinpath(Num.SimName, "Lanin3D_MTK_final"))

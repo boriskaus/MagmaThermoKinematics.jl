@@ -1,5 +1,4 @@
-
- using Statistics: mean
+using Statistics: mean
 
 """
     Process_ZirconAges(dirname; ZirconData=ZirconAgeData())
@@ -22,36 +21,36 @@ julia> Age_Ma, cum_PDF, norm_PDF, T_av_time  = JLD2.load("Zassy_Geneva_zeroFlux_
 ```
 
 """
-function Process_ZirconAges(dirname; ZirconData=ZirconAgeData())
-    filename = dirname*"/Tracers_SimParams.jld2"
-    Tracers, Tav_magma_Time, Time_vec = JLD2.load(filename,"Tracers","Tav_magma_Time","Time_vec")
+function Process_ZirconAges(dirname; ZirconData = ZirconAgeData())
+    filename = dirname * "/Tracers_SimParams.jld2"
+    Tracers, Tav_magma_Time, Time_vec = JLD2.load(filename, "Tracers", "Tav_magma_Time", "Time_vec")
 
     # Compute average T in magma (that is all tracers with T>700)
     time_years, Ttpaths_mat = compute_zircons_convert_vecs2mat(Tracers.time_vec, Tracers.T_vec)
-    Ttpaths_mat[Ttpaths_mat.<700] .= 0;
+    Ttpaths_mat[Ttpaths_mat .< 700] .= 0
     T_average_magma_time = zero(time_years)
-    for i = 1:length(time_years)
-        T_vec = Ttpaths_mat[i,:];
+    for i in 1:length(time_years)
+        T_vec = Ttpaths_mat[i, :]
         T_average_magma_time[i] = mean(T_vec[T_vec .> 10])
     end
 
     # Compute zircon ages
     time_Ma, PDF_zircons, time_Ma_average, PDF_zircon_average, time_years, prob, ages_eruptible, number_zircons, T_av_time, T_sd_time =
-        compute_zircon_age_PDF(Tracers.time_vec*1e6, Tracers.T_vec; ZirconData = ZirconData, bandwidth=1e5, n_analyses=300);
-
-
+        compute_zircon_age_PDF(Tracers.time_vec * 1.0e6, Tracers.T_vec; ZirconData = ZirconData, bandwidth = 1.0e5, n_analyses = 300)
 
 
     # compute useful vectors (for plotting):
-    Age_Ma = time_years[end:-1:1]/1e6;   # age of the rocks (opposite of model time)
-    cum_PDF  = 1.0 .- cumsum(prob);      # cumulative probability density function from 0-1
-    norm_PDF = prob;                     # normal probability density function from 0-1
+    Age_Ma = time_years[end:-1:1] / 1.0e6    # age of the rocks (opposite of model time)
+    cum_PDF = 1.0 .- cumsum(prob)       # cumulative probability density function from 0-1
+    norm_PDF = prob                      # normal probability density function from 0-1
 
     # save stuff as jld2 file (easier to plot later)
-    filename_save = dirname*"/ZirconAges.jld2"
-    jldsave(filename_save; time_Ma, PDF_zircons, time_Ma_average, PDF_zircon_average,
-                            time_years, prob, ages_eruptible, number_zircons, T_av_time, T_sd_time, Tav_magma_Time,
-                            Age_Ma, cum_PDF, norm_PDF, Time_vec, T_average_magma_time)
+    filename_save = dirname * "/ZirconAges.jld2"
+    jldsave(
+        filename_save; time_Ma, PDF_zircons, time_Ma_average, PDF_zircon_average,
+        time_years, prob, ages_eruptible, number_zircons, T_av_time, T_sd_time, Tav_magma_Time,
+        Age_Ma, cum_PDF, norm_PDF, Time_vec, T_average_magma_time
+    )
     println("Save processed zircon age data to file: $filename_save")
 
     return nothing
@@ -105,7 +104,7 @@ end
 
 Copy the device arrays `T_GPU` and `ϕ_GPU` into the host arrays `T_CPU` and `ϕ_CPU`.
 """
-function copy_arrays_GPU2CPU!(T_CPU::AbstractArray,  ϕ_CPU::AbstractArray, T_GPU::AbstractArray, ϕ_GPU::AbstractArray)
+function copy_arrays_GPU2CPU!(T_CPU::AbstractArray, ϕ_CPU::AbstractArray, T_GPU::AbstractArray, ϕ_GPU::AbstractArray)
     copy_to_host!(T_CPU, T_GPU)
     copy_to_host!(ϕ_CPU, ϕ_GPU)
     return nothing
@@ -116,7 +115,7 @@ end
 
 Copy the host arrays `T_CPU` and `ϕ_CPU` into the device arrays `T_GPU` and `ϕ_GPU`.
 """
-function copy_arrays_CPU2GPU!(T_GPU::AbstractArray,  ϕ_GPU::AbstractArray, T_CPU::AbstractArray, ϕ_CPU::AbstractArray)
+function copy_arrays_CPU2GPU!(T_GPU::AbstractArray, ϕ_GPU::AbstractArray, T_CPU::AbstractArray, ϕ_CPU::AbstractArray)
     copy_to_device!(T_GPU, T_CPU)
     copy_to_device!(ϕ_GPU, ϕ_CPU)
     return nothing

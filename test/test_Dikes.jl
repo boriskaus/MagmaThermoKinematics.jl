@@ -20,345 +20,357 @@ end
 # ---------------------------------------------------------------------------
 function _make_sill(DikeType, cen, DikeAngle, Wdike, Hdike, dim)
     if dim == 2
-        angle  = Vec1(Float64(DikeAngle[1]))
+        angle = Vec1(Float64(DikeAngle[1]))
         center = Point2(cen[1], cen[2]) * m
     else
-        angle  = Vec2(Float64(DikeAngle[1]), Float64(DikeAngle[end]))
+        angle = Vec2(Float64(DikeAngle[1]), Float64(DikeAngle[end]))
         center = Point3(cen[1], cen[2], cen[3]) * m
     end
-    if DikeType in ("SquareDike", "SquareDike_TopAccretion")
-        SquareDike(Center=center, Angle=angle, W=Wdike*m, H=Hdike*m)
+    return if DikeType in ("SquareDike", "SquareDike_TopAccretion")
+        SquareDike(Center = center, Angle = angle, W = Wdike * m, H = Hdike * m)
     else  # ElasticDike, InjectSills, EllipticalIntrusion, …
-        PennyShapedSill(Center=center, Angle=angle,
-                        R=(Wdike/2)*m, H=Hdike*m,
-                        E=1.5e10Pa, ν=0.3*NoUnits)
+        PennyShapedSill(
+            Center = center, Angle = angle,
+            R = (Wdike / 2) * m, H = Hdike * m,
+            E = 1.5e10Pa, ν = 0.3 * NoUnits
+        )
     end
 end
 
 
-function test_hostrock_velocity(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45])
-  # test generating host velocity from various dikes, with different size/orientation/type in both 2D and 3DD
+function test_hostrock_velocity(Dimension = "2D", DikeType = "ElasticDike", DikeAngle = [45])
+    # test generating host velocity from various dikes, with different size/orientation/type in both 2D and 3DD
 
-  if Dimension=="2D"
-    # Model parameters
-    W,H                     =   30.0,  30.0;                                # Width, Length, Height
+    if Dimension == "2D"
+        # Model parameters
+        W, H = 30.0, 30.0                                 # Width, Length, Height
 
-    # Define grid
-    Nx, Nz                  =   129, 129;                                     # resolution of coarse grid
-    dx,dz                   =   W*1e3/(Nx-1), H*1e3/(Nz-1);                   # grid size [m]
-    x,z                     =   0:dx:W*1e3, -H*1e3:dz:0;                      # 1D coordinate arrays
-    coords                  =   collect(Iterators.product(x,z))               # generate coordinates from 1D coordinate vectors
-    X,Z                     =   (x->x[1]).(coords), (x->x[2]).(coords);       # transfer coords to 3D arrays
-    Grid, FullGrid, Spacing =   (x,z), (X,Z), (dx,dz);
+        # Define grid
+        Nx, Nz = 129, 129                                      # resolution of coarse grid
+        dx, dz = W * 1.0e3 / (Nx - 1), H * 1.0e3 / (Nz - 1)                    # grid size [m]
+        x, z = 0:dx:(W * 1.0e3), (-H * 1.0e3):dz:0                       # 1D coordinate arrays
+        coords = collect(Iterators.product(x, z))               # generate coordinates from 1D coordinate vectors
+        X, Z = (x -> x[1]).(coords), (x -> x[2]).(coords)        # transfer coords to 3D arrays
+        Grid, FullGrid, Spacing = (x, z), (X, Z), (dx, dz)
 
-    Hdike                   =   100.0;
-    Wdike                   =   20000.0;
-    T_in                    =   900.0;
+        Hdike = 100.0
+        Wdike = 20000.0
+        T_in = 900.0
 
-    cen                     =   [W/2;-H/2].*1e3;
-  elseif Dimension=="3D"
-      # Model parameters
-      W,L,H                 =   30., 40., 50.;                                    # Width, Length, Height
+        cen = [W / 2;-H / 2] .* 1.0e3
+    elseif Dimension == "3D"
+        # Model parameters
+        W, L, H = 30.0, 40.0, 50.0                                     # Width, Length, Height
 
-      # Define coarse grid
-      Nx, Ny, Nz              =   65,65,65;                                                    # resolution of coarse grid
-      dx,dy,dz                =   W*1e3/(Nx-1), L*1e3/(Ny-1), H*1e3/(Nz-1);                     # grid size [m]
-      x,y,z                   =   0:dx:((Nx-1)*dx),  0:dy:((Ny-1)*dy), -((Nz-1)*dz):dz:0.;      # 1D coordinate arrays
-      coords                  =   collect(Iterators.product(x,y,z))                             # generate coordinates from 1D coordinate vectors
-      X,Y,Z                   =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);   # transfer coords to 3D arrays
-      Grid, FullGrid, Spacing =   (x,y,z), (X,Y,Z), (dx,dy,dz);
-      cen                     =   [W/2;L/2; -H/2].*1e3;
-
-
-      Hdike                   =   100.0;
-      Wdike                   =   20000.0;
-      T_in                    =   900.0;
-  end
-
-  # Compute velocity required to create space for dike
-  sill = _make_sill(DikeType, cen, DikeAngle, Wdike, Hdike, length(Grid))
-  if Dimension == "2D"
-      Dx, Dz   = InjectSills.hostrock_displacement(sill, Float64.(X), Float64.(Z))
-      Velocity = (Dx, Dz)
-  else
-      Dx, Dy, Dz = InjectSills.hostrock_displacement(sill, Float64.(X), Float64.(Y), Float64.(Z))
-      Velocity   = (Dx, Dy, Dz)
-  end
+        # Define coarse grid
+        Nx, Ny, Nz = 65, 65, 65                                                     # resolution of coarse grid
+        dx, dy, dz = W * 1.0e3 / (Nx - 1), L * 1.0e3 / (Ny - 1), H * 1.0e3 / (Nz - 1)                      # grid size [m]
+        x, y, z = 0:dx:((Nx - 1) * dx), 0:dy:((Ny - 1) * dy), -((Nz - 1) * dz):dz:0.0       # 1D coordinate arrays
+        coords = collect(Iterators.product(x, y, z))                             # generate coordinates from 1D coordinate vectors
+        X, Y, Z = (x -> x[1]).(coords), (x -> x[2]).(coords), (x -> x[3]).(coords)    # transfer coords to 3D arrays
+        Grid, FullGrid, Spacing = (x, y, z), (X, Y, Z), (dx, dy, dz)
+        cen = [W / 2;L / 2; -H / 2] .* 1.0e3
 
 
-  if Dimension=="2D"
-    Vel      =   Velocity[:];
+        Hdike = 100.0
+        Wdike = 20000.0
+        T_in = 900.0
+    end
 
-    if CreatePlots
-      Vx,Vz       =   Velocity[1],Velocity[2];
-      fig         =   Figure(size=(1000,450))
-      ax1         =   Axis(fig[1,1], title="2D Vx", aspect=DataAspect())
-      heatmap!(ax1, x/1e3, z/1e3, Vx, colormap=:inferno)
-      heatmap!(Axis(fig[1,2], title="Vz", aspect=DataAspect()), x/1e3, z/1e3, Vz, colormap=:inferno)
-
-      #st=100; Xv=X[:]; Zv=Z[:];
-      #arrows!(ax1, Xv[1:st:end]./1e3, Zv[1:st:end]./1e3, Vx[1:st:end], Vz[1:st:end])
-
-      save("HostRockVelocity_$(Dimension)_$(DikeType).png", fig)
+    # Compute velocity required to create space for dike
+    sill = _make_sill(DikeType, cen, DikeAngle, Wdike, Hdike, length(Grid))
+    if Dimension == "2D"
+        Dx, Dz = InjectSills.hostrock_displacement(sill, Float64.(X), Float64.(Z))
+        Velocity = (Dx, Dz)
+    else
+        Dx, Dy, Dz = InjectSills.hostrock_displacement(sill, Float64.(X), Float64.(Y), Float64.(Z))
+        Velocity = (Dx, Dy, Dz)
     end
 
 
-  elseif Dimension=="3D"
-    Vel      =   Velocity[:];
+    if Dimension == "2D"
+        Vel = Velocity[:]
 
-    if CreatePlots
-      Vx,Vy,Vz    =   Velocity[1],Velocity[2],Velocity[3];
-      fig         =   Figure(size=(1000,450))
-      heatmap!(Axis(fig[1,1], title="2D Vx", aspect=DataAspect()), x/1e3, z/1e3, Vx[:,Int((Ny-1)/2),:], colormap=:inferno)
-      heatmap!(Axis(fig[1,2], title="Vz",    aspect=DataAspect()), x/1e3, z/1e3, Vz[:,Int((Ny-1)/2),:], colormap=:inferno)
+        if CreatePlots
+            Vx, Vz = Velocity[1], Velocity[2]
+            fig = Figure(size = (1000, 450))
+            ax1 = Axis(fig[1, 1], title = "2D Vx", aspect = DataAspect())
+            heatmap!(ax1, x / 1.0e3, z / 1.0e3, Vx, colormap = :inferno)
+            heatmap!(Axis(fig[1, 2], title = "Vz", aspect = DataAspect()), x / 1.0e3, z / 1.0e3, Vz, colormap = :inferno)
 
-      save("HostRockVelocity_$(Dimension)_$(DikeType).png", fig)
+            #st=100; Xv=X[:]; Zv=Z[:];
+            #arrows!(ax1, Xv[1:st:end]./1e3, Zv[1:st:end]./1e3, Vx[1:st:end], Vz[1:st:end])
+
+            save("HostRockVelocity_$(Dimension)_$(DikeType).png", fig)
+        end
 
 
-      # write this to a paraview VTK file, using the package WriteVTK.jl
-      #vtkfile = vtk_grid("HostVelocity_3D", Vector(x/1e3), Vector(y/1e3), Vector(z/1e3)) # 3-D
-      #vtkfile["Velocity"] = (Vx,Vy,Vz);
-      #outfiles = vtk_save(vtkfile)
+    elseif Dimension == "3D"
+        Vel = Velocity[:]
+
+        if CreatePlots
+            Vx, Vy, Vz = Velocity[1], Velocity[2], Velocity[3]
+            fig = Figure(size = (1000, 450))
+            heatmap!(Axis(fig[1, 1], title = "2D Vx", aspect = DataAspect()), x / 1.0e3, z / 1.0e3, Vx[:, Int((Ny - 1) / 2), :], colormap = :inferno)
+            heatmap!(Axis(fig[1, 2], title = "Vz", aspect = DataAspect()), x / 1.0e3, z / 1.0e3, Vz[:, Int((Ny - 1) / 2), :], colormap = :inferno)
+
+            save("HostRockVelocity_$(Dimension)_$(DikeType).png", fig)
+
+
+            # write this to a paraview VTK file, using the package WriteVTK.jl
+            #vtkfile = vtk_grid("HostVelocity_3D", Vector(x/1e3), Vector(y/1e3), Vector(z/1e3)) # 3-D
+            #vtkfile["Velocity"] = (Vx,Vy,Vz);
+            #outfiles = vtk_save(vtkfile)
+        end
+
     end
 
-  end
-
-  return norm(Vel,2);        # return measure of Vel
+    return norm(Vel, 2)         # return measure of Vel
 end
 
 
-
-function test_inject_sills(Dimension="2D", DikeType="ElasticDike", DikeAngle=[45], numDikeInjectionEvents=1; InterpolationMethod="Cubic", AdvectionMethod="RK2")
-  # tests dike insertion in the domain including adding tracers
-
-
-  if Dimension=="2D"
-    # Model parameters
-    W,H                     =   30.0,  30.0;                                # Width, Length, Height
-
-    # Define grid
-    Nx, Nz                  =   129, 129;                                     # resolution of coarse grid
-    dx,dz                   =   W*1e3/(Nx-1), H*1e3/(Nz-1);                         # grid size [m]
-    x,z                     =   0:dx:W*1e3, -H*1e3:dz:0;                            # 1D coordinate arrays
-    coords                  =   collect(Iterators.product(x,z))               # generate coordinates from 1D coordinate vectors
-    X,Z                     =   (x->x[1]).(coords), (x->x[2]).(coords);       # transfer coords to 3D arrays
-    Grid, GridFull,Spacing  =   (x,z), (X,Z), (dx,dz);
-
-    Hdike                   =   1000.0;
-    Wdike                   =   20000.0;
-    T_in                    =   900.0;
-
-    cen                     =   [W/2;-H/2].*1e3;
-  elseif Dimension=="3D"
-      # Model parameters
-      W,L,H                   =   30., 30., 30.;                                    # Width, Length, Height
-
-      # Define coarse grid
-      Nx, Ny, Nz              =   129,129,129;                                                    # resolution of coarse grid
-      dx,dy,dz                =   W*1e3/(Nx-1), L*1e3/(Ny-1), H*1e3/(Nz-1);                     # grid size [m]
-      x,y,z                   =   0:dx:((Nx-1)*dx),  0:dy:((Ny-1)*dy), -((Nz-1)*dz):dz:0.;      # 1D coordinate arrays
-      coords                  =   collect(Iterators.product(x,y,z))                             # generate coordinates from 1D coordinate vectors
-      X,Y,Z                   =   (x->x[1]).(coords), (x->x[2]).(coords), (x->x[3]).(coords);   # transfer coords to 3D arrays
-      Grid, GridFull,Spacing  =   (x,y,z), (X,Y,Z), (dx,dy,dz);
-      cen                     =   [W/2; L/2; -H/2].*1e3;
+function test_inject_sills(Dimension = "2D", DikeType = "ElasticDike", DikeAngle = [45], numDikeInjectionEvents = 1; InterpolationMethod = "Cubic", AdvectionMethod = "RK2")
+    # tests dike insertion in the domain including adding tracers
 
 
-      Hdike                   =   1000.0;
-      Wdike                   =   20000.0;
-      T_in                    =   900.0;
-  end
+    if Dimension == "2D"
+        # Model parameters
+        W, H = 30.0, 30.0                                 # Width, Length, Height
 
-  # Create BG temperature structure
-  GeoT                    =   20;
-  T                       =   -Z./1e3.*GeoT;                                             # initial (linear) temperature profile
+        # Define grid
+        Nx, Nz = 129, 129                                      # resolution of coarse grid
+        dx, dz = W * 1.0e3 / (Nx - 1), H * 1.0e3 / (Nz - 1)                          # grid size [m]
+        x, z = 0:dx:(W * 1.0e3), (-H * 1.0e3):dz:0                             # 1D coordinate arrays
+        coords = collect(Iterators.product(x, z))               # generate coordinates from 1D coordinate vectors
+        X, Z = (x -> x[1]).(coords), (x -> x[2]).(coords)        # transfer coords to 3D arrays
+        Grid, GridFull, Spacing = (x, z), (X, Z), (dx, dz)
 
-  nTr_dike = 1000
-  Tracers  = StructArray{Tracer{Float32}}(undef, 1)                           # Initialize Tracers structure
+        Hdike = 1000.0
+        Wdike = 20000.0
+        T_in = 900.0
 
-  sill = _make_sill(DikeType, cen, DikeAngle, Wdike, Hdike, length(Grid))
-  Tracers, Tnew, _, _, Velocity = inject_sills(Tracers, T, Grid, sill, T_in, 2, nTr_dike;
-                                                InterpolationMethod, AdvectionMethod)
-  for _ = 1:numDikeInjectionEvents-1
-      T = Tnew
-      Tracers, Tnew, _, _, Velocity = inject_sills(Tracers, T, Grid, sill, T_in, 2, nTr_dike;
-                                                    InterpolationMethod, AdvectionMethod)
-  end
+        cen = [W / 2;-H / 2] .* 1.0e3
+    elseif Dimension == "3D"
+        # Model parameters
+        W, L, H = 30.0, 30.0, 30.0                                     # Width, Length, Height
 
-  if Dimension=="2D"
+        # Define coarse grid
+        Nx, Ny, Nz = 129, 129, 129                                                     # resolution of coarse grid
+        dx, dy, dz = W * 1.0e3 / (Nx - 1), L * 1.0e3 / (Ny - 1), H * 1.0e3 / (Nz - 1)                      # grid size [m]
+        x, y, z = 0:dx:((Nx - 1) * dx), 0:dy:((Ny - 1) * dy), -((Nz - 1) * dz):dz:0.0       # 1D coordinate arrays
+        coords = collect(Iterators.product(x, y, z))                             # generate coordinates from 1D coordinate vectors
+        X, Y, Z = (x -> x[1]).(coords), (x -> x[2]).(coords), (x -> x[3]).(coords)    # transfer coords to 3D arrays
+        Grid, GridFull, Spacing = (x, y, z), (X, Y, Z), (dx, dy, dz)
+        cen = [W / 2; L / 2; -H / 2] .* 1.0e3
 
 
-    if CreatePlots
-      Vx = Velocity[1];
-      Vz = Velocity[2];
-
-      Tr_coord    =   Tracers.coord; Tr_coord = hcat(Tr_coord...)';       # extract array with coordinates of tracers
-      fig = Figure(size=(1000,900))
-      heatmap!(Axis(fig[1,1], title="T",  aspect=DataAspect()), x/1e3, z/1e3, T,  colormap=:inferno)
-      scatter!(Axis(fig[1,2], title="Tracers", aspect=DataAspect(), limits=((x[1]/1e3,x[end]/1e3), (z[1]/1e3,z[end]/1e3))), Tr_coord[:,1]/1e3, Tr_coord[:,2]/1e3, color=Tracers.T, colormap=:inferno, alpha=0.8, markersize=10, strokewidth=0.01, strokecolor=:black)
-      heatmap!(Axis(fig[2,1], title="Vx", aspect=DataAspect()), x/1e3, z/1e3, Vx, colormap=:inferno)
-      heatmap!(Axis(fig[2,2], title="Vz", aspect=DataAspect()), x/1e3, z/1e3, Vz, colormap=:inferno)
-
-      save("InsertDike_$(Dimension)_$(DikeType).png", fig)
+        Hdike = 1000.0
+        Wdike = 20000.0
+        T_in = 900.0
     end
 
+    # Create BG temperature structure
+    GeoT = 20
+    T = -Z ./ 1.0e3 .* GeoT                                              # initial (linear) temperature profile
 
-  elseif Dimension=="3D"
+    nTr_dike = 1000
+    Tracers = StructArray{Tracer{Float32}}(undef, 1)                           # Initialize Tracers structure
 
-    if CreatePlots
-      Vx = Velocity[1];
-      Vz = Velocity[3];
-
-      Tr_coord    =   Tracers.coord; Tr_coord = hcat(Tr_coord...)';       # extract array with coordinates of tracers
-      fig = Figure(size=(1000,900))
-      heatmap!(Axis(fig[1,1], title="T",  aspect=DataAspect()), x/1e3, z/1e3, T[:,Int(ceil(Ny/2)),:],  colormap=:inferno)
-      scatter!(Axis(fig[1,2], title="Tracers", aspect=DataAspect(), limits=((x[1]/1e3,x[end]/1e3), (z[1]/1e3,z[end]/1e3))), Tr_coord[:,1]/1e3, Tr_coord[:,3]/1e3, color=Tracers.T, colormap=:inferno, alpha=0.8, markersize=10, strokewidth=0.01, strokecolor=:black)
-      heatmap!(Axis(fig[2,1], title="Vx", aspect=DataAspect()), x/1e3, z/1e3, Vx[:,Int(ceil(Ny/2)),:], colormap=:inferno)
-      heatmap!(Axis(fig[2,2], title="Vz", aspect=DataAspect()), x/1e3, z/1e3, Vz[:,Int(ceil(Ny/2)),:], colormap=:inferno)
-
-      save("InsertDike_$(Dimension)_$(DikeType).png", fig)
-
-
-      # write this to a paraview VTK file, using the package WriteVTK.jl
-      #vtkfile = vtk_grid("InsertDike_3D", Vector(x/1e3), Vector(y/1e3), Vector(z/1e3)) # 3-D
-      #vtkfile["Temperature"] = (T);
-      #vtkfile["Velocity"]    = (Velocity);
-      #outfiles = vtk_save(vtkfile)
+    sill = _make_sill(DikeType, cen, DikeAngle, Wdike, Hdike, length(Grid))
+    Tracers, Tnew, _, _, Velocity = inject_sills(
+        Tracers, T, Grid, sill, T_in, 2, nTr_dike;
+        InterpolationMethod, AdvectionMethod
+    )
+    for _ in 1:(numDikeInjectionEvents - 1)
+        T = Tnew
+        Tracers, Tnew, _, _, Velocity = inject_sills(
+            Tracers, T, Grid, sill, T_in, 2, nTr_dike;
+            InterpolationMethod, AdvectionMethod
+        )
     end
 
-  end
+    if Dimension == "2D"
 
-  return norm(T[:],2);
+
+        if CreatePlots
+            Vx = Velocity[1]
+            Vz = Velocity[2]
+
+            Tr_coord = Tracers.coord; Tr_coord = hcat(Tr_coord...)'        # extract array with coordinates of tracers
+            fig = Figure(size = (1000, 900))
+            heatmap!(Axis(fig[1, 1], title = "T", aspect = DataAspect()), x / 1.0e3, z / 1.0e3, T, colormap = :inferno)
+            scatter!(Axis(fig[1, 2], title = "Tracers", aspect = DataAspect(), limits = ((x[1] / 1.0e3, x[end] / 1.0e3), (z[1] / 1.0e3, z[end] / 1.0e3))), Tr_coord[:, 1] / 1.0e3, Tr_coord[:, 2] / 1.0e3, color = Tracers.T, colormap = :inferno, alpha = 0.8, markersize = 10, strokewidth = 0.01, strokecolor = :black)
+            heatmap!(Axis(fig[2, 1], title = "Vx", aspect = DataAspect()), x / 1.0e3, z / 1.0e3, Vx, colormap = :inferno)
+            heatmap!(Axis(fig[2, 2], title = "Vz", aspect = DataAspect()), x / 1.0e3, z / 1.0e3, Vz, colormap = :inferno)
+
+            save("InsertDike_$(Dimension)_$(DikeType).png", fig)
+        end
+
+
+    elseif Dimension == "3D"
+
+        if CreatePlots
+            Vx = Velocity[1]
+            Vz = Velocity[3]
+
+            Tr_coord = Tracers.coord; Tr_coord = hcat(Tr_coord...)'        # extract array with coordinates of tracers
+            fig = Figure(size = (1000, 900))
+            heatmap!(Axis(fig[1, 1], title = "T", aspect = DataAspect()), x / 1.0e3, z / 1.0e3, T[:, Int(ceil(Ny / 2)), :], colormap = :inferno)
+            scatter!(Axis(fig[1, 2], title = "Tracers", aspect = DataAspect(), limits = ((x[1] / 1.0e3, x[end] / 1.0e3), (z[1] / 1.0e3, z[end] / 1.0e3))), Tr_coord[:, 1] / 1.0e3, Tr_coord[:, 3] / 1.0e3, color = Tracers.T, colormap = :inferno, alpha = 0.8, markersize = 10, strokewidth = 0.01, strokecolor = :black)
+            heatmap!(Axis(fig[2, 1], title = "Vx", aspect = DataAspect()), x / 1.0e3, z / 1.0e3, Vx[:, Int(ceil(Ny / 2)), :], colormap = :inferno)
+            heatmap!(Axis(fig[2, 2], title = "Vz", aspect = DataAspect()), x / 1.0e3, z / 1.0e3, Vz[:, Int(ceil(Ny / 2)), :], colormap = :inferno)
+
+            save("InsertDike_$(Dimension)_$(DikeType).png", fig)
+
+
+            # write this to a paraview VTK file, using the package WriteVTK.jl
+            #vtkfile = vtk_grid("InsertDike_3D", Vector(x/1e3), Vector(y/1e3), Vector(z/1e3)) # 3-D
+            #vtkfile["Temperature"] = (T);
+            #vtkfile["Velocity"]    = (Velocity);
+            #outfiles = vtk_save(vtkfile)
+        end
+
+    end
+
+    return norm(T[:], 2)
 end
 
 
 # ===================================================================================================
 
-if 1==1
+if 1 == 1
 
-@testset "Dike_Velocity" begin
-  @test test_hostrock_velocity("2D","SquareDike",  [80    ])   ≈   5286.539510870982  rtol=1e-3;
-  @test test_hostrock_velocity("3D","SquareDike",  [90; 90])   ≈  13114.877048604001  rtol=1e-3;
-  @test test_hostrock_velocity("3D","ElasticDike", [90; 45])   ≈   4762.014274270334  rtol=1e-3;
-end
-
-# Dike insertion algorithm
-@testset "Dike_Inject" begin
-  @test test_inject_sills("2D", "SquareDike", [80 ],1) ≈   47525.465759514336 rtol=1e-4;
-  @test test_inject_sills("2D", "ElasticDike",[45 ],2, InterpolationMethod="Linear") ≈   48448.85838494859  rtol=1e-4;
-  @test test_inject_sills("2D", "ElasticDike",[45 ],2, InterpolationMethod="Quadratic") ≈   48770.817049970356 rtol=1e-4;
-  @test test_inject_sills("2D", "ElasticDike",[45 ],2, InterpolationMethod="Cubic") ≈   48782.27237242118  rtol=1e-4;
-  @test test_inject_sills("3D", "ElasticDike",[80; 45]) ≈   519654.91761887114 rtol=1e-4;
-  @test test_inject_sills("3D", "SquareDike", [15; -30]) ≈   527521.5507477389  rtol=1e-4;
-end
-
-@testset "inject_sills" begin
-
-  # ------------------------------------------------------------------
-  # 2-D
-  # ------------------------------------------------------------------
-  let
-    W_dom, H_dom = 30.0, 30.0
-    Nx, Nz       = 129, 129
-    dx, dz       = W_dom*1e3/(Nx-1), H_dom*1e3/(Nz-1)
-    x, z         = 0:dx:W_dom*1e3, -H_dom*1e3:dz:0
-    coords       = collect(Iterators.product(x, z))
-    X, Z         = (c->c[1]).(coords), (c->c[2]).(coords)
-    Grid         = (x, z)
-    GeoT         = 20.0
-    T            = -Z ./ 1e3 .* GeoT
-
-    Hdike, Wdike = 1000.0, 20000.0
-    cen          = [W_dom/2; -H_dom/2] .* 1e3
-    T_in         = 900.0
-
-    # inject_sills: basic sanity checks in 2D
-    sill2d = PennyShapedSill(
-                R      = (Wdike/2)*m,
-                H      = Hdike*m,
-                E      = 1.5e10*Pa,
-                ν      = 0.3*NoUnits,
-                Center = Point2(cen[1], cen[2])*m)
-    Tr_new  = StructArray{Tracer{Float32}}(undef, 1)
-    Tr_new, Tnew_new, InjVol, _, _ = inject_sills(Tr_new, copy(T), Grid, sill2d, T_in, 2, 300)
-
-    @test all(isfinite, Tnew_new)
-    @test maximum(Tnew_new) <= T_in + 1e-8
-    @test minimum(Tnew_new) >= minimum(T) - 1e-8
-    # Injected volume: sill.R.val is the radius, so volume = 4/3*π*r²*(H/2)
-    @test InjVol ≈ 4/3*π*(Wdike/2)^2*(Hdike/2)  rtol=1e-6
-    # Tracers were added
-    @test length(Tr_new) == 300
-
-    # Empty tracer array and integer arguments
-    Tr_int, Tnew_int, _, _, _ = inject_sills(StructArray{Tracer{Float32}}(undef, 0), copy(T), Grid, sill2d, 900, Int32(2), Int32(5))
-    @test length(Tr_int) == 5
-    @test all(==(2), Tr_int.Phase)
-    @test maximum(Tnew_int) == 900
-
-    # The plotting polygon moves with the host rock by less than the sill opening
-    poly0 = InjectSills.dike_polygon(sill2d)
-    _, _, _, poly_adv, _ = inject_sills(StructArray{Tracer{Float32}}(undef, 1), copy(T), Grid, sill2d, T_in, 2, 0;
-                                        dike_poly=deepcopy(poly0))
-    @test maximum(abs.(poly_adv[1] .- poly0[1])) <= Hdike
-    @test maximum(abs.(poly_adv[2] .- poly0[2])) <= Hdike
-
-    # Injected volume of other sill types (W is the full width)
-    for (sill, V_expected) in (
-            (EllipticalIntrusion(Center=Point2(cen[1], cen[2])*m, W=Wdike*m, H=Hdike*m),          4/3*π*(Wdike/2)^2*(Hdike/2)),
-            (CylindricalDikeTopAccretion(Center=Point2(cen[1], cen[2])*m, W=Wdike*m, H=Hdike*m),  π*(Wdike/2)^2*Hdike),
-            (SquareDike(Center=Point2(cen[1], cen[2])*m, W=Wdike*m, H=Hdike*m),                   Wdike^2*Hdike))
-        Tr_s = StructArray{Tracer{Float32}}(undef, 1)
-        _, _, InjVol_s, _, _ = inject_sills(Tr_s, copy(T), Grid, sill, T_in, 2, 0)
-        @test InjVol_s ≈ V_expected  rtol=1e-12
+    @testset "Dike_Velocity" begin
+        @test test_hostrock_velocity("2D", "SquareDike", [80]) ≈ 5286.539510870982  rtol = 1.0e-3
+        @test test_hostrock_velocity("3D", "SquareDike", [90; 90]) ≈ 13114.877048604001  rtol = 1.0e-3
+        @test test_hostrock_velocity("3D", "ElasticDike", [90; 45]) ≈ 4762.014274270334  rtol = 1.0e-3
     end
-  end
 
-  # ------------------------------------------------------------------
-  # 3-D
-  # ------------------------------------------------------------------
-  let
-    W_dom, L_dom, H_dom = 30.0, 30.0, 30.0
-    Nx, Ny, Nz          = 65, 65, 65
-    dx, dy, dz          = W_dom*1e3/(Nx-1), L_dom*1e3/(Ny-1), H_dom*1e3/(Nz-1)
-    x = 0:dx:(Nx-1)*dx;  y = 0:dy:(Ny-1)*dy;  z = -(Nz-1)*dz:dz:0.0
-    coords = collect(Iterators.product(x, y, z))
-    X      = (c->c[1]).(coords);  Y = (c->c[2]).(coords);  Z = (c->c[3]).(coords)
-    Grid   = (x, y, z)
-    GeoT   = 20.0
-    T      = -Z ./ 1e3 .* GeoT
+    # Dike insertion algorithm
+    @testset "Dike_Inject" begin
+        @test test_inject_sills("2D", "SquareDike", [80], 1) ≈ 47525.465759514336 rtol = 1.0e-4
+        @test test_inject_sills("2D", "ElasticDike", [45], 2, InterpolationMethod = "Linear") ≈ 48448.85838494859  rtol = 1.0e-4
+        @test test_inject_sills("2D", "ElasticDike", [45], 2, InterpolationMethod = "Quadratic") ≈ 48770.817049970356 rtol = 1.0e-4
+        @test test_inject_sills("2D", "ElasticDike", [45], 2, InterpolationMethod = "Cubic") ≈ 48782.27237242118  rtol = 1.0e-4
+        @test test_inject_sills("3D", "ElasticDike", [80; 45]) ≈ 519654.91761887114 rtol = 1.0e-4
+        @test test_inject_sills("3D", "SquareDike", [15; -30]) ≈ 527521.5507477389  rtol = 1.0e-4
+    end
 
-    Hdike, Wdike = 1000.0, 20000.0
-    cen          = [W_dom/2; L_dom/2; -H_dom/2] .* 1e3
-    T_in         = 900.0
+    @testset "inject_sills" begin
 
-    # inject_sills: basic sanity checks in 3D
-    sill3d = PennyShapedSill(
-                R      = (Wdike/2)*m,
-                H      = Hdike*m,
-                E      = 1.5e10*Pa,
-                ν      = 0.3*NoUnits,
-                Center = Point3(cen[1], cen[2], cen[3])*m,
-                Angle  = Vec2(0.0, 0.0))
-    Tr_new  = StructArray{Tracer{Float32}}(undef, 1)
-    Tr_new, Tnew_new, InjVol, _, _ = inject_sills(Tr_new, copy(T), Grid, sill3d, T_in, 2, 300)
+        # ------------------------------------------------------------------
+        # 2-D
+        # ------------------------------------------------------------------
+        let
+            W_dom, H_dom = 30.0, 30.0
+            Nx, Nz = 129, 129
+            dx, dz = W_dom * 1.0e3 / (Nx - 1), H_dom * 1.0e3 / (Nz - 1)
+            x, z = 0:dx:(W_dom * 1.0e3), (-H_dom * 1.0e3):dz:0
+            coords = collect(Iterators.product(x, z))
+            X, Z = (c -> c[1]).(coords), (c -> c[2]).(coords)
+            Grid = (x, z)
+            GeoT = 20.0
+            T = -Z ./ 1.0e3 .* GeoT
 
-    @test all(isfinite, Tnew_new)
-    @test maximum(Tnew_new) <= T_in + 1e-8
-    @test minimum(Tnew_new) >= minimum(T) - 1e-8
-    @test InjVol ≈ 4/3*π*(Wdike/2)^2*(Hdike/2)  rtol=1e-6   # Wdike/2 = sill radius
-    @test length(Tr_new) == 300
+            Hdike, Wdike = 1000.0, 20000.0
+            cen = [W_dom / 2; -H_dom / 2] .* 1.0e3
+            T_in = 900.0
 
-    # The plotting polygon (x–z section through the sill center) moves with the host rock
-    sill_e = EllipticalIntrusion(Center=Point3(cen[1], cen[2], cen[3])*m, Angle=Vec2(0.0, 0.0)*NoUnits, W=Wdike*m, H=Hdike*m)
-    poly0  = InjectSills.dike_polygon(sill_e)
-    _, _, _, poly_adv, _ = inject_sills(StructArray{Tracer{Float32}}(undef, 1), copy(T), Grid, sill_e, T_in, 2, 0;
-                                        dike_poly=deepcopy(poly0))
-    # EllipticalIntrusion grows self-similarly: the outline scales by ∛2 about the center
-    @test length(poly_adv) == 2
-    @test poly_adv[1] ≈ cen[1] .+ cbrt(2) .* (poly0[1] .- cen[1])  rtol=1e-10
-    @test poly_adv[2] ≈ cen[3] .+ cbrt(2) .* (poly0[2] .- cen[3])  rtol=1e-10
-  end
+            # inject_sills: basic sanity checks in 2D
+            sill2d = PennyShapedSill(
+                R = (Wdike / 2) * m,
+                H = Hdike * m,
+                E = 1.5e10 * Pa,
+                ν = 0.3 * NoUnits,
+                Center = Point2(cen[1], cen[2]) * m
+            )
+            Tr_new = StructArray{Tracer{Float32}}(undef, 1)
+            Tr_new, Tnew_new, InjVol, _, _ = inject_sills(Tr_new, copy(T), Grid, sill2d, T_in, 2, 300)
 
-end
+            @test all(isfinite, Tnew_new)
+            @test maximum(Tnew_new) <= T_in + 1.0e-8
+            @test minimum(Tnew_new) >= minimum(T) - 1.0e-8
+            # Injected volume: sill.R.val is the radius, so volume = 4/3*π*r²*(H/2)
+            @test InjVol ≈ 4 / 3 * π * (Wdike / 2)^2 * (Hdike / 2)  rtol = 1.0e-6
+            # Tracers were added
+            @test length(Tr_new) == 300
+
+            # Empty tracer array and integer arguments
+            Tr_int, Tnew_int, _, _, _ = inject_sills(StructArray{Tracer{Float32}}(undef, 0), copy(T), Grid, sill2d, 900, Int32(2), Int32(5))
+            @test length(Tr_int) == 5
+            @test all(==(2), Tr_int.Phase)
+            @test maximum(Tnew_int) == 900
+
+            # The plotting polygon moves with the host rock by less than the sill opening
+            poly0 = InjectSills.dike_polygon(sill2d)
+            _, _, _, poly_adv, _ = inject_sills(
+                StructArray{Tracer{Float32}}(undef, 1), copy(T), Grid, sill2d, T_in, 2, 0;
+                dike_poly = deepcopy(poly0)
+            )
+            @test maximum(abs.(poly_adv[1] .- poly0[1])) <= Hdike
+            @test maximum(abs.(poly_adv[2] .- poly0[2])) <= Hdike
+
+            # Injected volume of other sill types (W is the full width)
+            for (sill, V_expected) in (
+                    (EllipticalIntrusion(Center = Point2(cen[1], cen[2]) * m, W = Wdike * m, H = Hdike * m), 4 / 3 * π * (Wdike / 2)^2 * (Hdike / 2)),
+                    (CylindricalDikeTopAccretion(Center = Point2(cen[1], cen[2]) * m, W = Wdike * m, H = Hdike * m), π * (Wdike / 2)^2 * Hdike),
+                    (SquareDike(Center = Point2(cen[1], cen[2]) * m, W = Wdike * m, H = Hdike * m), Wdike^2 * Hdike),
+                )
+                Tr_s = StructArray{Tracer{Float32}}(undef, 1)
+                _, _, InjVol_s, _, _ = inject_sills(Tr_s, copy(T), Grid, sill, T_in, 2, 0)
+                @test InjVol_s ≈ V_expected  rtol = 1.0e-12
+            end
+        end
+
+        # ------------------------------------------------------------------
+        # 3-D
+        # ------------------------------------------------------------------
+        let
+            W_dom, L_dom, H_dom = 30.0, 30.0, 30.0
+            Nx, Ny, Nz = 65, 65, 65
+            dx, dy, dz = W_dom * 1.0e3 / (Nx - 1), L_dom * 1.0e3 / (Ny - 1), H_dom * 1.0e3 / (Nz - 1)
+            x = 0:dx:((Nx - 1) * dx);  y = 0:dy:((Ny - 1) * dy);  z = (-(Nz - 1) * dz):dz:0.0
+            coords = collect(Iterators.product(x, y, z))
+            X = (c -> c[1]).(coords);  Y = (c -> c[2]).(coords);  Z = (c -> c[3]).(coords)
+            Grid = (x, y, z)
+            GeoT = 20.0
+            T = -Z ./ 1.0e3 .* GeoT
+
+            Hdike, Wdike = 1000.0, 20000.0
+            cen = [W_dom / 2; L_dom / 2; -H_dom / 2] .* 1.0e3
+            T_in = 900.0
+
+            # inject_sills: basic sanity checks in 3D
+            sill3d = PennyShapedSill(
+                R = (Wdike / 2) * m,
+                H = Hdike * m,
+                E = 1.5e10 * Pa,
+                ν = 0.3 * NoUnits,
+                Center = Point3(cen[1], cen[2], cen[3]) * m,
+                Angle = Vec2(0.0, 0.0)
+            )
+            Tr_new = StructArray{Tracer{Float32}}(undef, 1)
+            Tr_new, Tnew_new, InjVol, _, _ = inject_sills(Tr_new, copy(T), Grid, sill3d, T_in, 2, 300)
+
+            @test all(isfinite, Tnew_new)
+            @test maximum(Tnew_new) <= T_in + 1.0e-8
+            @test minimum(Tnew_new) >= minimum(T) - 1.0e-8
+            @test InjVol ≈ 4 / 3 * π * (Wdike / 2)^2 * (Hdike / 2)  rtol = 1.0e-6   # Wdike/2 = sill radius
+            @test length(Tr_new) == 300
+
+            # The plotting polygon (x–z section through the sill center) moves with the host rock
+            sill_e = EllipticalIntrusion(Center = Point3(cen[1], cen[2], cen[3]) * m, Angle = Vec2(0.0, 0.0) * NoUnits, W = Wdike * m, H = Hdike * m)
+            poly0 = InjectSills.dike_polygon(sill_e)
+            _, _, _, poly_adv, _ = inject_sills(
+                StructArray{Tracer{Float32}}(undef, 1), copy(T), Grid, sill_e, T_in, 2, 0;
+                dike_poly = deepcopy(poly0)
+            )
+            # EllipticalIntrusion grows self-similarly: the outline scales by ∛2 about the center
+            @test length(poly_adv) == 2
+            @test poly_adv[1] ≈ cen[1] .+ cbrt(2) .* (poly0[1] .- cen[1])  rtol = 1.0e-10
+            @test poly_adv[2] ≈ cen[3] .+ cbrt(2) .* (poly0[2] .- cen[3])  rtol = 1.0e-10
+        end
+
+    end
 
 end

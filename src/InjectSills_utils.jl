@@ -48,8 +48,8 @@ function add_dike(Tfield, Tr, Grid, sill::InjectSills.AbstractSill, T_in::Real, 
         number = isassigned(Tr, 1) ? Tr.num[end] + 1 : 1
 
         FT = isassigned(Tr, 1) ? eltype(Tr[1].time_vec) : Float32
-        coord      = [Float64(pt[i]) for i in 1:dim]  # Vector{Float64}
-        new_tracer = Tracer{FT}(num=number, coord=coord, T=Float64(T_in), Phase=Int64(Phase_in))
+        coord = [Float64(pt[i]) for i in 1:dim]  # Vector{Float64}
+        new_tracer = Tracer{FT}(num = number, coord = coord, T = Float64(T_in), Phase = Int64(Phase_in))
 
         if !isassigned(Tr, 1)
             Tr = StructArray([new_tracer])
@@ -63,7 +63,7 @@ end
 
 @kernel function _fill_sill!(T, Grid, sill::InjectSills.AbstractSill{N}, T_in) where {N}
     I = @index(Global, Cartesian)
-    if InjectSills.inside(InjectSills.Point{N,Float64}(map(getindex, Grid, Tuple(I))), sill)
+    if InjectSills.inside(InjectSills.Point{N, Float64}(map(getindex, Grid, Tuple(I))), sill)
         T[I] = T_in
     end
 end
@@ -71,7 +71,7 @@ end
 "Move the points `(P[1][i], …, P[N][i])` to `x + u(x)`, with `u` the displacement of `sill`, clamped to `Grid`."
 function displace_points!(P, sill::InjectSills.AbstractSill{N}, Grid) where {N}
     for i in eachindex(P[1])
-        x = InjectSills.Point{N,Float64}(ntuple(d -> P[d][i], Val(N)))
+        x = InjectSills.Point{N, Float64}(ntuple(d -> P[d][i], Val(N)))
         u = InjectSills.hostrock_displacement(sill, x)
         for d in 1:N
             P[d][i] = clamp(x[d] + u[d], first(Grid[d]), last(Grid[d]))
@@ -122,28 +122,30 @@ The displacement field (= velocity for pseudo-time `dt_total = 1`) is
 obtained directly from the sill object, which already encodes the center and
 orientation of the intrusion — no external rotation is needed.
 """
-function inject_sills(Tracers, T::AbstractArray, Grid,
-                      sill::InjectSills.AbstractSill,
-                      T_in::Real, Phase_in::Integer, nTr_dike::Integer;
-                      AdvectionMethod="RK2", InterpolationMethod="Linear",
-                      dike_poly=[])
+function inject_sills(
+        Tracers, T::AbstractArray, Grid,
+        sill::InjectSills.AbstractSill,
+        T_in::Real, Phase_in::Integer, nTr_dike::Integer;
+        AdvectionMethod = "RK2", InterpolationMethod = "Linear",
+        dike_poly = []
+    )
 
     dim = length(Grid)
-    H   = sill.H.val           # maximum opening thickness [m]
+    H = sill.H.val           # maximum opening thickness [m]
 
     # ------------------------------------------------------------------
     # Number of pseudo-time steps (keeps displacement < 0.5 * min_dx)
     # ------------------------------------------------------------------
     Spacing = [Grid[i][2] - Grid[i][1] for i in 1:dim]
-    d       = minimum(Spacing) * 0.5
-    nsteps  = max(ceil(Int, H / d), 2)
-    dt      = 1.0 / nsteps
+    d = minimum(Spacing) * 0.5
+    nsteps = max(ceil(Int, H / d), 2)
+    dt = 1.0 / nsteps
 
     # ------------------------------------------------------------------
     # Displacement field (= velocity for pseudo-time dt_total = 1.0) on
     # the backend of T; hostrock_displacement! handles centering + rotation.
     # ------------------------------------------------------------------
-    backend  = get_backend(T)
+    backend = get_backend(T)
     GridFull = ntuple(dim) do k
         X = KernelAbstractions.allocate(backend, Float64, size(T))
         X .= reshape(Grid[k], ntuple(j -> j == k ? length(Grid[k]) : 1, dim))

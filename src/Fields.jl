@@ -15,7 +15,7 @@ e.g. `CUDABackend()` once CUDA.jl is loaded),
 with element type `FloatType`, and initialize them with the requested values.
 Returns a NamedTuple that contains all created arrays.
 """
-function CreateArrays(SizeNames::AbstractDict; backend=CPU(), FloatType=Float64)
+function CreateArrays(SizeNames::AbstractDict; backend = CPU(), FloatType = Float64)
     arrays_out = NamedTuple()
 
     for (sz, arrays) in pairs(SizeNames)

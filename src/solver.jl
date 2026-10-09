@@ -28,30 +28,30 @@ There are a few functions that you can overwrite in your user code to customize 
 - `MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters, CartData_input::CartData)`
 
 """
-@views function MTK_GeoParams(Mat_tup::Tuple, Num::NumericalParameters, Dikes::SillParameters; CartData_input::Union{Nothing,CartData}=nothing, time_props::TimeDependentProperties = TimeDepProps())
+@views function MTK_GeoParams(Mat_tup::Tuple, Num::NumericalParameters, Dikes::SillParameters; CartData_input::Union{Nothing, CartData} = nothing, time_props::TimeDependentProperties = TimeDepProps())
 
     # Change parameters based on CartData input
     if isnothing(CartData_input)
         Num.dim = Num.Ny > 0 ? 3 : 2
     else
         Num.dim = size(CartData_input.x)[3] == 1 ? 2 : 3
-        if Num.dim == 2 && !hasfield(typeof(CartData_input.fields),:FlatCrossSection)
-           error("You should add a Field :FlatCrossSection to your data structure with Data_Cross = addfield(Data_Cross,\"FlatCrossSection\", flatten_cross_section(Data_Cross))")
+        if Num.dim == 2 && !hasfield(typeof(CartData_input.fields), :FlatCrossSection)
+            error("You should add a Field :FlatCrossSection to your data structure with Data_Cross = addfield(Data_Cross,\"FlatCrossSection\", flatten_cross_section(Data_Cross))")
         end
         Num = MTK_GMG.Setup_Model_CartData(CartData_input, Num, Mat_tup)
     end
     Num.axisymmetric && Num.dim == 3 && error("an axisymmetric model must be 2D (Num.Ny = 0)")
 
     # Array & grid initializations ---------------
-    Arrays = MTK_GMG.MTK_initialize_arrays(Num);
+    Arrays = MTK_GMG.MTK_initialize_arrays(Num)
 
     # Set up model geometry & initial T structure
     if !isnothing(CartData_input)
-        Grid    = CreateGrid(CartData_input)
+        Grid = CreateGrid(CartData_input)
     elseif Num.dim == 2
-        Grid    = CreateGrid(size=(Num.Nx,Num.Nz), extent=(Num.W, Num.H))
+        Grid = CreateGrid(size = (Num.Nx, Num.Nz), extent = (Num.W, Num.H))
     else
-        Grid    = CreateGrid(size=(Num.Nx,Num.Ny,Num.Nz), x = (-Num.W/2, Num.W/2),  y = (-Num.L/2, Num.L/2), z=(-Num.H, 0.0))
+        Grid = CreateGrid(size = (Num.Nx, Num.Ny, Num.Nz), x = (-Num.W / 2, Num.W / 2), y = (-Num.L / 2, Num.L / 2), z = (-Num.H, 0.0))
     end
     if Num.dim == 2
         GridArray!(Arrays.R, Arrays.Z, Grid)
@@ -60,25 +60,25 @@ There are a few functions that you can overwrite in your user code to customize 
     end
     # --------------------------------------------
 
-    Tracers                 =   StructArray{Tracer{Num.TracerFloatType}}(undef, 1)   # Initialize tracers
+    Tracers = StructArray{Tracer{Num.TracerFloatType}}(undef, 1)   # Initialize tracers
 
     # Host buffers for advection & phases --------
-    Tnew_cpu        =   Array{eltype(Arrays.T)}(undef, size(Arrays.T))
-    Phi_melt_cpu    =   similar(Tnew_cpu)
-    Phases          =   KernelAbstractions.ones(Num.backend, Int64, size(Arrays.T)...)
-    Phases_init     =   KernelAbstractions.ones(Num.backend, Int64, size(Arrays.T)...)
-    Arrays = (Arrays..., Phases=Phases, Phases_init=Phases_init);
+    Tnew_cpu = Array{eltype(Arrays.T)}(undef, size(Arrays.T))
+    Phi_melt_cpu = similar(Tnew_cpu)
+    Phases = KernelAbstractions.ones(Num.backend, Int64, size(Arrays.T)...)
+    Phases_init = KernelAbstractions.ones(Num.backend, Int64, size(Arrays.T)...)
+    Arrays = (Arrays..., Phases = Phases, Phases_init = Phases_init)
 
     # Initialize Geotherm and Phases -------------
     if isnothing(CartData_input)
-        MTK_GMG.MTK_initialize!(Arrays, Grid, Num, Tracers, Dikes);
+        MTK_GMG.MTK_initialize!(Arrays, Grid, Num, Tracers, Dikes)
     else
-        MTK_GMG.MTK_initialize!(Arrays, Grid, Num, Tracers, Dikes, CartData_input);
+        MTK_GMG.MTK_initialize!(Arrays, Grid, Num, Tracers, Dikes, CartData_input)
     end
     # --------------------------------------------
 
     # check errors
-    unique_Phases = unique(Array(Arrays.Phases));
+    unique_Phases = unique(Array(Arrays.Phases))
     phase_specified = [mm.Phase for mm in Mat_tup]
     for u in unique_Phases
         if !(u in phase_specified)
@@ -97,12 +97,12 @@ There are a few functions that you can overwrite in your user code to customize 
         if Num.dim == 2
             R_center = Array(Arrays.R)
         else
-            R_center = sqrt.((Array(Arrays.X) .- c[1]).^2 .+ (Array(Arrays.Y) .- c[2]).^2)
+            R_center = sqrt.((Array(Arrays.X) .- c[1]) .^ 2 .+ (Array(Arrays.Y) .- c[2]) .^ 2)
         end
         T_init = Array(Arrays.T_init)
-        T_init[(R_center .<= Dikes.sill.W.val/2) .& (abs.(Array(Arrays.Z) .- c[end]) .< Dikes.sill.H.val/2)] .= Dikes.T_in_Celsius
+        T_init[(R_center .<= Dikes.sill.W.val / 2) .& (abs.(Array(Arrays.Z) .- c[end]) .< Dikes.sill.H.val / 2)] .= Dikes.T_in_Celsius
         copyto!(Arrays.T_init, T_init)
-        if Num.advect_polygon==true
+        if Num.advect_polygon == true
             if hasproperty(Dikes, :sill_poly)
                 Dikes.sill_poly = InjectSills.dike_polygon(Dikes.sill)
             else
@@ -114,15 +114,15 @@ There are a few functions that you can overwrite in your user code to customize 
 
     # Initialize arrays --------------------------
     Arrays.Tnew .= Arrays.T_init
-    Arrays.T    .= Arrays.T_init
+    Arrays.T .= Arrays.T_init
 
-    if isdir(Num.SimName)==false
+    if isdir(Num.SimName) == false
         mkdir(Num.SimName)          # create simulation directory if needed
-    end;
+    end
     # --------------------------------------------
 
-    for Num.it = 1:Num.nt   # Time loop
-        Num.time  += Num.dt;                                     # Keep track of evolved time
+    for Num.it in 1:Num.nt   # Time loop
+        Num.time += Num.dt                                      # Keep track of evolved time
 
         # Add new dike every X years -----------------
         Tracers = MTK_GMG.MTK_inject_dikes(Grid, Num, Arrays, Mat_tup, Dikes, Tracers)
@@ -134,18 +134,18 @@ There are a few functions that you can overwrite in your user code to customize 
 
         # Update variables ---------------------------
         # Copy fields only when tracers are active.
-        if isassigned(Tracers,1)
+        if isassigned(Tracers, 1)
             copyto!(Tnew_cpu, Arrays.Tnew)
             copyto!(Phi_melt_cpu, Arrays.ϕ)
 
-            UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu);     # Update info on tracers
+            UpdateTracers_T_ϕ!(Tracers, Grid.coord1D, Tnew_cpu, Phi_melt_cpu)      # Update info on tracers
         end
 
         Arrays.T .= Arrays.Tnew
         # --------------------------------------------
 
         # Update info on tracers ---------------------
-        Tracers = MTK_GMG.MTK_updateTracers(Grid, Arrays, Tracers, Dikes, time_props, Num);
+        Tracers = MTK_GMG.MTK_updateTracers(Grid, Arrays, Tracers, Dikes, time_props, Num)
         # --------------------------------------------
 
         # Update time-dependent properties -----------
@@ -157,7 +157,7 @@ There are a few functions that you can overwrite in your user code to customize 
         # --------------------------------------------
 
         # Save output to disk once in a while --------
-        MTK_GMG.MTK_save_output(Grid, Arrays, Tracers, Dikes, time_props, Num, CartData_input);
+        MTK_GMG.MTK_save_output(Grid, Arrays, Tracers, Dikes, time_props, Num, CartData_input)
         # --------------------------------------------
 
         # Optionally update arrays and structs (such as T or Dike) -------
@@ -171,7 +171,7 @@ There are a few functions that you can overwrite in your user code to customize 
     end
 
     # Finalize simulation ------------------------
-    MTK_GMG.MTK_finalize!(Arrays, Grid, Num, Tracers, Dikes, CartData_input);
+    MTK_GMG.MTK_finalize!(Arrays, Grid, Num, Tracers, Dikes, CartData_input)
     # --------------------------------------------
 
     return Grid, Arrays, Tracers, Dikes, time_props

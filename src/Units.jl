@@ -1,6 +1,6 @@
 module Units
 
-export SecYear, second, yr, kyr, myr, meter, km, km³ 
+export SecYear, second, yr, kyr, myr, meter, km, km³
 
 #####
 ##### Convenient definitions
@@ -18,7 +18,7 @@ const second = 1.0
 
 A `Float64` constant equal to 365.25 * 24 * 3600. 
 """
-const SecYear = 365.25*24*3600*second
+const SecYear = 365.25 * 24 * 3600 * second
 
 
 """
@@ -26,7 +26,7 @@ const SecYear = 365.25*24*3600*second
 
 A `Float64` constant equal to 365.25 * 24 * 3600 seconds. Useful for increasing the clarity of scripts, e.g. `Δt = 7yr`.
 """
-const yr = 365.25*24*3600*second
+const yr = 365.25 * 24 * 3600 * second
 
 """
     kyr
@@ -61,6 +61,6 @@ const km = 1000meter
 
 A `Float64` constant equal to 1000`m³`. Useful for increasing the clarity of scripts, e.g. `Vol = 50km³`.
 """
-const km³ = 1e9*meter
+const km³ = 1.0e9 * meter
 
 end
