@@ -17,12 +17,38 @@ Parameters that control the nonlinear diffusion solver.
     flux_bottom::Float64 = 0.0             # flux @ bottom, in case flux_bottom_BC=true
     deactivate_La_at_depth::Bool = false           # no latent heat and melt below `deactivationDepth`?
     deactivationDepth::Float64 = -15.0e3           # depth [m] below which latent heat and melt are switched off
+    lithostatic_pressure::Bool = true           # update `Arrays.P` to the lithostatic pressure [Pa] each iteration?
 end
 
 "Launch the KernelAbstractions kernel `kernel!` over `ndrange` on the backend of `A`."
 function _launch!(kernel!, A, ndrange, args...)
     kernel!(get_backend(A))(args...; ndrange)
     return nothing
+end
+
+"""
+    lithostatic_pressure!(P, Rho, g, Δz)
+
+Fill `P` with the lithostatic pressure in Pa (the unit GeoParams' `compute_*`
+laws and phase-diagram lookups expect) for the density `Rho` [kg/m³], gravity
+`g` [m/s²], and vertical spacing `Δz` [m]. The vertical direction is the last
+one; `P` is zero at its last index (the surface) and increases downward by the
+trapezoid rule.
+"""
+function lithostatic_pressure!(P, Rho, g, Δz)
+    axes(P) == axes(Rho) || throw(DimensionMismatch("P and Rho must match: $(axes(P)) vs $(axes(Rho))"))
+    gΔz = eltype(P)(g) * eltype(P)(Δz)
+    _launch!(_lithostatic_pressure!, P, size(P)[1:(end - 1)], P, Rho, gΔz)
+    return nothing
+end
+
+@kernel function _lithostatic_pressure!(P, Rho, gΔz)
+    I = @index(Global, NTuple)
+    n = size(P, ndims(P))
+    P[I..., n] = zero(eltype(P))
+    for k in (n - 1):-1:1
+        P[I..., k] = P[I..., k + 1] + gΔz * (Rho[I..., k] + Rho[I..., k + 1]) / 2
+    end
 end
 
 """
@@ -171,6 +197,7 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
     Δ = FT.(Tuple(Grid.Δ))
     N = ndims(Arrays.T)
     R = Num.axisymmetric ? Arrays.R : nothing
+    g = Num.lithostatic_pressure ? compute_gravity(Mat_tup[1]) : zero(FT)
 
     @. Arrays.T_K = Arrays.T + T₀
     Arrays.T_it_old .= Arrays.T
@@ -181,6 +208,7 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
         compute_phase_param!(Arrays.ϕ, compute_meltfraction, Mat_tup, Phases, args1)
         compute_phase_param!(Arrays.dϕdT, compute_dϕdT, Mat_tup, Phases, args1)
         compute_phase_param!(Arrays.Rho, compute_density, Mat_tup, Phases, args1)
+        Num.lithostatic_pressure && lithostatic_pressure!(Arrays.P, Arrays.Rho, g, Δ[N])
         compute_phase_param!(Arrays.Cp, compute_heatcapacity, Mat_tup, Phases, args1)
         compute_phase_param!(Arrays.Kc, compute_conductivity, Mat_tup, Phases, args1)
         compute_phase_param!(Arrays.Hl, compute_latent_heat, Mat_tup, Phases, args1)

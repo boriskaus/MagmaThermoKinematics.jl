@@ -43,6 +43,7 @@ using Printf        # pretty print
     ω::Float64 = 0.5             # relaxation parameter for nonlinear iterations
     max_iter::Int64 = 5000            # max. number of nonlinear iterations
     verbose::Bool = false
+    lithostatic_pressure::Bool = true      # set Arrays.P to the lithostatic pressure [Pa] each nonlinear iteration?
     convergence::Float64 = 1.0e-5            # nonlinear convergence criteria
     AnalyticalInitialGeo::Bool = false
     qs_anal::Float64 = 170.0e-3

@@ -76,6 +76,15 @@ end
         @test diffusion_step(JLBackend(), N, T0; axisymmetric) == diffusion_step(CPU(), N, T0; axisymmetric)
     end
 
+    @testset "lithostatic pressure" begin
+        Rho = 2000 .+ 100 .* rand(6, 7, 8)
+        P = zero(Rho)
+        lithostatic_pressure!(P, Rho, 9.81, 50.0)
+        Pjl = JLArray(zero(Rho))
+        lithostatic_pressure!(Pjl, JLArray(Rho), 9.81, 50.0)
+        @test Array(Pjl) == P
+    end
+
     @testset "MTK_GeoParams $(dim)D" for dim in (2, 3)
         jl, cpu = run_model(JLBackend(), dim), run_model(CPU(), dim)
         @test jl.on_jl

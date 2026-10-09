@@ -415,3 +415,17 @@ end;
     @test Diffusion_Gaussian2D("2D") ≈ 5.229954229551127 atol = 1.0e-5
     @test Diffusion_Gaussian2D("Axisymmetric") ≈ 10.587520589916926 atol = 1.0e-5
 end;
+
+@testset "lithostatic pressure" begin
+    ρ, g, Δz = 2700.0, 9.81, 100.0
+    for dims in ((5, 21), (4, 3, 21))
+        Rho = fill(ρ, dims)
+        P = fill(NaN, dims)
+        lithostatic_pressure!(P, Rho, g, Δz)
+        H = Δz * (dims[end] - 1)
+        @test all(==(0), selectdim(P, ndims(P), dims[end]))
+        @test all(isapprox(ρ * g * H; rtol = 1.0e-12), selectdim(P, ndims(P), 1))
+        @test all(P[ntuple(_ -> 1, ndims(P) - 1)..., :] .≈ P[ntuple(i -> i == 1 ? 2 : 1, ndims(P) - 1)..., :])   # depends on depth only
+    end
+    @test_throws "P and Rho must match" lithostatic_pressure!(zeros(3, 4), zeros(3, 5), g, Δz)
+end;
