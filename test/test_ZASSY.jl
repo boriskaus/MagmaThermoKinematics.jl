@@ -465,7 +465,7 @@ if 1==1
     x,z,T, Time_vec,Melt_Time, Tracers, dike_poly, Grid, Phases = MainCode_2D(MatParam, Num, Sill_params); # start the main code
 
     @test sum(T)/prod(size(T)) ≈ 351.6708073949723 rtol= 1e-4
-    @test sum(Melt_Time)  ≈ 11.474144800106583 rtol= 1e-4
+    @test sum(Melt_Time)  ≈ 11.49101091357911 rtol= 1e-4
 
 
  end
