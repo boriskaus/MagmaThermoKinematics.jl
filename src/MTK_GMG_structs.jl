@@ -17,7 +17,6 @@ This mutable structure represents numerical parameters in the program. It is use
 - `Tsurface_Celcius::Float64`: Surface temperature in Celsius.
 - `Geotherm::Float64`: Geothermal gradient in K/m.
 - `maxTime_Myrs::Float64`: Maximum simulation time in Myrs.
-- `SecYear::Float64`: Number of seconds in a year.
 - `maxTime::Float64`: Maximum simulation time in seconds.
 - `SaveOutput_steps::Int64`: Number of steps between output saves.
 - `CreateFig_steps::Int64`: Number of steps between figure creations.
@@ -73,7 +72,6 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     Tsurface_Celcius::Float64 = 0               # Surface T in celcius
     Geotherm::Float64 = 40 / 1.0e3          # in K/m
     maxTime_Myrs::Float64 = 1.5             # maximum timestep
-    SecYear::Float64 = 3600 * 24 * 365.25
     maxTime::Float64 = maxTime_Myrs * SecYear * 1.0e6 # maximum timestep  in seconds
     flux_bottom_BC::Bool = false           # flux bottom BC?
     flux_bottom::Float64 = 167.0e-3          # Flux in W/m2 in case flux_bottom_BC=true
@@ -134,7 +132,6 @@ object (for example `InjectSills.EllipticalIntrusion` or
     model parameters.
 - `T_in_Celsius::Float64`: Temperature of injected magma in Celsius.
 - `InjectionInterval_year::Float64`: Injection interval in years.
-- `SecYear`: Number of seconds in a year.
 - `InjectionInterval::Float64`: Injection interval in seconds.
 - `nTr_dike::Int64`: Number of tracers inserted per injection event.
 - `InjectVol::Float64`: Cumulative injected volume.
@@ -165,7 +162,6 @@ sp = SillParams(
     sill::Union{Nothing, InjectSills.AbstractSill} = nothing    # InjectSills.jl sill object
     T_in_Celsius::Float64 = 1000                    # Temperature of injected magma
     InjectionInterval_year::Float64 = 10.0e3                    # Injection interval [years]
-    SecYear = 3600 * 24 * 365.25          # s/year
     InjectionInterval::Float64 = InjectionInterval_year * SecYear            # Injection interval [s]
     nTr_dike::Int64 = 300                     # Number of tracers
     InjectVol::Float64 = 0.0                     # injected volume

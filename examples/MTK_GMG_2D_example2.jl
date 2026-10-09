@@ -60,7 +60,7 @@ println(" --- Performing MTK models --- ")
 # Overwrite some of the default functions
 if !(backend isa CPU)
     function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
-        println("$(Num.it), Time=$(round(Num.time / Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
+        println("$(Num.it), Time=$(round(Num.time / SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
         return nothing
     end
 else
@@ -98,7 +98,7 @@ function MTK_GMG.MTK_visualize_output(Grid::GridData, Num::NumericalParameters, 
 end
 
 function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
-    println("$(Num.it), Time=$(round(Num.time / Num.SecYear / 1.0e3, digits = 3)) kyrs; max(T) = $(round(maximum(Arrays.Tnew)))")
+    println("$(Num.it), Time=$(round(Num.time / SecYear / 1.0e3, digits = 3)) kyrs; max(T) = $(round(maximum(Arrays.Tnew)))")
     return nothing
 end
 

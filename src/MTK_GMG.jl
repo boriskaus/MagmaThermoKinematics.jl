@@ -13,9 +13,8 @@ using GeophysicalModelGenerator
 using StructArrays
 using MagmaThermoKinematics.Grid
 import MagmaThermoKinematics: NumericalParameters, SillParameters, TimeDependentProperties
-import MagmaThermoKinematics: update_Tvec!, inject_sills, km³, kyr, Myr
+import MagmaThermoKinematics: update_Tvec!, inject_sills, SecYear, km³, kyr, Myr
 import MagmaThermoKinematics: PhasesFromTracers!, CreateArrays, copy_to_device!
-SecYear = 3600 * 24 * 365.25;
 
 @inline _active_sill(Dikes) = isnothing(Dikes.sill) ? error("SillParameters requires a valid `sill` object") : Dikes.sill
 

@@ -12,7 +12,7 @@ import MagmaThermoKinematics.MTK_GMG
 @testset "MTK_GMG_2D" begin
     #=
     function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
-        println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
+        println("$(Num.it), Time=$(round(Num.time/SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
         return nothing
     end
 =#

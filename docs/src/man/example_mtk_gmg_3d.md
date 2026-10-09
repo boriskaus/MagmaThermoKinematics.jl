@@ -145,7 +145,7 @@ import MagmaThermoKinematics.MTK_GMG
 function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters,
 								  Arrays::NamedTuple, Mat_tup::Tuple,
 								  Dikes::SillParameters)
-	println("$(Num.it), Time=$(round(Num.time / Num.SecYear / 1e3, digits = 3)) kyrs")
+	println("$(Num.it), Time=$(round(Num.time / SecYear / 1e3, digits = 3)) kyrs")
 	return nothing
 end
 ```

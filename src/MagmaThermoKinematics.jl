@@ -22,8 +22,6 @@ abstract type NumericalParameters end
 abstract type SillParameters end
 abstract type TimeDependentProperties end
 
-include("Units.jl")                             # various useful units
-
 # Few useful parameters
 const SecYear = 3600 * 24 * 365.25
 const kyr = 1000 * SecYear

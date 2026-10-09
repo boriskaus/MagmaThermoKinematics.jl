@@ -89,6 +89,7 @@ Arrays.T .= Arrays.Tnew
 - `Nonlinear_Diffusion_step!` throws an error if the Picard iterations do not converge within `max_iter`. In v0.7 it printed a warning and carried on with the unconverged temperature. Reduce `dt` or the relaxation parameter `ω`. A melting law whose `dϕ/dT` jumps (for example `MeltingParam_Assimilation()` at the liquidus) may need `SmoothMelting(...)`.
 - `NumParam(USE_GPU=...)` fails, because the field no longer exists.
 - `LoadPhaseDiagrams(names, true)` fails: `PlotDiagrams` is a keyword, `LoadPhaseDiagrams(names; PlotDiagrams=true)`.
+- `NumParam(SecYear=...)`, `SillParams(SecYear=...)`, and `Num.SecYear` fail, because the fields no longer exist. Use the constant `SecYear` exported by `MagmaThermoKinematics`.
 - The `Arrays` returned by `MTK_GeoParams` no longer contain `qx`, `qz`, `Kx`, `Kz`, `Rc` (and `qy`, `Ky` in 3D). Callbacks that read them fail.
 - A user-defined `MTK_inject_dikes` with the v0.7 signature `(Grid, Num, Arrays, Mat_tup, Dikes, Tracers, Tnew_cpu)` is no longer called, because the solver calls `MTK_inject_dikes(Grid, Num, Arrays, Mat_tup, Dikes, Tracers)`. Drop the last argument and pass `Arrays.T` to `inject_sills`, which accepts arrays on any backend.
 

@@ -19,13 +19,13 @@ println("Example 1 of the MTK - GMG integration")
 
 # Printing output e
 function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
-    println("$(Num.it), Time=$(round(Num.time / Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
+    println("$(Num.it), Time=$(round(Num.time / SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
     return nothing
 end
 
 if !(backend isa CPU)
     function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
-        println("$(Num.it), Time=$(round(Num.time / Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
+        println("$(Num.it), Time=$(round(Num.time / SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
         return nothing
     end
 else
