@@ -4,14 +4,14 @@ This page follows the same style as the 2D MTK_GMG examples, but for 3D setups. 
 
 ## Using MTK_GMG for real volcanic systems
 
-These examples show that the same MTK_GMG solver pipeline can be reused across different volcanic systems by changing setup data and runtime choices instead of rewriting the core numerics. 
+These examples show that the same MTK_GMG solver pipeline can be reused across different volcanic systems by changing setup data and runtime choices instead of rewriting the core numerics.
 The main code does not have to be changed if you want to do things such as change the location of magma intrusions over time, or store particular datasets. All can be specified in the input file, which makes this approach very flexible and reproducible (just make sure to report the exact version of MTK you employed).
 
 We will show two examples here:
 
 - `Unzen3D` demonstrates a workflow where the model domain, phase structure, and thermal state are assembled from imported topography and project-specific initialization logic.
 - `Lanin3D` demonstrates a workflow where a custom topography is downloaded using GMT if the file doesn't exist, and a custom output hook is defined to print time and iteration diagnostics.
-- Both examples use the same core concepts: `CartData` setup construction (using the [GeophysicalModelGenerator](https://github.com/JuliaGeodynamics/GeophysicalModelGenerator.jl) package), material parameter definition (using [GeoParams](https://github.com/JuliaGeodynamics/GeoParams.jl/)), dike parameterization, and a customization of simulation paramaters such as output and diagnostics. With this, all aspects of the simulation can be controlled and customized  in a single file.
+- Both examples use the same core concepts: `CartData` setup construction (using the [GeophysicalModelGenerator](https://github.com/JuliaGeodynamics/GeophysicalModelGenerator.jl) package), material parameter definition (using [GeoParams](https://github.com/JuliaGeodynamics/GeoParams.jl/)), dike parameterization, and a customization of simulation parameters such as output and diagnostics. With this, all aspects of the simulation can be controlled and customized  in a single file.
 
 In practice, this means `MagmaThermoKinematics.jl` can move from synthetic benchmark setups to real-world applications by swapping geological input data and user hooks while keeping the computational framework stable.
 
@@ -43,7 +43,7 @@ using Random, GeoParams, GeophysicalModelGenerator
 ```
 
 #### GeophysicalModelGenerator Setup
-The GMG package is used to generate the 3D setup (and can also be used to import screenshots, seismic tomography models, seismicity and all other data that is available). We also load the topography from disk, and set the `Phases` below the topography to 1: 
+The GMG package is used to generate the 3D setup (and can also be used to import screenshots, seismic tomography models, seismicity and all other data that is available). We also load the topography from disk, and set the `Phases` below the topography to 1:
 ```julia
 Topo_cart = load_GMG(joinpath(@__DIR__, "Topo_cart"))
 Nx, Ny, Nz = 100, 100, 100

@@ -220,7 +220,7 @@ function LoadPhaseDiagrams(PhaseDiagramNames, PlotDiagrams=false)
                 # nothing to be done
 
             elseif numFields<5
-                error("The phase diagram should at least have the collumns: meltRho | meltWt | rockRho | T [K] | P [bar] ")
+                error("The phase diagram should at least have the columns: meltRho | meltWt | rockRho | T [K] | P [bar] ")
 
             end
 
