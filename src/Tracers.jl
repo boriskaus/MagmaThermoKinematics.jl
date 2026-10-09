@@ -14,7 +14,7 @@
                     2D - [x; z]
                     3D - [x; y; z]
 
-            T:          Temperature of the tracer [Celcius]
+            T:          Temperature of the tracer [Celsius]
             Phase:      Phase of tracer
             Phi:        Melt fraction of tracer
             time_vec:   Vector with time

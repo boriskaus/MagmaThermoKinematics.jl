@@ -12,13 +12,13 @@ leg = ["central injection","sill underaccretion","sill underaccretion Caricchi M
 # Create figure
 fig = Figure(resolution = (2000,1000))
 ax1=Axis(fig[1, 1],xlabel = "Age [Ma]", ylabel = "T_{average} magma")
-xlims!(ax1, 0, 1.5)    
-ylims!(ax1, 400, 1000)    
+xlims!(ax1, 0, 1.5)
+ylims!(ax1, 400, 1000)
 
-ax2=Axis(fig[1, 2],xlabel = "Age [Ma]", ylabel = "Zircon age cummulative probability %")
+ax2=Axis(fig[1, 2],xlabel = "Age [Ma]", ylabel = "Zircon age cumulative probability %")
 limits!(ax2, 0, 1.5, 0,1)
 
-for i = 1:length(dirnames) 
+for i = 1:length(dirnames)
 
     # Load file
     filename = dirnames[i]*"/ZirconAges.jld2";
