@@ -100,7 +100,6 @@ function Diffusion_SteadyState2D(Setup = "Constant_Zdirection")
 
         err = maximum(abs.(Tnew - T))
 
-        # Tracers         =   UpdateTracers(Tracers, Grid, Spacing, Tnew, Phi);                       # Update info on tracers
         T, Tnew = Tnew, T                                                                 # Update temperature
         time, time_kyrs = time + dt, time / SecYear / 1.0e3                                             # Keep track of evolved time
 
@@ -247,7 +246,6 @@ function Diffusion_Halfspace2D()
         Tnew[:, 1] .= Tbot; Tnew[:, end] .= 0.0                                                     # bottom & top temperature (constant)
 
 
-        # Tracers         =   UpdateTracers(Tracers, Grid, Spacing, Tnew, Phi);                       # Update info on tracers
         T, Tnew = Tnew, T                                                                 # Update temperature
         time, time_kyrs = time + dt, time / SecYear / 1.0e3                                             # Keep track of evolved time
 

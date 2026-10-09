@@ -37,14 +37,12 @@ export GridData, CreateGrid
 
 # Routines that deal with tracers
 include("Tracers.jl")
-export UpdateTracers, AdvectTracers!, InitializeTracers, PhaseRatioFromTracers, CorrectTracersForTopography!
-export RockAssemblage, update_Tvec!
+export AdvectTracers!, update_Tvec!
 export PhaseRatioFromTracers!, PhasesFromTracers!, UpdateTracers_T_ϕ!, UpdateTracers_Field! # new routines
-export Tracer, TracersToGrid!
+export Tracer
 
 include("MeltingRelationships.jl")
-export SolidFraction, ComputeLithostaticPressure, LoadPhaseDiagrams, PhaseDiagramData, ComputeDensityAndPressure
-export PhaseRatioAverage!, ComputeSeismicVelocities, SolidFraction_Parameterized!
+export SolidFraction, SolidFraction_Parameterized!
 
 # Export functions that will be available outside this module
 export StructArray, LazyRow # useful

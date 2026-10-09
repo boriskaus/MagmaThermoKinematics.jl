@@ -31,8 +31,6 @@ Pkg.add("CairoMakie")       # plotting (or GLMakie)
 Pkg.add(["MAT", "TimerOutputs"])   # ZASSy example
 ```
 
-`LoadPhaseDiagrams(...; PlotDiagrams=true)` draws its figures with Makie: load a backend first, e.g. `using CairoMakie` or `using GLMakie`.
-
 ## Development Install
 
 For local development from a clone:
