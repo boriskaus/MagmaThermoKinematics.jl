@@ -3,7 +3,6 @@ using InjectSills
 
 using MagmaThermoKinematics
 
-# Allow overwriting user routines
 import MagmaThermoKinematics.MTK_GMG
 
 using Random, GeoParams, GeophysicalModelGenerator
@@ -12,13 +11,6 @@ const rng = Random.seed!(1234);     # same seed such that we can reproduce resul
 
 
 @testset "MTK_GMG_3D" begin
-
-    function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
-        if mod(Num.it, 10) == 0
-            println("$(Num.it), $(Num.time / SecYear / 1.0e3) kyrs; max(T)=$(maximum(Arrays.Tnew))")
-        end
-        return nothing
-    end
 
     # Test setup
     println("===============================================")
@@ -35,7 +27,7 @@ const rng = Random.seed!(1234);     # same seed such that we can reproduce resul
         fac_dt = 0.2, ω = 0.5, verbose = false,
         flux_bottom_BC = false, flux_bottom = 0, deactivate_La_at_depth = false,
         Geotherm = 30 / 1.0e3, TrackTracersOnGrid = true,
-        SaveOutput_steps = 10, CreateFig_steps = 100000, plot_tracers = false, advect_polygon = true,
+        SaveOutput_steps = 1, CreateFig_steps = 100000, plot_tracers = false, advect_polygon = true,
         FigTitle = "Geneva Models, Geotherm 30/km",
         AddRandomSills = false, RandomSills_timestep = 5
     )
@@ -70,6 +62,8 @@ const rng = Random.seed!(1234);     # same seed such that we can reproduce resul
 
     @test sum(Arrays.Tnew) / prod(size(Arrays.Tnew)) ≈ 299.981239425671  rtol = 1.0e-2
     @test sum(time_props.MeltFraction) ≈ 0.0  rtol = 1.0e-5
+    @test Num.nt >= 1
+    @test count(endswith(".vts"), readdir("Test1")) == Num.nt
     # -----------------------------
 
 
@@ -106,7 +100,7 @@ const rng = Random.seed!(1234);     # same seed such that we can reproduce resul
         SimName = "Unzen2", axisymmetric = false,
         maxTime_Myrs = 0.001,
         fac_dt = 0.2,
-        SaveOutput_steps = 20, CreateFig_steps = 1000, plot_tracers = false, advect_polygon = false,
+        SaveOutput_steps = 2, CreateFig_steps = 1000, plot_tracers = false, advect_polygon = false,
         AddRandomSills = false, RandomSills_timestep = 5
     )
 
@@ -167,6 +161,8 @@ const rng = Random.seed!(1234);     # same seed such that we can reproduce resul
 
     @test sum(Arrays.Tnew) / prod(size(Arrays.Tnew)) ≈ 244.14916470514495  rtol = 1.0e-2
     @test sum(time_props.MeltFraction) ≈ 0.00837762112158602 rtol = 1.0e-5
+    @test Num.nt >= 2
+    @test count(endswith(".vts"), readdir("Unzen2")) == Num.nt ÷ 2
 
     # Random sill placement moves the sill within the randomization zone
     Num.AddRandomSills, Num.it = true, 0

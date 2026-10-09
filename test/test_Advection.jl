@@ -643,6 +643,13 @@ end
 # ===================================================================================================
 if 1 == 1
 
+    @testset "unknown methods" begin
+        Grid = (0.0:0.1:1.0, 0.0:0.1:1.0)
+        Pts = ([0.25, 0.5], [0.5, 0.75])
+        @test_throws "Unknown interpolation method Bogus" Interpolate!((zeros(2),), Grid, (zeros(11, 11),), Pts, "Bogus")
+        @test_throws "Unknown advection method: Bogus" MagmaThermoKinematics.AdvectPoints(Pts, Grid, (zeros(11, 11), zeros(11, 11)), 1.0, "Bogus")
+    end
+
     @testset "Interpolation" begin
         @test test_Interpolation("2D", "Linear") ≈ 2.9880072526933544e-5    atol = 1.0e-8
         @test test_Interpolation("2D", "Quadratic") ≈ 9.72101621785853e-7      atol = 1.0e-8

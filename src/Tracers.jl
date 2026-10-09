@@ -184,7 +184,7 @@ function PhaseRatioFromTracers!(PhaseRatio::AbstractArray, Grid::GridData{_T, di
         error("Size of PhaseRatio array inconsistent with input grid")
     end
     if size(PhaseRatio)[dim + 1] < numPhases
-        error("Size of lastv dimension of PhaseRatio is too small")
+        error("Size of last dimension of PhaseRatio is too small")
     end
     x = Grid.coord1D[1]
     if dim == 2

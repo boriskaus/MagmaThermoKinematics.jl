@@ -19,16 +19,6 @@ import MagmaThermoKinematics: PhasesFromTracers!, CreateArrays, copy_to_device!
 @inline _active_sill(Dikes) = isnothing(Dikes.sill) ? error("SillParameters requires a valid `sill` object") : Dikes.sill
 
 """
-    Analytical geotherm used for the UCLA setups, which includes radioactive heating
-"""
-function AnalyticalGeotherm!(T, Z, Tsurf, qm, qs, k, hr)
-    FT = eltype(T)
-    Tsurf, qm, qs, k, hr = FT(Tsurf), FT(qm), FT(qs), FT(k), FT(hr)
-    T .= @. Tsurf - (qm / k) * Z + (qs - qm) * hr / k * (one(FT) - exp(Z / hr))
-    return nothing
-end
-
-"""
     Tracers = MTK_inject_dikes(Grid, Num, Arrays, Mat_tup, Dikes, Tracers)
 
 Function that injects dikes once in a while
@@ -344,8 +334,8 @@ function Setup_Model_CartData(d::CartData, Num::NumericalParameters, Mat_tup::Tu
         else
             k = 3
         end
-        if hasfield(typeof(mm.HeatCapacity[1]), :cp)
-            cp = NumValue(mm.HeatCapacity[1].cp)
+        if hasfield(typeof(mm.HeatCapacity[1]), :Cp)
+            cp = NumValue(mm.HeatCapacity[1].Cp)
         else
             cp = 1050
         end

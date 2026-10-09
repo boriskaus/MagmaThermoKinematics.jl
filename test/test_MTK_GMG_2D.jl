@@ -30,7 +30,7 @@ import MagmaThermoKinematics.MTK_GMG
         fac_dt = 0.2, ω = 0.5, verbose = false,
         flux_bottom_BC = false, flux_bottom = 0, deactivate_La_at_depth = false,
         Geotherm = 30 / 1.0e3, TrackTracersOnGrid = true,
-        SaveOutput_steps = 100000, CreateFig_steps = 100000, plot_tracers = false, advect_polygon = true,
+        SaveOutput_steps = 20, CreateFig_steps = 100000, plot_tracers = false, advect_polygon = true,
         FigTitle = "Geneva Models, Geotherm 30/km"
     )
 
@@ -62,6 +62,8 @@ import MagmaThermoKinematics.MTK_GMG
     @test sum(Arrays.Tnew) / prod(size(Arrays.Tnew)) ≈ 296.4607300089425  rtol = 1.0e-4
     @test sum(time_props.MeltFraction) ≈ 0.0  rtol = 1.0e-5
     @test !isempty(Dikes.sill_poly)
+    @test count(endswith(".vts"), readdir("MTK_GMG_2D_Geneva")) == Num.nt ÷ 20
+    @test isfile(joinpath("MTK_GMG_2D_Geneva", "MTK_GMG_2D_Geneva.pvd"))
 
 
     # -----------------------------
@@ -77,6 +79,7 @@ import MagmaThermoKinematics.MTK_GMG
     Nx = Num.Nx   # resolution in x
     Nz = Num.Nz
     Data_2D = cross_section(Data_set3D, Start = (-20, 4), End = (20, 4), dims = (Nx, Nz))
+    Data_2D_noflat = CartData(Data_2D.x.val, Data_2D.y.val, Data_2D.z.val, (Phases = Data_2D.fields.Phases,))
     Data_2D = addfield(Data_2D, "FlatCrossSection", flatten_cross_section(Data_2D))
     Data_2D = addfield(Data_2D, "Phases", Int64.(Data_2D.fields.Phases))
 
@@ -131,7 +134,7 @@ import MagmaThermoKinematics.MTK_GMG
         SimName = "Unzen1", axisymmetric = false,
         maxTime_Myrs = 0.005,
         fac_dt = 0.2, ω = 0.5, verbose = false,
-        SaveOutput_steps = 10000, CreateFig_steps = 1000, plot_tracers = false, advect_polygon = false
+        SaveOutput_steps = 10, CreateFig_steps = 1000, plot_tracers = false, advect_polygon = true
     )
 
     # dike parameters
@@ -191,6 +194,8 @@ import MagmaThermoKinematics.MTK_GMG
 
     @test sum(Arrays.Tnew) / prod(size(Arrays.Tnew)) ≈ 251.58206620240594  rtol = 1.0e-4
     @test sum(time_props.MeltFraction) ≈ 0.2238128607809668 rtol = 1.0e-5
+    @test !isempty(Dikes.sill_poly)          # created at the first injection of an EllipticalIntrusion
+    @test count(endswith(".vts"), readdir("Unzen1")) == Num.nt ÷ 10
 
     # Random sill placement moves the sill within the randomization zone
     Num.AddRandomSills, Num.it = true, 0
@@ -198,6 +203,32 @@ import MagmaThermoKinematics.MTK_GMG
     cen = [c.val for c in Dikes.sill.Center]
     @test Dikes.sill isa EllipticalIntrusion
     @test all(abs.(cen .- (Grid.max .+ Grid.min) ./ 2) .<= [Dikes.W_ran, Dikes.H_ran] ./ 2)
+
+    # sills centered below `SillsAbove` are rotated to near-vertical
+    Dikes.SillsAbove = Grid.max[end]
+    MTK_GMG.MTK_update_ArraysStructs!(Arrays, Grid, Dikes, Num, MatParam)
+    @test abs(Dikes.sill.Angle[1].val - 90) <= Dikes.Dip_ran / 2
+
+    # input checks
+    @test_throws "You should add a Field :FlatCrossSection" MTK_GeoParams(MatParam, NumParam(SimName = mktempdir()), Sill_params, CartData_input = Data_2D_noflat)
+    @test_throws "Properties for Phase 0 are not specified in Mat_tup" MTK_GeoParams(
+        MatParam[2:end], NumParam(SimName = mktempdir(), Output_VTK = false), Sill_params, CartData_input = Data_2D
+    )
+
+    # time step from the largest diffusivity k/(Cp ρ) in Mat_tup; laws without `k`, `Cp` or `ρ` count as 3, 1050 and 2700
+    κ_time(mat) = MTK_GMG.Setup_Model_CartData(Data_2D, NumParam(κ_time = 0.0), (mat,)).κ_time
+    @test κ_time(
+        SetMaterialParams(
+            Phase = 1, Conductivity = ConstantConductivity(k = 3Watt / K / m),
+            HeatCapacity = ConstantHeatCapacity(Cp = 500J / kg / K), Density = ConstantDensity(ρ = 2000kg / m^3)
+        )
+    ) ≈ 3 / (500 * 2000)
+    @test κ_time(
+        SetMaterialParams(
+            Phase = 1, Conductivity = T_Conductivity_Whittington_parameterised(),
+            HeatCapacity = T_HeatCapacity_Whittington(), Density = PT_Density()
+        )
+    ) ≈ 3 / (1050 * 2700)
 
     # remove directory created by this test
     rm("MTK_GMG_2D_Geneva", recursive = true, force = true)

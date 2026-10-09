@@ -428,3 +428,27 @@ end;
     end
     @test_throws "P and Rho must match" lithostatic_pressure!(zeros(3, 4), zeros(3, 5), g, Δz)
 end;
+
+@testset "no melt or latent heat below deactivationDepth" begin
+    Mat = (
+        SetMaterialParams(
+            Phase = 1, Density = ConstantDensity(), LatentHeat = ConstantLatentHeat(),
+            Conductivity = ConstantConductivity(), HeatCapacity = ConstantHeatCapacity(),
+            Melting = SmoothMelting(MeltingParam_4thOrder())
+        ),
+    )
+    N = (9, 21)
+    Grid = CreateGrid(size = N, extent = (10.0e3, 20.0e3))
+    names = (:T, :T_K, :Tnew, :T_it_old, :Tupdate, :Kc, :Rho, :Cp, :Hr, :Hl, :ϕ, :dϕdT, :R, :Z, :P)
+    Arrays = CreateArrays(Dict(N => NamedTuple{names}(ntuple(_ -> 0, length(names)))))
+    GridArray!(Arrays.R, Arrays.Z, Grid)
+    Arrays.T .= 900.0                   # partially molten everywhere
+    Arrays.Tnew .= Arrays.T
+    Phases = ones(Int64, N)
+    Num = Numeric_params(; deactivate_La_at_depth = true, deactivationDepth = -10.0e3)
+    Nonlinear_Diffusion_step!(Arrays, Mat, Phases, Grid, 1.0e8, Num)
+    deep = Arrays.Z .< -10.0e3
+    @test all(iszero, Arrays.ϕ[deep])
+    @test all(iszero, Arrays.dϕdT[deep])
+    @test all(>(0), Arrays.ϕ[.!deep])
+end;

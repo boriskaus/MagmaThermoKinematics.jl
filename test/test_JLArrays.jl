@@ -85,6 +85,20 @@ end
         @test Array(Pjl) == P
     end
 
+    @testset "host/device copies" begin
+        T, ϕ = rand(4, 5), rand(4, 5)
+        T_dev, ϕ_dev = JLArray(zeros(Float32, 4, 5)), JLArray(zeros(4, 5))
+        copy_arrays_CPU2GPU!(T_dev, ϕ_dev, T, ϕ)
+        @test Array(T_dev) == Float32.(T)        # converted to the device eltype
+        @test Array(ϕ_dev) == ϕ
+        T_host, ϕ_host = zeros(4, 5), zeros(4, 5)           # eltype change for T, none for ϕ
+        copy_arrays_GPU2CPU!(T_host, ϕ_host, T_dev, ϕ_dev)
+        @test T_host == Float32.(T)
+        @test ϕ_host == ϕ
+        @test_throws "cannot copy an array of size (4, 5) into one of size (5, 4)" copy_arrays_GPU2CPU!(zeros(5, 4), ϕ_host, T_dev, ϕ_dev)
+        @test_throws "cannot copy an array of size (4, 5) into one of size (5, 4)" copy_arrays_CPU2GPU!(JLArray(zeros(5, 4)), ϕ_dev, T, ϕ)
+    end
+
     @testset "MTK_GeoParams $(dim)D" for dim in (2, 3)
         jl, cpu = run_model(JLBackend(), dim), run_model(CPU(), dim)
         @test jl.on_jl

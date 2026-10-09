@@ -100,11 +100,7 @@ There are a few functions that you can overwrite in your user code to customize 
         T_init[(R_center .<= Dikes.sill.W.val / 2) .& (abs.(Array(Arrays.Z) .- c[end]) .< Dikes.sill.H.val / 2)] .= Dikes.T_in_Celsius
         copyto!(Arrays.T_init, T_init)
         if Num.advect_polygon == true
-            if hasproperty(Dikes, :sill_poly)
-                Dikes.sill_poly = InjectSills.dike_polygon(Dikes.sill)
-            else
-                Dikes.dike_poly = InjectSills.dike_polygon(Dikes.sill)
-            end
+            Dikes.sill_poly = InjectSills.dike_polygon(Dikes.sill)
         end
     end
     # --------------------------------------------

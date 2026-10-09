@@ -48,8 +48,7 @@ When `return_results = true` a third field `results` is included, containing a
 - `elements`       : `ZirconGrowth.ElementData` selecting which trace elements are tracked;
                      defaults to `ZirconGrowth.default_element_data()`.
 - `filename`       : path to a JLD2 file; if provided the `age_years` and
-                     `zircon_radius_um` vectors (and `results` when requested) are saved
-                     there.  Default `nothing` (no saving) for the `Tracers` form;
+                     `zircon_radius_um` vectors are saved there.  Default `nothing` (no saving) for the `Tracers` form;
                      `dirname/ZirconGrowth.jld2` for the `dirname` form.
 - `return_results` : set to `true` to include the full `Vector{SimulationResult}` in the
                      return value.  Default `false` to save memory.
