@@ -21,10 +21,6 @@ WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
 [weakdeps]
 ZirconGrowth = "5085b5e1-578a-4bbf-9dfc-2862bf7461c3"
 
-[sources]
-GeophysicalModelGenerator = {rev = "aelligp-patch-5", url = "https://github.com/JuliaGeodynamics/GeophysicalModelGenerator.jl"}
-InjectSills = {rev = "main", url = "https://github.com/JuliaGeodynamics/InjectSills.jl.git"}
-
 [extensions]
 ZirconGrowthExt = "ZirconGrowth"
 
