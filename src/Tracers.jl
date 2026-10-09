@@ -126,55 +126,10 @@ In-place function that interpolates `T` & `Phi`, defined on the `Grid`, to `Trac
 Note that we employ linear interpolation using custom functions
 """
 function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T, dim}, Phi::AbstractArray{_T, dim}) where {_T, dim}
-
-    if isassigned(Tracers, 1)        # only if the Tracers StructArray is non-empty
-
-        # Boundaries of the grid
-        Bound_min = minimum.(Grid)
-        Bound_max = maximum.(Grid)
-        N = length.(Grid)
-
-        if dim == 2
-            Δx = Grid[1][2] - Grid[1][1]
-            Δz = Grid[2][2] - Grid[2][1]
-        elseif dim == 3
-            Δx = Grid[1][2] - Grid[1][1]
-            Δy = Grid[2][2] - Grid[2][1]
-            Δz = Grid[3][2] - Grid[3][1]
-        end
-        for iT in 1:length(Tracers)
-            Trac = Tracers[iT]
-            pt = Trac.coord
-
-            # correct point for bounds:
-            for i in 1:dim
-                if pt[i] < Bound_min[i]
-                    pt[i] = Bound_min[i]
-                end
-                if pt[i] > Bound_max[i]
-                    pt[i] = Bound_max[i]
-                end
-            end
-
-            # Linear interpolation:
-            if dim == 2
-                Trac_T = interpolate_linear_2D(pt[1], pt[2], Bound_min, N, Δx, Δz, T)
-                Trac_ϕ = interpolate_linear_2D(pt[1], pt[2], Bound_min, N, Δx, Δz, Phi)
-            elseif dim == 3
-                Trac_T = interpolate_linear_3D(pt[1], pt[2], pt[3], Bound_min, N, Δx, Δy, Δz, T)
-                Trac_ϕ = interpolate_linear_3D(pt[1], pt[2], pt[3], Bound_min, N, Δx, Δy, Δz, Phi)
-            end
-
-            # Update values on tracers
-            LazyRow(Tracers, iT).T = Trac_T
-            LazyRow(Tracers, iT).Phi = Trac_ϕ
-
-        end
-
-    end
-
+    isassigned(Tracers, 1) || return nothing     # only if the Tracers StructArray is non-empty
+    Δ = map(x -> x[2] - x[1], Grid)
+    interpolate_to_tracers!((Tracers.T, Tracers.Phi), (T, Phi), Tracers.coord, minimum.(Grid), maximum.(Grid), length.(Grid), Δ)
     return nothing
-
 end
 
 """
@@ -190,70 +145,37 @@ In-place, non-allocating, function that interpolates `Field`, defined on the `Gr
 Note that we employ linear interpolation using custom functions
 """
 function UpdateTracers_Field!(Tracers::StructVector{TRACERS}, Grid::GridData{_T, dim}, Field::AbstractArray{_T, dim}, FieldName::Symbol) where {TRACERS, _T, dim}
-
-    if isassigned(Tracers, 1)        # only if the Tracers StructArray is non-empty
-
-        if !(Grid.ConstantΔ)
-            error("Routine currently only works for constant spacing in every direction")
-        end
-
-        field_number = find_index_in_struct(fieldnames(TRACERS), FieldName)
-
-        for iT in 1:length(Tracers)
-            Trac = Tracers[iT]
-            pt = Trac.coord
-
-            # correct point for bounds:
-            eps = 1.0e-3
-            for i in 1:dim
-                if (pt[i] < Grid.min[i])
-                    pt[i] = Grid.min[i]
-                end
-                if (pt[i] > Grid.max[i])
-                    pt[i] = Grid.max[i]
-                end
-            end
-
-            # Linear interpolation from grid -> point (assumes constant spacing in each dimension)
-            if dim == 2
-                Trac_val = interpolate_linear_2D(pt[1], pt[2], Grid.min, Grid.N, Grid.Δ[1], Grid.Δ[2], Field)
-            elseif dim == 3
-                Trac_val = interpolate_linear_3D(pt[1], pt[2], pt[3], Grid.min, Grid.Δ[1], Grid.Δ[2], Grid.Δ[3], Field)
-            end
-
-            # Update values on tracers
-            setproperty!(LazyRow(Tracers, iT), field_number, Trac_val)
-
-        end
-    end
-
+    isassigned(Tracers, 1) || return nothing     # only if the Tracers StructArray is non-empty
+    Grid.ConstantΔ || error("Routine currently only works for constant spacing in every direction")
+    interpolate_to_tracers!((getproperty(Tracers, FieldName),), (Field,), Tracers.coord, Grid.min, Grid.max, Grid.N, Grid.Δ)
     return nothing
 end
 
-# Helper function,
-function find_index_in_struct(list::NTuple{N, Symbol}, FieldName::Symbol) where {N}
-    ind = 0
-    for i in 1:N
-        if list[i] === FieldName
-            return i
+# For every tracer, clamp its coordinates (in place) to the grid box [lo, hi] and
+# set `vals[k][iT]` to the multilinear interpolation of `fields[k]` at that point.
+# `fields` live on a grid with `N` points, starting at `lo`, with constant spacing `Δ`.
+function interpolate_to_tracers!(vals::Tuple, fields::Tuple, coord, lo, hi, N, Δ)
+    for iT in eachindex(coord, vals...)
+        pt = coord[iT]
+        for d in eachindex(lo, hi)
+            pt[d] = clamp(pt[d], lo[d], hi[d])
         end
+        map((v, F) -> v[iT] = interpolate_linear(pt, lo, N, Δ, F), vals, fields)
     end
-    return
+    return nothing
 end
+
+interpolate_linear(pt, lo, N, Δ, F::AbstractArray{<:Any, 2}) = interpolate_linear_2D(pt[1], pt[2], lo, N, Δ[1], Δ[2], F)
+interpolate_linear(pt, lo, N, Δ, F::AbstractArray{<:Any, 3}) = interpolate_linear_3D(pt[1], pt[2], pt[3], lo, N, Δ[1], Δ[2], Δ[3], F)
 
 """
 
 Implements 2D bilinear interpolation
 """
 function interpolate_linear_2D(pt_x, pt_z, Bound_min, N, Δx, Δz, Field)
-    ix = floor(Int64, (pt_x - Bound_min[1]) / Δx)
-    iz = floor(Int64, (pt_z - Bound_min[2]) / Δz)
-
-    # deal with boundaries
-    ix = min(ix, N[1] - 2)
-    iz = min(iz, N[2] - 2)
-    ix = max(ix, 1)
-    iz = max(iz, 1)
+    # 0-based cell index, clamped so that boundary points use the first/last cell
+    ix = clamp(floor(Int64, (pt_x - Bound_min[1]) / Δx), 0, N[1] - 2)
+    iz = clamp(floor(Int64, (pt_z - Bound_min[2]) / Δz), 0, N[2] - 2)
 
     fac_x = (pt_x - ix * Δx - Bound_min[1]) / Δx     # distance to lower left point
     fac_z = (pt_z - iz * Δz - Bound_min[2]) / Δz     # distance to lower left point
@@ -274,17 +196,10 @@ Implements 3D trilinear interpolation
 """
 function interpolate_linear_3D(pt_x, pt_y, pt_z, Bound_min, N, Δx, Δy, Δz, Field)
 
-    ix = floor(Int64, (pt_x - Bound_min[1]) / Δx)
-    iy = floor(Int64, (pt_y - Bound_min[2]) / Δy)
-    iz = floor(Int64, (pt_z - Bound_min[3]) / Δz)
-
-    # deal with boundaries
-    ix = min(ix, N[1] - 2)
-    iy = min(iy, N[2] - 2)
-    iz = min(iz, N[3] - 2)
-    ix = max(ix, 1)
-    iy = max(iy, 1)
-    iz = max(iz, 1)
+    # 0-based cell index, clamped so that boundary points use the first/last cell
+    ix = clamp(floor(Int64, (pt_x - Bound_min[1]) / Δx), 0, N[1] - 2)
+    iy = clamp(floor(Int64, (pt_y - Bound_min[2]) / Δy), 0, N[2] - 2)
+    iz = clamp(floor(Int64, (pt_z - Bound_min[3]) / Δz), 0, N[3] - 2)
 
     fac_x = (pt_x - ix * Δx - Bound_min[1]) / Δx     # distance to lower left point
     fac_y = (pt_y - iy * Δy - Bound_min[2]) / Δy     # distance to lower left point
@@ -718,7 +633,7 @@ function PhaseRatioFromTracers!(PhaseRatio::AbstractArray, Grid::GridData{_T, di
 
             if InterpolationMethod == "DistanceWeighted"
                 dist .= abs.((pt .- pt_near) ./ Grid.Δ)      # distance of tracers to regular grid point (normalized over Δ)
-                Weight = prod(dist)                         # weight of point
+                Weight = prod(1 .- 2 .* dist)               # weight of point: 1 at the node, 0 at the cell face
             elseif InterpolationMethod == "Constant"
                 Weight = 1.0
             end
