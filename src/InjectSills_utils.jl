@@ -6,7 +6,7 @@
 #   • inside                 – point-in-sill predicate
 #   • new_point_inside_sill  – random tracer placement
 #   • volume / area          – injected volume / area
-#   • dike_polygon           – 2-D plotting outline
+#   • dike_polygon           – plotting outline
 #
 # What is NOT stored in AbstractSill and must be supplied as arguments:
 #   • T_in     – temperature assigned to newly-intruded material [°C]
@@ -103,7 +103,7 @@ into the temperature field `T` defined on the regular grid `Grid`.
 # Keyword arguments
 - `AdvectionMethod`     – `"RK2"` (default) or `"Euler"`
 - `InterpolationMethod` – `"Linear"`, `"Quadratic"`, or `"Cubic"` (default `"Linear"`)
-- `dike_poly`           – optional plotting polygon `[x, z]` that is advected with the host rock; in 3D the x–z section through the sill center
+- `dike_poly`           – optional plotting polygon (`InjectSills.dike_polygon`) that is advected with the host rock
 
 # Returns
 `(Tracers, Tnew, InjectedVolume, dike_poly, Velocity)`, where `InjectedVolume` is
@@ -181,11 +181,7 @@ function inject_sills(
             c .= getindex.(P, i)
         end
     end
-    if !isempty(dike_poly)
-        # In 3D, dike_poly is the x–z section through the sill center (InjectSills.dike_polygon)
-        P = dim == 2 ? dike_poly : (dike_poly[1], fill(sill.Center.val[2], length(dike_poly[1])), dike_poly[2])
-        displace_points!(P, sill, Grid)
-    end
+    isempty(dike_poly) || displace_points!(dike_poly, sill, Grid)
 
     # ------------------------------------------------------------------
     # Set T = T_in inside the sill and seed new tracers

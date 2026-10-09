@@ -366,9 +366,24 @@ if 1 == 1
                 dike_poly = deepcopy(poly0)
             )
             # EllipticalIntrusion grows self-similarly: the outline scales by ∛2 about the center
-            @test length(poly_adv) == 2
+            @test length(poly_adv) == 3
             @test poly_adv[1] ≈ cen[1] .+ cbrt(2) .* (poly0[1] .- cen[1])  rtol = 1.0e-10
-            @test poly_adv[2] ≈ cen[3] .+ cbrt(2) .* (poly0[2] .- cen[3])  rtol = 1.0e-10
+            @test poly_adv[2] ≈ poly0[2]
+            @test poly_adv[3] ≈ cen[3] .+ cbrt(2) .* (poly0[3] .- cen[3])  rtol = 1.0e-10
+
+            # A later sill offset in y moves the polygon at its own plane y = cen[2]:
+            # a point at ellipsoid radius a moves to radius ∛((W/2)³ + a³)
+            Δy = 5.0e3
+            sill_y = EllipticalIntrusion(Center = Point3(cen[1], cen[2] + Δy, cen[3]) * m, Angle = Vec2(0.0, 0.0) * NoUnits, W = Wdike * m, H = Hdike * m)
+            _, _, _, poly_y, _ = inject_sills(
+                StructArray{Tracer{Float32}}(undef, 1), copy(T), Grid, sill_y, T_in, 2, 0;
+                dike_poly = deepcopy(poly_adv)
+            )
+            a = sqrt.((poly_adv[1] .- cen[1]) .^ 2 .+ Δy^2 .+ ((poly_adv[3] .- cen[3]) .* (Wdike / Hdike)) .^ 2)
+            s = cbrt.((Wdike / 2)^3 .+ a .^ 3) ./ a
+            @test poly_y[1] ≈ cen[1] .+ s .* (poly_adv[1] .- cen[1])  rtol = 1.0e-10
+            @test poly_y[2] ≈ cen[2] + Δy .- s .* Δy  rtol = 1.0e-10
+            @test poly_y[3] ≈ cen[3] .+ s .* (poly_adv[3] .- cen[3])  rtol = 1.0e-10
         end
 
     end
