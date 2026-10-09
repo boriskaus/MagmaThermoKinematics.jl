@@ -1,6 +1,6 @@
 name = "MagmaThermoKinematics"
 uuid = "e7fe3d1a-f102-40b5-a66b-64b14986c4c8"
-version = "0.7.0"
+version = "0.7.1"
 authors = ["Boris Kaus <kaus@uni-mainz.de>", "Pascal Aellig <paellig@uni-mainz.de>"]
 
 [deps]
