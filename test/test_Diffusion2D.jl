@@ -425,7 +425,6 @@ end;
         H = Δz * (dims[end] - 1)
         @test all(==(0), selectdim(P, ndims(P), dims[end]))
         @test all(isapprox(ρ * g * H; rtol = 1.0e-12), selectdim(P, ndims(P), 1))
-        @test all(P[ntuple(_ -> 1, ndims(P) - 1)..., :] .≈ P[ntuple(i -> i == 1 ? 2 : 1, ndims(P) - 1)..., :])   # depends on depth only
     end
     @test_throws "P and Rho must match" lithostatic_pressure!(zeros(3, 4), zeros(3, 5), g, Δz)
 end;

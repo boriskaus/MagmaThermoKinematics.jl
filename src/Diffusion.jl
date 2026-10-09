@@ -17,7 +17,6 @@ Parameters that control the nonlinear diffusion solver.
     flux_bottom::Float64 = 0.0             # flux @ bottom, in case flux_bottom_BC=true
     deactivate_La_at_depth::Bool = false           # no latent heat and melt below `deactivationDepth`?
     deactivationDepth::Float64 = -15.0e3           # depth [m] below which latent heat and melt are switched off
-    lithostatic_pressure::Bool = true           # update `Arrays.P` to the lithostatic pressure [Pa] each iteration?
 end
 
 "Launch the KernelAbstractions kernel `kernel!` over `ndrange` on the backend of `A`."
@@ -197,7 +196,7 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
     Δ = FT.(Tuple(Grid.Δ))
     N = ndims(Arrays.T)
     R = Num.axisymmetric ? Arrays.R : nothing
-    g = Num.lithostatic_pressure ? compute_gravity(Mat_tup[1]) : zero(FT)
+    g = compute_gravity(Mat_tup[1])
 
     @. Arrays.T_K = Arrays.T + T₀
     Arrays.T_it_old .= Arrays.T
@@ -208,7 +207,7 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
         compute_phase_param!(Arrays.ϕ, compute_meltfraction, Mat_tup, Phases, args1)
         compute_phase_param!(Arrays.dϕdT, compute_dϕdT, Mat_tup, Phases, args1)
         compute_phase_param!(Arrays.Rho, compute_density, Mat_tup, Phases, args1)
-        Num.lithostatic_pressure && lithostatic_pressure!(Arrays.P, Arrays.Rho, g, Δ[N])
+        lithostatic_pressure!(Arrays.P, Arrays.Rho, g, Δ[N])
         compute_phase_param!(Arrays.Cp, compute_heatcapacity, Mat_tup, Phases, args1)
         compute_phase_param!(Arrays.Kc, compute_conductivity, Mat_tup, Phases, args1)
         compute_phase_param!(Arrays.Hl, compute_latent_heat, Mat_tup, Phases, args1)
