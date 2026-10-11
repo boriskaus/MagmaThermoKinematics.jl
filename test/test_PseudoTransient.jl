@@ -15,7 +15,7 @@ end
 
 # N-dimensional dense backward-Euler system (same discretisation as the solver; optional cell radii `R` for the axisymmetric case):
 # zero flux on the lateral faces (all but the last dimension), fixed T on the first and last layer of the last dimension.
-function pt_dense_nd(A, dt, Δ; R = nothing)
+function pt_dense_ndim(A, dt, Δ; R = nothing)
     dims = size(A.T); N = length(dims); li = LinearIndices(dims); CI = CartesianIndices(dims)
     M = zeros(prod(dims), prod(dims)); b = zeros(prod(dims))
     unit(d) = CartesianIndex(ntuple(k -> Int(k == d), N))
@@ -133,7 +133,7 @@ end
         Num = NumParam(Nx = 14, Nz = 18, solver = :implicit_enthalpy, apt_tol = 1.0e-10, apt_check = 5)
         for dt in (2.0e9, 3.0e11)                                                          # from small to stiff (Qrelax dt ≫ 1)
             apt_diffusion_solve!(A, dt, Δ, nothing, Num)
-            @test A.Tnew ≈ pt_dense_nd(A, dt, Δ) rtol = 1.0e-7
+            @test A.Tnew ≈ pt_dense_ndim(A, dt, Δ) rtol = 1.0e-7
         end
     end
 
@@ -153,7 +153,7 @@ end
         Num = NumParam(Nx = 5, Ny = 6, Nz = 8, solver = :apt, apt_tol = 1.0e-10, apt_check = 5)
         for fac in (1.0, 40.0)
             apt_diffusion_solve!(A, fac * dt_e, Δ3, nothing, Num)
-            @test A.Tnew ≈ pt_dense_nd(A, fac * dt_e, Δ3) rtol = 1.0e-7
+            @test A.Tnew ≈ pt_dense_ndim(A, fac * dt_e, Δ3) rtol = 1.0e-7
         end
         # axisymmetric 2D: first dimension is the radius
         Δ2 = (100.0, 150.0); R = [100.0 * (i - 0.5) for i in 1:7, j in 1:9]
@@ -161,7 +161,7 @@ end
         B.T .= [400.0 + 10.0 * i + 15.0 * j for i in 1:7, j in 1:9]; B.T_it_old .= B.T
         NumB = NumParam(Nx = 7, Nz = 9, solver = :apt, apt_tol = 1.0e-10, apt_check = 5)
         apt_diffusion_solve!(B, 30.0 * 100.0^2 / (3.0 / 2.7e6) / 4, Δ2, R, NumB)
-        @test B.Tnew ≈ pt_dense_nd(B, 30.0 * 100.0^2 / (3.0 / 2.7e6) / 4, Δ2; R = R) rtol = 1.0e-7
+        @test B.Tnew ≈ pt_dense_ndim(B, 30.0 * 100.0^2 / (3.0 / 2.7e6) / 4, Δ2; R = R) rtol = 1.0e-7
     end
 
     @testset "3D steady state with a source term" begin
