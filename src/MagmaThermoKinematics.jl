@@ -65,7 +65,8 @@ include("Fields.jl")
 export CreateArrays
 
 include("Diffusion.jl")
-export Numeric_params, Nonlinear_Diffusion_step!, diffusion_step!, lithostatic_pressure!, compute_phase_param!, GridArray!, bc_zero_flux!, bc_T!, bc_z_bottom_flux!
+include("PseudoTransient.jl")
+export Numeric_params, Nonlinear_Diffusion_step!, diffusion_step!, apt_diffusion_solve!, lithostatic_pressure!, compute_phase_param!, GridArray!, bc_zero_flux!, bc_T!, bc_z_bottom_flux!
 
 include("MTK_GMG.jl")
 

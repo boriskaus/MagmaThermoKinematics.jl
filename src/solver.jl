@@ -24,6 +24,7 @@ There are a few functions that you can overwrite in your user code to customize 
 - `MTK_updateTracers(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::SillParameters, time_props::TimeDependentProperties, Num::NumericalParameters)`
 - `MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArray, Dikes::SillParameters, time_props::TimeDependentProperties, Num::NumericalParameters, CartData_input::CartData)`
 - `MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters, Tracers::StructVector)`
+- `MTK_source!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Mat_tup::Tuple, Dikes::SillParameters)`
 - `MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters)`
 - `MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters, CartData_input::CartData)`
 
@@ -120,6 +121,10 @@ There are a few functions that you can overwrite in your user code to customize 
 
         # Add new dike every X years -----------------
         Tracers = MTK_GMG.MTK_inject_dikes(Grid, Num, Arrays, Mat_tup, Dikes, Tracers)
+        # --------------------------------------------
+
+        # Optionally set the volumetric source term for this step -------
+        MTK_GMG.MTK_source!(Arrays, Grid, Num, Mat_tup, Dikes)
         # --------------------------------------------
 
         # Do a diffusion step, while taking T-dependencies into account

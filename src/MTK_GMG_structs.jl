@@ -32,6 +32,8 @@ This mutable structure represents numerical parameters in the program. It is use
 - `nt::Int64`: Total number of time steps.
 - `it::Int64`: Current iteration.
 - `ω::Float64`: Relaxation parameter for nonlinear iterations (default 0.5; values ≥ 0.7 may not converge at high resolution).
+- `solver::Symbol`: `:explicit` (default) keeps the existing explicit step. `:implicit_enthalpy` solves a backward-Euler step of the enthalpy balance, linearised with Newton iterations and solved with an accelerated pseudo-transient iteration (see `apt_diffusion_solve!`); the time step factor `fac_dt` can then be much larger than 1. `:apt` is an alias.
+- `apt_tol`, `apt_max_iter`, `apt_check`: tolerance, iteration limit and check interval of the pseudo-transient iterations (implicit enthalpy solver).
 - `max_iter::Int64`: Maximum number of nonlinear iterations.
 - `verbose::Bool`: Whether to print verbose output.
 - `convergence::Float64`: Convergence criterion for nonlinear iterations.
@@ -88,6 +90,10 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     nt::Int64 = floor(maxTime / dt)
     it::Int64 = 0               # current iteration
     ω::Float64 = 0.5             # relaxation parameter for nonlinear iterations
+    solver::Symbol = :explicit            # diffusion step: `:explicit` (default), or `:implicit_enthalpy` (implicit enthalpy method, Newton-linearised and solved with accelerated pseudo-transient iterations; `fac_dt` may then exceed 1; alias `:apt`)
+    apt_tol::Float64 = 1.0e-6             # implicit enthalpy solver: tolerance of the pseudo-transient iterations (temperature error relative to max(|T|, 1))
+    apt_max_iter::Int64 = 50_000          # implicit enthalpy solver: maximum number of pseudo-transient iterations per solve
+    apt_check::Int64 = 10                 # implicit enthalpy solver: check convergence every `apt_check` iterations
     max_iter::Int64 = 5000            # max. number of nonlinear iterations
     verbose::Bool = false
     convergence::Float64 = 1.0e-5            # nonlinear convergence criteria

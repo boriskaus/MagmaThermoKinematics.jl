@@ -130,6 +130,14 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
 end
 
 """
+    MTK_source!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Mat_tup::Tuple, Dikes::SillParameters)
+
+Set `Arrays.Qsrc` [W/m³], the volumetric source term of the energy equation, for the current time step.
+Called once per time step before the diffusion step; the default leaves `Arrays.Qsrc` unchanged (initially zero).
+"""
+MTK_source!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Mat_tup::Tuple, Dikes::SillParameters) = nothing
+
+"""
     Arrays = MTK_initialize_arrays(Num::NumericalParameters)
 
 Initialize arrays used in the computations
@@ -137,10 +145,11 @@ Initialize arrays used in the computations
 function MTK_initialize_arrays(Num::NumericalParameters)
 
     kw = (; backend = Num.backend, FloatType = Num.FloatType)
+    pt_arrays = Num.solver !== :explicit ? (pt_C = 0, pt_b = 0, pt_phiold = 0, pt_res = 0, pt_Tk = 0, pt_Tkm1 = 0, pt_Tn = 0) : (;)     # work arrays of the implicit solver
     if Num.dim == 2
-        Arrays = CreateArrays(Dict((Num.Nx, Num.Nz) => (T = 0, T_K = 0, Tnew = 0, T_init = 0, T_it_old = 0, Tupdate = 0, Kc = 1, Rho = 1, Cp = 1, Hr = 0, Hl = 0, ϕ = 0, dϕdT = 0, R = 0, Z = 0, P = 0)); kw...)
+        Arrays = CreateArrays(Dict((Num.Nx, Num.Nz) => merge((T = 0, T_K = 0, Tnew = 0, T_init = 0, T_it_old = 0, Tupdate = 0, Kc = 1, Rho = 1, Cp = 1, Hr = 0, Qsrc = 0, Hl = 0, ϕ = 0, dϕdT = 0, R = 0, Z = 0, P = 0), pt_arrays)); kw...)
     else
-        Arrays = CreateArrays(Dict((Num.Nx, Num.Ny, Num.Nz) => (T = 0, T_K = 0, Tnew = 0, T_init = 0, T_it_old = 0, Tupdate = 0, Kc = 1, Rho = 1, Cp = 1, Hr = 0, Hl = 0, ϕ = 0, dϕdT = 0, X = 0, Y = 0, Z = 0, P = 0)); kw...)
+        Arrays = CreateArrays(Dict((Num.Nx, Num.Ny, Num.Nz) => merge((T = 0, T_K = 0, Tnew = 0, T_init = 0, T_it_old = 0, Tupdate = 0, Kc = 1, Rho = 1, Cp = 1, Hr = 0, Qsrc = 0, Hl = 0, ϕ = 0, dϕdT = 0, X = 0, Y = 0, Z = 0, P = 0), pt_arrays)); kw...)
     end
 
     return Arrays
