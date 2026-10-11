@@ -13,7 +13,7 @@ using GeophysicalModelGenerator
 using StructArrays
 using MagmaThermoKinematics.Grid
 import MagmaThermoKinematics: NumericalParameters, SillParameters, TimeDependentProperties
-import MagmaThermoKinematics: update_Tvec!, inject_sills, SecYear, km³, kyr, Myr
+import MagmaThermoKinematics: update_Tvec!, inject_sills, move_free_surface!, SecYear, km³, kyr, Myr
 import MagmaThermoKinematics: PhasesFromTracers!, CreateArrays, copy_to_device!
 
 @inline _active_sill(Dikes) = isnothing(Dikes.sill) ? error("SillParameters requires a valid `sill` object") : Dikes.sill
@@ -30,8 +30,9 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         T_bottom = copy(selectdim(Arrays.T, Num.dim, 1))
         sill = _active_sill(Dikes)
 
-        Tracers, _, Vol, poly_out, _ = inject_sills(Tracers, Arrays.T, Grid.coord1D, sill, Float64(Dikes.T_in_Celsius), Dikes.SillPhase, Dikes.nTr_dike, dike_poly = Dikes.sill_poly)      # Add dike, move hostrocks
+        Tracers, _, Vol, poly_out, Displacement = inject_sills(Tracers, Arrays.T, Grid.coord1D, sill, Float64(Dikes.T_in_Celsius), Dikes.SillPhase, Dikes.nTr_dike, dike_poly = Dikes.sill_poly)      # Add dike, move hostrocks
         Dikes.sill_poly = poly_out
+        Num.move_free_surface && move_free_surface!(Arrays.Phases, Arrays.Phases_init, Arrays.T, Grid.coord1D, Displacement; air = Num.air_phase, fill = Dikes.BackgroundPhase)
 
         if Num.flux_bottom_BC == false
             # Keep bottom T constant (advection modifies this)
