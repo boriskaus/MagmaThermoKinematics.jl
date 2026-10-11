@@ -225,7 +225,12 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
             apt_iter_total += n_apt
             Num.verbose && println("  pseudo-transient iterations: $(n_apt)")
         else
-            diffusion_step!(Arrays.Tnew, Arrays.T, Arrays.Kc, Arrays.Rho, Arrays.Cp, Arrays.Hr, Arrays.Hl, dt, Δ, Arrays.dϕdT; R)
+            Hheat = Arrays.Hr
+            if haskey(Arrays, :Qrelax)               # relaxation term Qrelax (Qenth - E(T_k)), lagged at the iterate
+                @. Arrays.Hq = Arrays.Hr + Arrays.Qrelax * (Arrays.Qenth - Arrays.Rho * (Arrays.Cp * Arrays.T_it_old + Arrays.Hl * Arrays.ϕ))
+                Hheat = Arrays.Hq
+            end
+            diffusion_step!(Arrays.Tnew, Arrays.T, Arrays.Kc, Arrays.Rho, Arrays.Cp, Hheat, Arrays.Hl, dt, Δ, Arrays.dϕdT; R)
             for d in 1:(N - 1)                      # flux-free lateral boundaries
                 bc_zero_flux!(Arrays.Tnew, d)
             end

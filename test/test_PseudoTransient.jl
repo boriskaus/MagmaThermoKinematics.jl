@@ -7,7 +7,7 @@ function pt_arrays(dims...; K = 3.0, ρ = 2700.0, cp = 1000.0, L = 0.0, Kfun = n
     A = (;
         T = z(), T_it_old = z(), Tnew = z(), Kc = fill(K, dims...), Rho = fill(ρ, dims...), Cp = fill(cp, dims...),
         Hl = fill(L, dims...), dϕdT = z(), ϕ = z(), Hr = fill(Hr, dims...),
-        pt_C = z(), pt_b = z(), pt_phiold = z(), pt_res = z(), pt_Tk = z(), pt_Tkm1 = z(), pt_Tn = z(),
+        pt_C = z(), pt_b = z(), pt_phiold = z(), pt_res = z(), pt_Tk = z(), pt_Tkm1 = z(), pt_Tn = z(), Qrelax = z(), Qenth = z(),
     )
     isnothing(Kfun) || (A.Kc .= [Kfun(Tuple(I)...) for I in CartesianIndices(A.Kc)])
     return A
@@ -28,9 +28,9 @@ function pt_dense_nd(A, dt, Δ; R = nothing)
         elseif any(d -> t[d] == dims[d], 1:(N - 1))
             d = findfirst(d -> t[d] == dims[d], 1:(N - 1)); M[r, r] = 1; M[r, li[I - unit(d)]] = -1
         else
-            C = A.Rho[I] * (A.Cp[I] + A.Hl[I] * A.dϕdT[I])
-            M[r, r] = C / dt
-            b[r] = (A.Rho[I] * A.Cp[I] * A.T[I] + A.Rho[I] * A.Hl[I] * (A.dϕdT[I] * A.T_it_old[I] - A.ϕ[I] + A.pt_phiold[I])) / dt + A.Hr[I]
+            C = A.Rho[I] * (A.Cp[I] + A.Hl[I] * A.dϕdT[I]); f = 1 / dt + A.Qrelax[I]
+            M[r, r] = f * C
+            b[r] = f * A.Rho[I] * A.Hl[I] * (A.dϕdT[I] * A.T_it_old[I] - A.ϕ[I]) + A.Rho[I] * (A.Cp[I] * A.T[I] + A.Hl[I] * A.pt_phiold[I]) / dt + A.Qrelax[I] * A.Qenth[I] + A.Hr[I]
             for d in 1:N, s in (1, -1)
                 J = I + s * unit(d)
                 kf = (A.Kc[I] + A.Kc[J]) / 2
@@ -123,6 +123,18 @@ end
         Texp = copy(A.Tnew); diffusion_step!(Texp, A.T, A.Kc, A.Rho, A.Cp, A.Hr, A.Hl, dt, Δ, A.dϕdT)
         apt_diffusion_solve!(A, dt, Δ, nothing, Num)
         @test maximum(abs, (A.Tnew .- A.T)[2:end-1, 2:end-1] .- (Texp .- A.T)[2:end-1, 2:end-1]) < 1.0e-2 * maximum(abs, (Texp .- A.T)[2:end-1, 2:end-1])
+    end
+
+    @testset "relaxation term" begin
+        A = pt_arrays(14, 18; Kfun = (i, j) -> 1.5 + 3.0 * (j > 9), Hr = 1.0e-6); Δ = (100.0, 120.0)
+        A.T .= [350.0 + 30.0 * sin(i / 2) + 20.0 * j for i in 1:14, j in 1:18]; A.Hl .= 3.0e5; A.dϕdT[:, 8:12] .= 0.01; A.ϕ[:, 8:12] .= 0.35; A.pt_phiold[:, 8:12] .= 0.3
+        A.T_it_old .= A.T .+ 2.0
+        A.Qrelax[4:10, 6:14] .= 2.0e-11; A.Qenth .= A.Rho .* (1000.0 * 1000.0 + 3.0e5)          # relaxation towards T = 1000 °C and ϕ = 1
+        Num = NumParam(Nx = 14, Nz = 18, solver = :implicit_enthalpy, apt_tol = 1.0e-10, apt_check = 5)
+        for dt in (2.0e9, 3.0e11)                                                          # from small to stiff (Qrelax dt ≫ 1)
+            apt_diffusion_solve!(A, dt, Δ, nothing, Num)
+            @test A.Tnew ≈ pt_dense_nd(A, dt, Δ) rtol = 1.0e-7
+        end
     end
 
     @testset "solver option" begin
