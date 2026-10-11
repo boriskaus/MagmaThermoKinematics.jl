@@ -55,6 +55,9 @@ export inject_sills, add_dike
 include("Advection.jl")
 export AdvectTemperature, AdvectTemperature!, Interpolate!, CorrectBounds, evaluate_interp_2D, evaluate_interp_3D
 
+include("Eruptions.jl")
+export EruptionParams, EruptionState, chamber_step!, chamber_cells, chamber_geometry, erupt_sources, cell_sources, mogi_displacement!, displace_temperature!, reset_chamber!
+
 include("Utils.jl")
 export Process_ZirconAges, simulate_zircon_growth_from_tracers, volume_averaged_age, copy_arrays_GPU2CPU!, copy_arrays_CPU2GPU!
 
