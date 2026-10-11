@@ -221,7 +221,9 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
         end
 
         if _use_implicit(Num)
-            apt_iter_total += apt_diffusion_solve!(Arrays, dt, Δ, R, Num)    # implicit step, includes the boundary conditions
+            n_apt = apt_diffusion_solve!(Arrays, dt, Δ, R, Num)    # implicit step, includes the boundary conditions
+            apt_iter_total += n_apt
+            Num.verbose && println("  pseudo-transient iterations: $(n_apt)")
         else
             diffusion_step!(Arrays.Tnew, Arrays.T, Arrays.Kc, Arrays.Rho, Arrays.Cp, Arrays.Hr, Arrays.Hl, dt, Δ, Arrays.dϕdT; R)
             for d in 1:(N - 1)                      # flux-free lateral boundaries
@@ -245,6 +247,6 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
     end
     (isfinite(err) && err <= Num.convergence) ||
         error("$(N)D nonlinear diffusion did not converge after $(iter - 1) iterations (error=$(err), tolerance=$(Num.convergence)); reduce Δt or the relaxation parameter Num.ω=$(Num.ω) [0-1]")
-    Num.verbose && println("  ----")
+    Num.verbose && println("  ----  $(iter - 1) nonlinear iterations, $(apt_iter_total) pseudo-transient iterations in total")
     return nothing
 end
