@@ -663,7 +663,7 @@ function move_free_surface!(Phases, Phases_init, T, coords, U; air = 0, fill = 1
         u = 0.5 * (Uz[col(ks)] + Uz[col(ks - 1)])
         zs_new = zs + u
         dzs[c] = u
-        for k in 1:nz
+        for k in nz:-1:1                                            # top down, so a cell turned into air sees air above it
             I = col(k)
             above = z[k] > zs_new
             if above && Ph[I] != air
