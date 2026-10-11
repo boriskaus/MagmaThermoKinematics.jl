@@ -200,7 +200,9 @@ end
 function project_mass_constraint!(state, ep, T_K, ϕ, m_w, inv_βr)
     P0, V0 = state.P, state.V
     P = P0
-    for _ in 1:12
+    res_prev = Inf
+    ΔP = 0.0
+    for it in 1:60
         V = V0 * exp((P - P0) * inv_βr)
         ρ = first(mixture_density(P, T_K, ϕ, ep; m_w))
         residual = ρ * V - state.M
@@ -208,13 +210,19 @@ function project_mass_constraint!(state, ep, T_K, ϕ, m_w, inv_βr)
             state.P, state.V, state.mass_residual = P, V, residual
             return ρ
         end
+        if abs(residual) > abs(res_prev) && it > 1     # overshoot: halve the previous step and retry
+            P -= 0.5ΔP
+            ΔP *= 0.5
+            continue
+        end
+        res_prev = residual
         compliance = inv_βr + inv_magma_compressibility(P, T_K, ϕ, ep, m_w, ρ)
         compliance > 0 || throw(DomainError(compliance, "mass-constraint compliance must be positive"))
         ΔP = -residual / (ρ * V * compliance)
         P + ΔP > 0 || (ΔP = -0.5P)
         P += ΔP
     end
-    throw(ErrorException("chamber mass projection did not converge in 12 Newton iterations"))
+    throw(ErrorException("chamber mass projection did not converge in 60 Newton iterations"))
 end
 
 """
@@ -505,11 +513,14 @@ Advance the chamber of the host arrays `ϕ` (melt fraction) and `T` [°C] by `Δ
 volume injected into the chamber per second in native units (m²/s in 2D, m³/s in 3D) and
 `T_background(depth)` the undisturbed geotherm [°C] at depth [m].
 
+A drained thickness is queued until it exceeds `resolve` cells (the grid-resolvable withdrawal; the
+displacement field is continuous, so values below 1 are admissible).
+
 Returns `nothing` when no eruption is realised, otherwise a named tuple with the bulk thickness
 `h_erupt`, the fractional volume change `f = h_erupt/h` of the chamber, the chamber `cells` and its
 geometry `geo`. Remove the volume with [`erupt_sources`](@ref) and [`mogi_displacement!`](@ref).
 """
-function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; recharge, Δt, time, T_background, margin = 0.0)
+function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; recharge, Δt, time, T_background, margin = 0.0, resolve = 2.0)
     N = ndims(ϕ)
     Δ = ntuple(k -> step(coords[k]), N)
     cells = chamber_cells(ϕ, ep.ϕ_erupt)
@@ -543,9 +554,9 @@ function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; 
 
     Δz = Δ[N]
     h_drained = state.h_erupt
-    h_erupt = pending_withdrawal!(state, h_drained, geo.h, Δz; time)
+    h_erupt = pending_withdrawal!(state, h_drained, geo.h, resolve * Δz / 2; time)
     near_boundary = (geo.z_lo - margin <= coords[N][1]) || (geo.z_hi + margin >= coords[N][end])
-    (h_erupt > 0 && !near_boundary && h_erupt > 2Δz) || return nothing
+    (h_erupt > 0 && !near_boundary) || return nothing
     commit_pending_withdrawal!(state, h_erupt)
     return (; h_erupt, f = h_erupt / geo.h, cells, geo, chamber = state.id, trigger_time = state.pending_since, time)
 end
