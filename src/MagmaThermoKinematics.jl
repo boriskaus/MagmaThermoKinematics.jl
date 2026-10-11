@@ -59,7 +59,7 @@ include("Utils.jl")
 export Process_ZirconAges, simulate_zircon_growth_from_tracers, volume_averaged_age, copy_arrays_GPU2CPU!, copy_arrays_CPU2GPU!
 
 include("MTK_GMG_structs.jl")
-export NumParam, SillParams, TimeDepProps
+export NumParam, SillParams, TimeDepProps, copy_params
 
 include("Fields.jl")
 export CreateArrays

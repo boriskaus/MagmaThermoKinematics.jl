@@ -41,7 +41,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         Dikes.InjectVol += Vol                                                     # Keep track of injected volume
         Qrate = Dikes.InjectVol / Num.time
         Dikes.Qrate_km3_yr = Qrate * SecYear / km³
-        println("  Added new dike; time=$(Num.time / kyr) kyrs, total injected magma volume = $(Dikes.InjectVol / km³) km³; rate Q= $(Dikes.Qrate_km3_yr) km³yr⁻¹")
+        Num.print_injections && println("  Added new dike; time=$(Num.time / kyr) kyrs, total injected magma volume = $(Dikes.InjectVol / km³) km³; rate Q= $(Dikes.Qrate_km3_yr) km³yr⁻¹")
 
         if Num.advect_polygon == true && isempty(Dikes.sill_poly)
             Dikes.sill_poly = InjectSills.dike_polygon(sill)            # create sill polygon for the first time

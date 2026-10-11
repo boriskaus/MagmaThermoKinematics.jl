@@ -1,3 +1,18 @@
+# Names of the functions of the simulation loop that a simulation can replace through `callbacks`
+const _CALLBACK_NAMES = (:initialize_arrays, :initialize!, :inject_dikes, :source!, :updateTracers, :update_TimeDepProps!, :visualize_output, :save_output, :update_ArraysStructs!, :print_output, :finalize!)
+
+"Resolve the callbacks of one simulation: user entries replace the module-level `MTK_*` functions, which remain the defaults."
+function _resolve_callbacks(user::NamedTuple)
+    unknown = setdiff(collect(keys(user)), collect(_CALLBACK_NAMES))
+    isempty(unknown) || throw(ArgumentError("unknown callbacks $(Tuple(unknown)); available: $(_CALLBACK_NAMES)"))
+    defaults = (;
+        initialize_arrays = MTK_GMG.MTK_initialize_arrays, initialize! = MTK_GMG.MTK_initialize!, inject_dikes = MTK_GMG.MTK_inject_dikes, source! = MTK_GMG.MTK_source!,
+        updateTracers = MTK_GMG.MTK_updateTracers, update_TimeDepProps! = MTK_GMG.MTK_update_TimeDepProps!, visualize_output = MTK_GMG.MTK_visualize_output,
+        save_output = MTK_GMG.MTK_save_output, update_ArraysStructs! = MTK_GMG.MTK_update_ArraysStructs!, print_output = MTK_GMG.MTK_print_output, finalize! = MTK_GMG.MTK_finalize!,
+    )
+    return merge(defaults, user)
+end
+
 """
     Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams(Mat_tup::Tuple, Num::NumericalParameters, Dikes::SillParameters; CartData_input=nothing, time_props::TimeDependentProperties = TimeDepProps());
 
@@ -12,10 +27,11 @@ Parameters
 - `Dikes::SillParameters`: Intrusion parameters.
 - `CartData_input::CartData`: Optional input of a CartData structure generated with GeophysicalModelGenerator.
 - `time_props::TimeDependentProperties`: Optional input of a `TimeDependentProperties` structure.
+- `callbacks::NamedTuple`: Optional per-simulation replacements of the customizable functions below, e.g. `callbacks = (; print_output = my_print, update_TimeDepProps! = my_props!)`; the keys are the function names without the `MTK_` prefix and the arguments are the same. Callbacks only affect this simulation, so several simulations with different callbacks can run in one session, also concurrently.
 
 Customizable functions
 ====
-There are a few functions that you can overwrite in your user code to customize the simulation:
+There are a few functions that you can overwrite in your user code (or replace for a single simulation with `callbacks`) to customize the simulation:
 
 - `MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)`
 - `MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)`
@@ -29,7 +45,10 @@ There are a few functions that you can overwrite in your user code to customize 
 - `MTK_finalize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters, CartData_input::CartData)`
 
 """
-@views function MTK_GeoParams(Mat_tup::Tuple, Num::NumericalParameters, Dikes::SillParameters; CartData_input::Union{Nothing, CartData} = nothing, time_props::TimeDependentProperties = TimeDepProps())
+@views function MTK_GeoParams(Mat_tup::Tuple, Num::NumericalParameters, Dikes::SillParameters; CartData_input::Union{Nothing, CartData} = nothing, time_props::TimeDependentProperties = TimeDepProps(), callbacks::NamedTuple = (;))
+
+    cb = _resolve_callbacks(callbacks)                     # functions of this simulation only
+    isnothing(Num.seed) || Random.seed!(Num.seed)          # reproducible random numbers (the generator is task-local)
 
     # Change parameters based on CartData input
     if isnothing(CartData_input)
@@ -44,7 +63,7 @@ There are a few functions that you can overwrite in your user code to customize 
     Num.axisymmetric && Num.dim == 3 && error("an axisymmetric model must be 2D (Num.Ny = 0)")
 
     # Array & grid initializations ---------------
-    Arrays = MTK_GMG.MTK_initialize_arrays(Num)
+    Arrays = cb.initialize_arrays(Num)
 
     # Set up model geometry & initial T structure
     if !isnothing(CartData_input)
@@ -73,9 +92,9 @@ There are a few functions that you can overwrite in your user code to customize 
 
     # Initialize Geotherm and Phases -------------
     if isnothing(CartData_input)
-        MTK_GMG.MTK_initialize!(Arrays, Grid, Num, Tracers, Dikes)
+        cb.initialize!(Arrays, Grid, Num, Tracers, Dikes)
     else
-        MTK_GMG.MTK_initialize!(Arrays, Grid, Num, Tracers, Dikes, CartData_input)
+        cb.initialize!(Arrays, Grid, Num, Tracers, Dikes, CartData_input)
     end
     # --------------------------------------------
 
@@ -111,8 +130,8 @@ There are a few functions that you can overwrite in your user code to customize 
     Arrays.T .= Arrays.T_init
     any(isnan, Arrays.T) && error("NaNs in T; something is wrong")
 
-    if isdir(Num.SimName) == false
-        mkdir(Num.SimName)          # create simulation directory if needed
+    if Num.Output_VTK && isdir(Num.SimName) == false
+        mkdir(Num.SimName)          # create the simulation directory (only needed when output is written)
     end
     # --------------------------------------------
 
@@ -120,11 +139,11 @@ There are a few functions that you can overwrite in your user code to customize 
         Num.time += Num.dt                                      # Keep track of evolved time
 
         # Add new dike every X years -----------------
-        Tracers = MTK_GMG.MTK_inject_dikes(Grid, Num, Arrays, Mat_tup, Dikes, Tracers)
+        Tracers = cb.inject_dikes(Grid, Num, Arrays, Mat_tup, Dikes, Tracers)
         # --------------------------------------------
 
         # Optionally set the volumetric source term for this step -------
-        MTK_GMG.MTK_source!(Arrays, Grid, Num, Mat_tup, Dikes)
+        cb.source!(Arrays, Grid, Num, Mat_tup, Dikes)
         # --------------------------------------------
 
         # Do a diffusion step, while taking T-dependencies into account
@@ -145,33 +164,33 @@ There are a few functions that you can overwrite in your user code to customize 
         # --------------------------------------------
 
         # Update info on tracers ---------------------
-        Tracers = MTK_GMG.MTK_updateTracers(Grid, Arrays, Tracers, Dikes, time_props, Num)
+        Tracers = cb.updateTracers(Grid, Arrays, Tracers, Dikes, time_props, Num)
         # --------------------------------------------
 
         # Update time-dependent properties -----------
-        MTK_GMG.MTK_update_TimeDepProps!(time_props, Grid, Num, Arrays, Mat_tup, Dikes)
+        cb.update_TimeDepProps!(time_props, Grid, Num, Arrays, Mat_tup, Dikes)
         # --------------------------------------------
 
         # Visualize results --------------------------
-        MTK_GMG.MTK_visualize_output(Grid, Num, Arrays, Mat_tup, Dikes)
+        cb.visualize_output(Grid, Num, Arrays, Mat_tup, Dikes)
         # --------------------------------------------
 
         # Save output to disk once in a while --------
-        MTK_GMG.MTK_save_output(Grid, Arrays, Tracers, Dikes, time_props, Num, CartData_input)
+        cb.save_output(Grid, Arrays, Tracers, Dikes, time_props, Num, CartData_input)
         # --------------------------------------------
 
         # Optionally update arrays and structs (such as T or Dike) -------
-        MTK_GMG.MTK_update_ArraysStructs!(Arrays, Grid, Dikes, Num, Mat_tup)
+        cb.update_ArraysStructs!(Arrays, Grid, Dikes, Num, Mat_tup)
         # --------------------------------------------
 
         # Display output -----------------------------
-        MTK_GMG.MTK_print_output(Grid, Num, Arrays, Mat_tup, Dikes)
+        cb.print_output(Grid, Num, Arrays, Mat_tup, Dikes)
         # --------------------------------------------
 
     end
 
     # Finalize simulation ------------------------
-    MTK_GMG.MTK_finalize!(Arrays, Grid, Num, Tracers, Dikes, CartData_input)
+    cb.finalize!(Arrays, Grid, Num, Tracers, Dikes, CartData_input)
     # --------------------------------------------
 
     return Grid, Arrays, Tracers, Dikes, time_props
