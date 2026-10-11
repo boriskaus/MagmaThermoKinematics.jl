@@ -63,9 +63,13 @@ end
     z = range(-900.0, 100.0, length = 11); x = range(0.0, 400.0, length = 5)          # surface at z = 0 (cells 1:9 rock, 10:11 air)
     Ph = zeros(Int, 5, 11); Ph[:, 1:9] .= 1; Pi = copy(Ph); T = fill(10.0, 5, 11); T[:, 1:9] .= 500.0
     U = (zeros(5, 11), zeros(5, 11)); U[2][3, :] .= 120.0; U[2][1, :] .= -250.0            # uplift one column by 120 m, drop another by 250 m
-    dz = move_free_surface!(Ph, Pi, T, (x, z), U; air = 0, fill = 1)
-    @test dz[3] == 120.0 && dz[1] == -250.0 && dz[2] == 0.0
-    @test Ph[3, 10] == 1 && Ph[3, 11] == 0                      # cell centred at z = 0 is now below the surface (+70 m)
+    Zs = fill(NaN, 5)
+    move_free_surface!(Ph, Pi, T, Zs, (x, z), U; air = 0, fill = 1)
+    @test Zs[3] == 70.0 && Zs[1] == -300.0 && Zs[2] == -50.0     # surface starts half a cell above the top rock cell (z = −50)
+    # sub-cell displacements accumulate: three uplifts of 40 m raise another column by one more cell
+    for _ in 1:3; U[2] .= 0; U[2][5, :] .= 40.0; move_free_surface!(Ph, Pi, T, Zs, (x, z), U; air = 0, fill = 1); end
+    @test Zs[5] == 70.0 && Ph[5, 10] == 1 && Ph[5, 11] == 0
+    @test Ph[3, 10] == 1 && Ph[3, 11] == 0                      # cell centred at z = 0 is now below the surface (70 m)
     @test Ph[1, 9] == 0 && Ph[1, 8] == 0 && Ph[1, 7] == 1       # cells at z = −100, −200 are above the new surface (−300 m)
     @test Pi == Ph
     @test T[1, 9] == 10.0 && T[1, 8] == 10.0 && T[3, 9] == 500.0    # new air takes the air temperature; the (already advected) rock T is untouched

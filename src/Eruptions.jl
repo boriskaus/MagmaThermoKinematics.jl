@@ -636,33 +636,35 @@ end
 # Free surface
 # ---------------------------------------------------------------------------------------
 """
-    move_free_surface!(Phases, Phases_init, T, coords, U; air=0, fill=1) -> Δz_surface
+    move_free_surface!(Phases, Phases_init, T, Zsurf, coords, U; air=0, fill=1) -> Zsurf
 
 Move the free surface (the boundary between the `air` phase and the rock below it) with the
-displacement field `U` [m] (tuple of arrays, vertical component last): in every vertical column the
-surface elevation is shifted by the vertical displacement at the surface, cells above the new surface
-become `air` and cells below it that were air become `fill`. `Phases_init` is updated the same way so
-that the initial-phase reset after injections keeps the moved surface, and `T` of cells turned into
-air takes the air temperature above them. All arrays may live on any backend. Returns the vertical
-surface displacement per column (host array).
+displacement field `U` [m] (tuple of arrays, vertical component last). `Zsurf` holds the surface
+elevation of every vertical column (size of the horizontal grid; `NaN` entries are initialised from the
+phases, half a cell above the highest rock cell), and is shifted by the vertical displacement at the
+surface, so displacements smaller than a cell accumulate. Cells above the surface become `air`,
+cells below it that were air become `fill`; `Phases_init` is updated the same way so that the
+initial-phase reset after injections keeps the moved surface, and `T` of cells turned into air takes
+the air temperature above them. All arrays may live on any backend.
 """
-function move_free_surface!(Phases, Phases_init, T, coords, U; air = 0, fill = 1)
+function move_free_surface!(Phases, Phases_init, T, Zsurf, coords, U; air = 0, fill = 1)
     N = length(coords)
     z = coords[N]
     Δz = step(z)
-    Ph = Array(Phases); Pi = Array(Phases_init); Th = Array(T); Uz = Array(U[N])
+    Ph = Array(Phases); Pi = Array(Phases_init); Th = Array(T); Uz = Array(U[N]); Zs = Array(Zsurf)
     nz = length(z)
     cols = CartesianIndices(ntuple(k -> axes(Ph, k), N - 1))
-    dzs = zeros(size(cols))
     for c in cols
         col(k) = CartesianIndex(Tuple(c)..., k)
-        ks = findfirst(k -> Ph[col(k)] == air, 1:nz)              # first air cell from below
-        ks === nothing && continue
-        ks == 1 && continue                                         # no rock in this column
-        zs = z[ks] - Δz / 2                                         # current surface elevation
-        u = 0.5 * (Uz[col(ks)] + Uz[col(ks - 1)])
+        if isnan(Zs[c])
+            ks = findfirst(k -> Ph[col(k)] == air, 1:nz)              # first air cell from below
+            Zs[c] = ks === nothing ? z[end] + Δz / 2 : z[ks] - Δz / 2
+        end
+        zs = Zs[c]
+        ks = clamp(round(Int, (zs - z[1]) / Δz) + 1, 1, nz)        # cell containing the surface
+        u = Uz[col(ks)]
         zs_new = zs + u
-        dzs[c] = u
+        Zs[c] = zs_new
         for k in nz:-1:1                                            # top down, so a cell turned into air sees air above it
             I = col(k)
             above = z[k] > zs_new
@@ -674,6 +676,6 @@ function move_free_surface!(Phases, Phases_init, T, coords, U; air = 0, fill = 1
             end
         end
     end
-    copyto!(Phases, Ph); copyto!(Phases_init, Pi); copyto!(T, Th)
-    return dzs
+    copyto!(Phases, Ph); copyto!(Phases_init, Pi); copyto!(T, Th); copyto!(Zsurf, Zs)
+    return Zsurf
 end
