@@ -17,7 +17,7 @@ ax1 = Axis(fig[1, 1], xlabel = "Age [Ma]", ylabel = "T_{average} magma")
 xlims!(ax1, 0, 1.5)
 ylims!(ax1, 400, 1000)
 
-ax2 = Axis(fig[1, 2], xlabel = "Age [Ma]", ylabel = "Zircon age cummulative probability %")
+ax2 = Axis(fig[1, 2], xlabel = "Age [Ma]", ylabel = "Zircon age cumulative probability %")
 limits!(ax2, 0, 1.5, 0, 1)
 
 for i in 1:length(dirnames)

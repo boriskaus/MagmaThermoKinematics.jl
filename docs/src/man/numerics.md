@@ -51,7 +51,7 @@ $$C_p^{\text{eff}} = C_p + L \frac{\partial \phi}{\partial T} \tag{A3a}$$
 
 Where we made use of the fact that $\partial \phi_s/\partial t = -\partial \phi/\partial t$. This formulation is advantageous because it keeps the structure of the standard diffusion equation while automatically capturing latent heat release whenever $\partial\phi/\partial T \neq 0$ (i.e., within the two-phase region). As this latter effect is taken into account in an implicit manner, it is numerically more stable.
 
-An important point to keep in mind, though, is that $\partial\phi/\partial T$ should be *continous* throughout the domain, including at the solidus and liquidus to prevent numerical instabilities. For this reason, the `GeoParams` package implements smoothening functions for any melting curve (as many parameterisations in use are discontinuous).
+An important point to keep in mind, though, is that $\partial\phi/\partial T$ should be *continuous* throughout the domain, including at the solidus and liquidus to prevent numerical instabilities. For this reason, the `GeoParams` package implements smoothening functions for any melting curve (as many parameterisations in use are discontinuous).
 
 ## Explicit Time Discretisation
 

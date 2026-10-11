@@ -11,7 +11,7 @@ We will show two examples here:
 
 - `Unzen3D` demonstrates a workflow where the model domain, phase structure, and thermal state are assembled from imported topography and project-specific initialization logic.
 - `Lanin3D` demonstrates a workflow where a custom topography is downloaded using GMT if the file doesn't exist, and a custom output hook is defined to print time and iteration diagnostics.
-- Both examples use the same core concepts: `CartData` setup construction (using the [GeophysicalModelGenerator](https://github.com/JuliaGeodynamics/GeophysicalModelGenerator.jl) package), material parameter definition (using [GeoParams](https://github.com/JuliaGeodynamics/GeoParams.jl/)), dike parameterization, and a customization of simulation paramaters such as output and diagnostics. With this, all aspects of the simulation can be controlled and customized  in a single file.
+- Both examples use the same core concepts: `CartData` setup construction (using the [GeophysicalModelGenerator](https://github.com/JuliaGeodynamics/GeophysicalModelGenerator.jl) package), material parameter definition (using [GeoParams](https://github.com/JuliaGeodynamics/GeoParams.jl/)), dike parameterization, and a customization of simulation parameters such as output and diagnostics. With this, all aspects of the simulation can be controlled and customized  in a single file.
 
 In practice, this means `MagmaThermoKinematics.jl` can move from synthetic benchmark setups to real-world applications by swapping geological input data and user hooks while keeping the computational framework stable.
 
