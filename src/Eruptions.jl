@@ -401,41 +401,45 @@ end
 # ---------------------------------------------------------------------------------------
 # Host-rock displacement from summed Mogi point sources
 # ---------------------------------------------------------------------------------------
-@kernel function _mogi_sum!(U, X, centers, strength, soft2)
+@kernel function _mogi_sum!(U, X, centers, strength, L, soft2, ::Val{N}) where {N}
     I = @index(Global, Cartesian)
-    N = length(U)
-    p = ntuple(k -> X[k][I], Val(N))
-    u = ntuple(k -> zero(eltype(centers)), Val(N))
+    FT = eltype(centers)
+    px = X[1][I]; pz = X[N][I]; py = N == 3 ? X[2][I] : zero(FT)
+    ux = zero(FT); uy = zero(FT); uz = zero(FT)
     for s in 1:size(centers, 1)
-        d = ntuple(k -> p[k] - centers[s, k], Val(N))
-        r2 = soft2
-        for k in 1:N
-            r2 += d[k]^2
-        end
-        c = strength[s] / (r2 * sqrt(r2))
-        u = ntuple(k -> u[k] + c * d[k], Val(N))
+        dx = px - centers[s, 1]; dz = pz - centers[s, N]; dy = N == 3 ? py - centers[s, 2] : zero(FT)
+        r2 = soft2 + dx * dx + dy * dy + dz * dz
+        Ls = L[s]
+        # point source d/|d|³, or the same source spread along the out-of-plane direction over [-L, L]
+        c = Ls > 0 ? strength[s] * 2 * Ls / (r2 * sqrt(r2 + Ls * Ls)) : strength[s] / (r2 * sqrt(r2))
+        ux += c * dx; uy += c * dy; uz += c * dz
     end
-    for k in 1:N
-        U[k][I] = u[k]
+    U[1][I] = ux
+    U[N][I] = uz
+    if N == 3
+        U[2][I] = uy
     end
 end
 
 """
-    mogi_displacement!(U, X, centers, ΔV; ν=0.25, softening)
+    mogi_displacement!(U, X, centers, ΔV; L=zeros, ν=0.25, softening)
 
 Displacement `U` (tuple of arrays, one per direction) at the node coordinates `X` (tuple of arrays)
-due to Mogi point sources at `centers` (`Ns × N`) with volume changes `ΔV` (`Ns`, positive = inflation,
+due to Mogi point sources at `centers` (`Ns × N`) with volume changes `ΔV` (`Ns`; positive = inflation,
 negative = withdrawal). Each source contributes `(1−ν) ΔV/π · d/|d|³`, which is the
 `InjectSills.MogiSphere` solution written in terms of its volume change `ΔV = π ΔP r³/G`; the contributions
-are summed (linear elasticity). The sum runs on the backend of `X[1]`; `softening` [m] regularises the
-singularity at the sources' own nodes.
+are summed (linear elasticity). In a 2D section a source with `L[s] > 0` is instead a line of point sources
+along the out-of-plane direction over `[-L, L]`, with `ΔV` the volume change per unit length: the
+integrated kernel is `2L · d/(|d|² √(|d|² + L²))`. The sum runs on the backend of `X[1]`; `softening` [m]
+regularises the singularity at the sources' own nodes.
 """
-function mogi_displacement!(U, X, centers, ΔV; ν = 0.25, softening)
+function mogi_displacement!(U, X, centers, ΔV; L = zeros(length(ΔV)), ν = 0.25, softening)
     backend = get_backend(X[1])
     FT = eltype(X[1])
     c = KernelAbstractions.allocate(backend, FT, size(centers)); copyto!(c, FT.(centers))
     s = KernelAbstractions.allocate(backend, FT, length(ΔV)); copyto!(s, FT.((1 - ν) / π .* ΔV))
-    _mogi_sum!(backend)(U, X, c, s, FT(softening)^2; ndrange = size(X[1]))
+    l = KernelAbstractions.allocate(backend, FT, length(ΔV)); copyto!(l, FT.(L))
+    _mogi_sum!(backend)(U, X, c, s, l, FT(softening)^2, Val(length(U)); ndrange = size(X[1]))
     KernelAbstractions.synchronize(backend)
     return U
 end
@@ -557,13 +561,62 @@ function _lithostatic(ep::EruptionParams, depth, T_background; n = 200)
 end
 
 """
-    erupt_sources(event, Δ; coarsen=1) -> (centers, ΔV)
+    erupt_sources(event, coords; coarsen=1) -> (centers, ΔV, L)
 
-Mogi sources for an eruption event: every chamber cell loses the fraction `event.f` of its volume,
-expressed as 3D-equivalent volume change (negative). Pass to [`mogi_displacement!`](@ref).
+Mogi sources of an eruption event: every chamber cell loses the fraction `event.f` of its volume. In 3D
+these are point sources with the cell volumes (negative). In 2D each cell is a line source over the
+chamber's out-of-plane half-extent `L(x) = √(R² − (x − x_c)²)` (circular footprint of radius `R` around
+the chamber centre), with the cell area as volume per unit length, so the sources integrate to the 3D
+volume `f · π R² h`. Pass to [`mogi_displacement!`](@ref).
 """
 function erupt_sources(event, coords; coarsen = 1)
     N = length(coords)
     Δ = ntuple(k -> step(coords[k]), N)
-    return cell_sources(event.cells, prod(Δ), -event.f * event.geo.scale, coords; coarsen)
+    centers, ΔV = cell_sources(event.cells, prod(Δ), -event.f, coords; coarsen)
+    N == 3 && return centers, ΔV, zeros(length(ΔV))
+    xc = sum(I -> coords[1][I[1]], event.cells) / length(event.cells)
+    R = event.geo.R
+    L = [sqrt(max(R^2 - (centers[s, 1] - xc)^2, 0.0)) for s in axes(centers, 1)]
+    return centers, ΔV, L
+end
+
+# ---------------------------------------------------------------------------------------
+# Apply an eruption to the grid and tracers
+# ---------------------------------------------------------------------------------------
+"""
+    erupt!(T, Tbuf, Tracers, coords, event; ν=0.25, coarsen=1, softening=min(Δ), rng) -> (U, cargo)
+
+Realise the eruption `event` of [`chamber_step!`](@ref): a Mogi sink of volume `f·dV` in every chamber
+cell (3D-equivalent volumes) gives the host-rock displacement `U`, with which the temperature `T`
+(any backend; `Tbuf` is a work array) and the tracers are advected. Tracers inside the chamber are
+removed with probability `f` and returned as `cargo`. `softening` regularises the point sources.
+"""
+function erupt!(T, Tbuf, Tracers, coords, event; ν = 0.25, coarsen = 1, softening = nothing, rng = Random.default_rng())
+    N = length(coords)
+    Δ = ntuple(k -> step(coords[k]), N)
+    softening === nothing && (softening = minimum(Δ))
+    centers, ΔV, L = erupt_sources(event, coords; coarsen)
+    backend = get_backend(T)
+    X = ntuple(N) do k
+        A = KernelAbstractions.allocate(backend, eltype(T), size(T))
+        A .= reshape(coords[k], ntuple(j -> j == k ? length(coords[k]) : 1, N))
+        A
+    end
+    U = map(similar, X)
+    mogi_displacement!(U, X, centers, ΔV; L, ν, softening)
+    displace_temperature!(T, Tbuf, coords, U)
+
+    cargo = Tracers[Int[]]
+    if isassigned(Tracers, 1)
+        inside = Set(event.cells)
+        sel = Int[]
+        for (j, c) in enumerate(Tracers.coord)
+            I = CartesianIndex(ntuple(k -> clamp(round(Int, (c[k] - first(coords[k])) / Δ[k]) + 1, 1, length(coords[k])), N))
+            I in inside && rand(rng) < event.f && push!(sel, j)
+        end
+        cargo = Tracers[sel]
+        deleteat!(Tracers, sel)
+        isassigned(Tracers, 1) && AdvectTracers!(Tracers, Tuple(coords), map(Array, U), 1.0)
+    end
+    return U, cargo
 end

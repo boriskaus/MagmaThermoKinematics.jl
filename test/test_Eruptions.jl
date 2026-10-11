@@ -45,3 +45,15 @@ using MagmaThermoKinematics: EruptionParams, EruptionState, step_overpressure!, 
         @test hsum > 0
     end
 end
+
+@testset "Line-integrated Mogi source" begin
+    # a long line of sources (L ≫ r) tends to the plane-strain kernel 2 d/|d|²; a short one to the point source times 2L
+    X = repeat(collect(-500.0:50:500), 1, 11); Z = repeat(collect(-1500.0:50:-1000)', 21, 1)
+    Ul = (zero(X), zero(X)); Up = (zero(X), zero(X))
+    mogi_displacement!(Ul, (X, Z), [0.0 -2000.0], [1.0e3]; L = [1.0e9], softening = 1.0e-6)
+    mogi_displacement!(Up, (X, Z), [0.0 -2000.0], [1.0e3]; softening = 1.0e-6)
+    d = 1000.0  # node at (0, -1000)
+    @test Ul[2][11, 11] ≈ 0.75 * 1.0e3 / π * 2 / d rtol = 1.0e-6
+    Us = (zero(X), zero(X)); mogi_displacement!(Us, (X, Z), [0.0 -2000.0], [1.0e3]; L = [1.0], softening = 1.0e-6)
+    @test Us[2][11, 11] ≈ 2 * Up[2][11, 11] rtol = 1.0e-5
+end
