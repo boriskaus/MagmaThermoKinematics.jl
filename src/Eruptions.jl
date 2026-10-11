@@ -631,3 +631,49 @@ function erupt!(T, Tbuf, Tracers, coords, event; ν = 0.25, coarsen = 1, softeni
     end
     return U, cargo
 end
+
+# ---------------------------------------------------------------------------------------
+# Free surface
+# ---------------------------------------------------------------------------------------
+"""
+    move_free_surface!(Phases, Phases_init, T, coords, U; air=0, fill=1) -> Δz_surface
+
+Move the free surface (the boundary between the `air` phase and the rock below it) with the
+displacement field `U` [m] (tuple of arrays, vertical component last): in every vertical column the
+surface elevation is shifted by the vertical displacement at the surface, cells above the new surface
+become `air` and cells below it that were air become `fill`. `Phases_init` is updated the same way so
+that the initial-phase reset after injections keeps the moved surface, and `T` of cells turned into
+air takes the air temperature above them. All arrays may live on any backend. Returns the vertical
+surface displacement per column (host array).
+"""
+function move_free_surface!(Phases, Phases_init, T, coords, U; air = 0, fill = 1)
+    N = length(coords)
+    z = coords[N]
+    Δz = step(z)
+    Ph = Array(Phases); Pi = Array(Phases_init); Th = Array(T); Uz = Array(U[N])
+    nz = length(z)
+    cols = CartesianIndices(ntuple(k -> axes(Ph, k), N - 1))
+    dzs = zeros(size(cols))
+    for c in cols
+        col(k) = CartesianIndex(Tuple(c)..., k)
+        ks = findfirst(k -> Ph[col(k)] == air, 1:nz)              # first air cell from below
+        ks === nothing && continue
+        ks == 1 && continue                                         # no rock in this column
+        zs = z[ks] - Δz / 2                                         # current surface elevation
+        u = 0.5 * (Uz[col(ks)] + Uz[col(ks - 1)])
+        zs_new = zs + u
+        dzs[c] = u
+        for k in 1:nz
+            I = col(k)
+            above = z[k] > zs_new
+            if above && Ph[I] != air
+                Ph[I] = air; Pi[I] = air
+                Th[I] = Th[col(min(k + 1, nz))]
+            elseif !above && Ph[I] == air
+                Ph[I] = fill; Pi[I] = fill
+            end
+        end
+    end
+    copyto!(Phases, Ph); copyto!(Phases_init, Pi); copyto!(T, Th)
+    return dzs
+end
