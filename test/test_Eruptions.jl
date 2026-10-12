@@ -111,3 +111,43 @@ end
     @test U[2][i, j] ≈ 2 * uz_full rtol = 1.0e-6
     @test abs(U[1][i, j]) < 1.0e-9 * uz_full
 end
+
+@testset "3-D" begin
+    using MagmaThermoKinematics: chamber_labels!, largest_label_cells, chamber_geometry, move_free_surface!, erupt!, mogi_displacement!, chamber_step!, EruptionParams, EruptionState
+    using MagmaThermoKinematics: StructArray, Tracer
+    # Mogi point source and image source in 3-D: value against the formula, flux through a box = ΔV (image) / 4(1−ν)ΔV (mogi)
+    g = -1500.0:100:1500; X = [x for x in g, y in g, z in -3000.0:100:0]; Y = [y for x in g, y in g, z in -3000.0:100:0]; Z = [z for x in g, y in g, z in -3000.0:100:0]
+    for (hs, fac) in ((:image, 1.0), (:mogi, 4 * (1 - 0.25)))
+        U = (zero(X), zero(X), zero(X)); mogi_displacement!(U, (X, Y, Z), [0.0 0.0 -1500.0], [1.0e6]; softening = 1.0e-6, halfspace = hs, z_surface = 0.0)
+        i = 16; j = 16; k = 16                                                   # cell (0, 0, −1500) = source; box of half-width 500 m around it: faces at index 11 and 21
+        dA = 100.0^2; flux = 0.0
+        for (d, Ud) in enumerate(U)
+            lo = ntuple(n -> n == d ? (6:6) : (6:26), 3); hi = ntuple(n -> n == d ? (26:26) : (6:26), 3)      # box of half-width 1000 m
+            flux += (sum(Ud[hi...]) - sum(Ud[lo...])) * dA
+        end
+        @test flux ≈ fac * 1.0e6 rtol = 0.1
+        hs === :mogi && @test U[3][16, 16, 21] ≈ 0.75 * 1.0e6 / π * 500.0 / 500.0^3 rtol = 1.0e-8     # (1−ν)ΔV/π · d/|d|³ straight above the source
+    end
+    # chamber labelling / geometry / step on a 3-D melt field; free surface and eruption on a 3-D grid
+    nx, ny, nz = 24, 20, 30; coords = (range(0.0, 2.3e3, length = nx), range(0.0, 1.9e3, length = ny), range(-2.9e3, 0.0, length = nz))
+    ϕ = zeros(nx, ny, nz); ϕ[6:15, 5:14, 8:13] .= 0.8; ϕ[20:22, 2:3, 2:3] .= 0.9
+    lab = chamber_labels!(similar(ϕ, Int32), ϕ, 0.5); cells = largest_label_cells(lab)
+    @test length(cells) == 10 * 10 * 6
+    geo = chamber_geometry(cells, step.(coords), coords)
+    @test geo.W ≈ 100 * step(coords[1]) * step(coords[2]) && geo.h ≈ 6 * step(coords[3]) && geo.R ≈ sqrt(geo.W / π)
+    T = fill(20.0, nx, ny, nz); T[ϕ .> 0] .= 900.0
+    ep = EruptionParams(ΔP_crit = 1.0e5, σ_barrier = 0.0, w_dike = 50.0, h_melt_min = 10.0, melt_viscosity = LinearMeltViscosity(A = -8.1590, B = 2.4050e4K, T0 = -430.9606K, η0 = 1Pas))
+    st = EruptionState(); ev = nothing
+    for it in 1:400
+        ev = chamber_step!(st, ep, ϕ, T, coords; recharge = 2.0e5 / 3.15576e7, Δt = 10 * 3.15576e7, time = it * 10 * 3.15576e7, T_background = d -> 20.0 + 0.02d, margin = 0.0, resolve = 0.1)
+        ev === nothing || break
+    end
+    @test ev !== nothing && ev.f > 0 && length(ev.cells) == 600
+    Tr = StructArray([Tracer{Float32}(num = i, coord = [coords[1][10], coords[2][10], coords[3][10]], Phase = 1) for i in 1:50])
+    Tb = similar(T); U, cargo = erupt!(T, Tb, Tr, coords, ev; softening = 100.0, halfspace = :image, volume_factor = 0.5)
+    @test length(U) == 3 && all(isfinite, U[3]) && length(cargo) + length(Tr) == 50
+    Ph = ones(Int, nx, ny, nz); Ph[:, :, nz] .= 0; Pi = copy(Ph); Zs = fill(NaN, nx, ny); Tf = copy(T)
+    Uf = (zeros(nx, ny, nz), zeros(nx, ny, nz), zeros(nx, ny, nz)); Uf[3][3, 4, :] .= 150.0
+    move_free_surface!(Ph, Pi, Tf, Zs, coords, Uf; air = 0, fill = 1)
+    @test Zs[3, 4] ≈ 150.0 - step(coords[3]) / 2 && Ph[3, 4, nz] == 1 && Zs[1, 1] ≈ -step(coords[3]) / 2
+end
