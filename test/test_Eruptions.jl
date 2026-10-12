@@ -151,3 +151,24 @@ end
     move_free_surface!(Ph, Pi, Tf, Zs, coords, Uf; air = 0, fill = 1)
     @test Zs[3, 4] ≈ 150.0 - step(coords[3]) / 2 && Ph[3, 4, nz] == 1 && Zs[1, 1] ≈ -step(coords[3]) / 2
 end
+
+@testset "Mindlin half-space sources (3-D)" begin
+    using MagmaThermoKinematics: mogi_displacement!
+    g = -3000.0:100:3000; X = [x for x in g, y in g, z in -8000.0:100:0]; Y = [y for x in g, y in g, z in -8000.0:100:0]; Z = [z for x in g, y in g, z in -8000.0:100:0]
+    ΔV = 1.0e6; c = 5000.0; ν = 0.25
+    U = (zero(X), zero(X), zero(X)); mogi_displacement!(U, (X, Y, Z), [0.0 0.0 -c], [ΔV]; softening = 1.0e-6, halfspace = :mindlin, z_surface = 0.0, ν = ν)
+    # surface: the Mogi formula
+    i = 51; j = 31; k = 81                    # x = 2000, y = 0, z = 0
+    R = sqrt(2000.0^2 + c^2)
+    @test U[1][i, j, k] ≈ (1 - ν) * ΔV / π * 2000.0 / R^3 rtol = 1.0e-10
+    @test U[3][i, j, k] ≈ (1 - ν) * ΔV / π * c / R^3 rtol = 1.0e-10
+    # near the source: full space; box flux = ΔV
+    @test U[1][32, 31, 31] ≈ ΔV / (4π) / 100.0^2 rtol = 0.02    # 100 m beside the source
+    flux = 0.0; dA = 100.0^2
+    for (d, Ud) in enumerate(U)
+        lo = ntuple(n -> n == d ? (21:21) : (21:41), 3); hi = ntuple(n -> n == d ? (41:41) : (21:41), 3)
+        flux += (sum(Ud[hi...]) - sum(Ud[lo...])) * dA
+    end
+    @test flux ≈ ΔV rtol = 0.1
+    @test_throws ArgumentError mogi_displacement!((zero(X[:, 1, :]), zero(X[:, 1, :])), (X[:, 1, :], Z[:, 1, :]), [0.0 -c], [ΔV]; softening = 1.0, halfspace = :mindlin)
+end
