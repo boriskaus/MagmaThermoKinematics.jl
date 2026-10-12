@@ -34,6 +34,8 @@ This mutable structure represents numerical parameters in the program. It is use
 - `ω::Float64`: Relaxation parameter for nonlinear iterations (default 0.5; values ≥ 0.7 may not converge at high resolution).
 - `seed::Union{Nothing, Int64}`: seed of the random number generator at the start of a simulation (reproducible random sills); `nothing` leaves the generator unchanged.
 - `print_injections::Bool`: print a line for every injected dike/sill (default true).
+- `move_free_surface::Bool`: move the free surface (air/rock boundary) with the host-rock displacement of every injection (default false).
+- `air_phase::Int64`: phase index of the air above the free surface (default 0).
 - `Output_VTK::Bool`: write VTK output; the output directory `SimName` is only created if this is true.
 - `solver::Symbol`: `:explicit` (default) keeps the existing explicit step. `:implicit_enthalpy` solves a backward-Euler step of the enthalpy balance, linearised with Newton iterations and solved with an accelerated pseudo-transient iteration (see `apt_diffusion_solve!`); the time step factor `fac_dt` can then be much larger than 1. `:apt` is an alias.
 - `apt_tol`, `apt_max_iter`, `apt_check`: tolerance, iteration limit and check interval of the pseudo-transient iterations (implicit enthalpy solver).
@@ -126,6 +128,8 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     TtPath_steps::Int64 = 10              # time steps between samples of the tracer T-t paths
     seed::Union{Nothing, Int64} = nothing        # seed of the (task-local) random number generator at the start of the simulation (`nothing`: leave it unchanged)
     print_injections::Bool = true        # print a line for every injected dike/sill
+    move_free_surface::Bool = false      # move the air/rock boundary with the host-rock displacement of injections
+    air_phase::Int64 = 0                 # phase index of the air above the free surface
     TracerFloatType::DataType = Float32     # float type for Tracer time_vec/T_vec (Float32 saves memory)
 end
 
