@@ -152,7 +152,8 @@ There are a few functions that you can overwrite in your user code (or replace f
 
         # Update variables ---------------------------
         # Copy fields only when tracers are active.
-        if isassigned(Tracers, 1)
+        # tracer temperature and melt fraction are only needed when the T-t paths are sampled or output is written
+        if isassigned(Tracers, 1) && (mod(Num.it, Num.TtPath_steps) == 0 || mod(Num.it, Num.SaveOutput_steps) == 0 || Num.it == Num.nt)
             if Tnew_host !== Arrays.Tnew
                 copyto!(Tnew_host, Arrays.Tnew)
                 copyto!(ϕ_host, Arrays.ϕ)
