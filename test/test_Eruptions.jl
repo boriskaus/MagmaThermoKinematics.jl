@@ -88,3 +88,16 @@ end
         @test all(lab[I] == 0 || lab[I] <= LinearIndices(ϕ)[I] for I in CartesianIndices(ϕ))
     end
 end
+
+@testset "Volume-consistent sources" begin
+    # flux of U through a box around a source: ΔV for :image (far from the surface), 4(1−ν) ΔV for :mogi
+    X = repeat(collect(-3000.0:20:3000), 1, 301); Z = repeat(collect(-9000.0:20:-3000)', 301, 1)
+    for (hs, fac) in ((:image, 1.0), (:mogi, 4 * (1 - 0.25)))
+        U = (zero(X), zero(X)); mogi_displacement!(U, (X, Z), [0.0 -6000.0], [1.0e6]; L = [1.0e9], softening = 1.0e-6, halfspace = hs, z_surface = 0.0)
+        # 2-D line source (L → ∞): kernel 2 d/|d|², divergence 4π × strength per unit length
+        i1, i2 = 101, 201; j1, j2 = 101, 201      # x = ±1000, z = -6000 ± 1000
+        dx = 20.0
+        flux = sum(U[1][i2, j1:j2]) * dx - sum(U[1][i1, j1:j2]) * dx + sum(U[2][i1:i2, j2]) * dx - sum(U[2][i1:i2, j1]) * dx
+        @test flux ≈ fac * 1.0e6 rtol = 0.05
+    end
+end

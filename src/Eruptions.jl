@@ -511,14 +511,26 @@ negative = withdrawal). Each source contributes `(1−ν) ΔV/π · d/|d|³`, wh
 are summed (linear elasticity). In a 2D section a source with `L[s] > 0` is instead a line of point sources
 along the out-of-plane direction over `[-L, L]`, with `ΔV` the volume change per unit length: the
 integrated kernel is `2L · d/(|d|² √(|d|² + L²))`. The sum runs on the backend of `X[1]`; `softening` [m]
-regularises the singularity at the sources' own nodes.
+regularises the singularity at the sources' own nodes. With `halfspace = :image` the sources are volume-consistent
+dilatation centres (`ΔV/(4π) · d/|d|³`, whose divergence integrates to `ΔV`) mirrored at `z_surface`; the `:mogi`
+kernel is the surface formula of the half-space solution and over-dilates the interior by `4(1 − ν)`.
 """
-function mogi_displacement!(U, X, centers, ΔV; L = zeros(length(ΔV)), ν = 0.25, softening)
+function mogi_displacement!(U, X, centers, ΔV; L = zeros(length(ΔV)), ν = 0.25, softening, halfspace = :mogi, z_surface = 0.0)
+    halfspace in (:mogi, :image) || throw(ArgumentError("halfspace must be :mogi or :image"))
     backend = get_backend(X[1])
     FT = eltype(X[1])
-    c = KernelAbstractions.allocate(backend, FT, size(centers)); copyto!(c, FT.(centers))
-    s = KernelAbstractions.allocate(backend, FT, length(ΔV)); copyto!(s, FT.((1 - ν) / π .* ΔV))
-    l = KernelAbstractions.allocate(backend, FT, length(ΔV)); copyto!(l, FT.(L))
+    N = length(U)
+    if halfspace === :mogi
+        cen, str, len = centers, (1 - ν) / π .* ΔV, L
+    else
+        # volume-consistent dilatation centres (strength ΔV/4π, so ∇·U integrates to ΔV) plus their images above the free
+        # surface, which doubles the vertical surface displacement (the exact half-space factor is 4(1 − ν))
+        img = copy(centers); img[:, N] .= 2 * z_surface .- centers[:, N]
+        cen = vcat(centers, img); str = vcat(ΔV, ΔV) ./ (4π); len = vcat(L, L)
+    end
+    c = KernelAbstractions.allocate(backend, FT, size(cen)); copyto!(c, FT.(cen))
+    s = KernelAbstractions.allocate(backend, FT, length(str)); copyto!(s, FT.(str))
+    l = KernelAbstractions.allocate(backend, FT, length(len)); copyto!(l, FT.(len))
     _mogi_sum!(backend)(U, X, c, s, l, FT(softening)^2, Val(length(U)); ndrange = size(X[1]))
     KernelAbstractions.synchronize(backend)
     return U
@@ -684,7 +696,7 @@ cell (3D-equivalent volumes) gives the host-rock displacement `U`, with which th
 (any backend; `Tbuf` is a work array) and the tracers are advected. Tracers inside the chamber are
 removed with probability `f` and returned as `cargo`. `softening` regularises the point sources.
 """
-function erupt!(T, Tbuf, Tracers, coords, event; ν = 0.25, coarsen = 1, softening = nothing, rng = Random.default_rng())
+function erupt!(T, Tbuf, Tracers, coords, event; ν = 0.25, coarsen = 1, softening = nothing, rng = Random.default_rng(), halfspace = :mogi, z_surface = 0.0)
     N = length(coords)
     Δ = ntuple(k -> step(coords[k]), N)
     softening === nothing && (softening = minimum(Δ))
@@ -696,7 +708,7 @@ function erupt!(T, Tbuf, Tracers, coords, event; ν = 0.25, coarsen = 1, softeni
         A
     end
     U = map(similar, X)
-    mogi_displacement!(U, X, centers, ΔV; L, ν, softening)
+    mogi_displacement!(U, X, centers, ΔV; L, ν, softening, halfspace, z_surface)
     displace_temperature!(T, Tbuf, coords, U)
 
     cargo = Tracers[Int[]]
