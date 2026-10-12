@@ -351,10 +351,11 @@ end
 """
     chamber_cells(ϕ, ϕ_erupt) -> Vector{CartesianIndex{N}}
 
-Cells of the largest face-connected region with `ϕ ≥ ϕ_erupt` (by number of cells), found by
-breadth-first search. Empty if no cell qualifies. `ϕ` must be a host (CPU) array; NaN counts as solid.
+Cells of the largest face-connected region with `ϕ ≥ ϕ_erupt` (by number of cells). Empty if no cell
+qualifies; NaN counts as solid. A host `Array` is searched breadth-first; any other array (GPU) is
+labelled on its own backend with [`chamber_labels!`](@ref) and only the labels are copied to the host.
 """
-function chamber_cells(ϕ::AbstractArray{<:Real, N}, ϕ_erupt) where {N}
+function chamber_cells(ϕ::Array{<:Real, N}, ϕ_erupt) where {N}
     mask = ϕ .>= ϕ_erupt
     seen = falses(size(ϕ))
     R = CartesianIndices(ϕ)
@@ -376,6 +377,76 @@ function chamber_cells(ϕ::AbstractArray{<:Real, N}, ϕ_erupt) where {N}
         length(queue) > length(best) && (best = copy(queue))
     end
     return best
+end
+
+function chamber_cells(ϕ::AbstractArray{<:Real, N}, ϕ_erupt) where {N}
+    lab = chamber_labels!(similar(ϕ, Int32), ϕ, ϕ_erupt)
+    return largest_label_cells(Array(lab))
+end
+
+"Cells of the most frequent nonzero label (host array of labels)."
+function largest_label_cells(lab::Array{Int32, N}) where {N}
+    counts = Dict{Int32, Int}()
+    for v in lab
+        v == 0 || (counts[v] = get(counts, v, 0) + 1)
+    end
+    isempty(counts) && return CartesianIndex{N}[]
+    best = argmax(counts)
+    return findall(==(best), lab)
+end
+
+@kernel function _label_init!(lab, ϕ, ϕ_erupt)
+    I = @index(Global, Cartesian)
+    i = @index(Global, Linear)
+    lab[I] = ϕ[I] >= ϕ_erupt ? Int32(i) : Int32(0)
+end
+
+@kernel function _label_hook!(lab, ::Val{N}) where {N}
+    I = @index(Global, Cartesian)
+    l = lab[I]
+    if l != 0
+        for d in 1:N, s in (-1, 1)
+            J = CartesianIndex(ntuple(k -> k == d ? I[k] + s : I[k], Val(N)))
+            if checkbounds(Bool, lab, J)
+                lj = lab[J]
+                (lj != 0 && lj < l) && (l = lj)
+            end
+        end
+        lab[I] = l
+    end
+end
+
+@kernel function _label_jump!(lab)
+    i = @index(Global, Linear)
+    l = lab[i]
+    if l != 0
+        r = lab[l]                      # label of the cell the label points to (labels are linear indices)
+        while r != 0 && r != l
+            l = r; r = lab[l]
+        end
+        lab[i] = l
+    end
+end
+
+"""
+    chamber_labels!(lab, ϕ, ϕ_erupt; max_iter=10_000) -> lab
+
+Label the face-connected regions with `ϕ ≥ ϕ_erupt` on the backend of `ϕ`: every cell of a region ends
+up with the smallest linear index of that region, other cells get 0 (`lab` is an `Int32` array of the
+size of `ϕ`). Iterates neighbour-minimum hooking and pointer jumping until no label changes.
+"""
+function chamber_labels!(lab, ϕ::AbstractArray{<:Real, N}, ϕ_erupt; max_iter = 10_000) where {N}
+    backend = get_backend(ϕ)
+    _label_init!(backend)(lab, ϕ, eltype(ϕ)(ϕ_erupt); ndrange = size(ϕ))
+    prev = similar(lab)
+    for it in 1:max_iter
+        copyto!(prev, lab)
+        _label_hook!(backend)(lab, Val(N); ndrange = size(ϕ))
+        _label_jump!(backend)(lab; ndrange = length(ϕ))
+        KernelAbstractions.synchronize(backend)
+        prev == lab && return lab
+    end
+    throw(ErrorException("chamber labelling did not converge in $max_iter iterations"))
 end
 
 """
@@ -508,7 +579,7 @@ end
 """
     chamber_step!(state, ep, ϕ, T, coords; recharge, Δt, time, T_background, margin=0.0) -> event
 
-Advance the chamber of the host arrays `ϕ` (melt fraction) and `T` [°C] by `Δt` [s]. `coords` are the
+Advance the chamber of the arrays `ϕ` (melt fraction) and `T` [°C] (host or device) by `Δt` [s]. `coords` are the
 1D coordinate vectors (`z` last, negative downward, free surface at `z = 0`), `recharge` the magma
 volume injected into the chamber per second in native units (m²/s in 2D, m³/s in 3D) and
 `T_background(depth)` the undisturbed geotherm [°C] at depth [m].
@@ -523,13 +594,22 @@ geometry `geo`. Remove the volume with [`erupt_sources`](@ref) and [`mogi_displa
 function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; recharge, Δt, time, T_background, margin = 0.0, resolve = 2.0)
     N = ndims(ϕ)
     Δ = ntuple(k -> step(coords[k]), N)
-    cells = chamber_cells(ϕ, ep.ϕ_erupt)
+    if ϕ isa Array
+        cells = chamber_cells(ϕ, ep.ϕ_erupt)
+        inmask = nothing
+    else
+        lab = chamber_labels!(similar(ϕ, Int32), ϕ, ep.ϕ_erupt)
+        cells = largest_label_cells(Array(lab))
+        inmask = isempty(cells) ? nothing : (lab .== Int32(LinearIndices(ϕ)[first(cells)]))
+    end
     if isempty(cells)
         reset_chamber!(state)
         return nothing
     end
     geo = chamber_geometry(cells, Δ, coords)
-    h_melt = sum(I -> ϕ[I], cells) * prod(Δ) / geo.W
+    # sums over the chamber: on the host through the cell list, on the device through the label mask
+    ϕsum = inmask === nothing ? sum(I -> ϕ[I], cells) : sum(ϕ .* inmask)
+    h_melt = ϕsum * prod(Δ) / geo.W
     if h_melt < ep.h_melt_min
         reset_chamber!(state)
         return nothing
@@ -547,8 +627,8 @@ function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; 
     end
     state.P_lith = P_lith
 
-    T_mush_K = sum(I -> T[I], cells) / length(cells) + 273.15
-    ϕ_mush = sum(I -> ϕ[I], cells) / length(cells)
+    T_mush_K = (inmask === nothing ? sum(I -> T[I], cells) : sum(T .* inmask)) / length(cells) + 273.15
+    ϕ_mush = ϕsum / length(cells)
     η_r = crustal_relaxation_viscosity(ep, T_mush_K, T_background(depth) + 273.15)
     step_overpressure!(state, ep, T_mush_K, ϕ_mush, geo.h, geo.R, recharge / geo.W, Δt; depth, η_r)
 

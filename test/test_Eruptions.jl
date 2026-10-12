@@ -74,3 +74,17 @@ end
     @test Pi == Ph
     @test T[1, 9] == 10.0 && T[1, 8] == 10.0 && T[3, 9] == 500.0    # new air takes the air temperature; the (already advected) rock T is untouched
 end
+
+@testset "Chamber labelling" begin
+    using MagmaThermoKinematics: chamber_labels!, largest_label_cells
+    using Random
+    rng = MersenneTwister(5)
+    for sz in ((60, 40), (20, 18, 16))
+        ϕ = rand(rng, sz...) .* 0.9
+        ϕ[ntuple(k -> 3:7, length(sz))...] .= 1.0                    # one dense block
+        lab = chamber_labels!(similar(ϕ, Int32), ϕ, 0.5)
+        @test sort(largest_label_cells(lab)) == sort(chamber_cells(ϕ, 0.5))
+        # every region carries the smallest linear index of its cells
+        @test all(lab[I] == 0 || lab[I] <= LinearIndices(ϕ)[I] for I in CartesianIndices(ϕ))
+    end
+end
