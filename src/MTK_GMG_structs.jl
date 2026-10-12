@@ -32,6 +32,11 @@ This mutable structure represents numerical parameters in the program. It is use
 - `nt::Int64`: Total number of time steps.
 - `it::Int64`: Current iteration.
 - `ω::Float64`: Relaxation parameter for nonlinear iterations (default 0.5; values ≥ 0.7 may not converge at high resolution).
+- `seed::Union{Nothing, Int64}`: seed of the random number generator at the start of a simulation (reproducible random sills); `nothing` leaves the generator unchanged.
+- `print_injections::Bool`: print a line for every injected dike/sill (default true).
+- `Output_VTK::Bool`: write VTK output; the output directory `SimName` is only created if this is true.
+- `solver::Symbol`: `:explicit` (default) keeps the existing explicit step. `:implicit_enthalpy` solves a backward-Euler step of the enthalpy balance, linearised with Newton iterations and solved with an accelerated pseudo-transient iteration (see `apt_diffusion_solve!`); the time step factor `fac_dt` can then be much larger than 1. `:apt` is an alias.
+- `apt_tol`, `apt_max_iter`, `apt_check`: tolerance, iteration limit and check interval of the pseudo-transient iterations (implicit enthalpy solver).
 - `max_iter::Int64`: Maximum number of nonlinear iterations.
 - `verbose::Bool`: Whether to print verbose output.
 - `convergence::Float64`: Convergence criterion for nonlinear iterations.
@@ -88,6 +93,10 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     nt::Int64 = floor(maxTime / dt)
     it::Int64 = 0               # current iteration
     ω::Float64 = 0.5             # relaxation parameter for nonlinear iterations
+    solver::Symbol = :explicit            # diffusion step: `:explicit` (default), or `:implicit_enthalpy` (implicit enthalpy method, Newton-linearised and solved with accelerated pseudo-transient iterations; `fac_dt` may then exceed 1; alias `:apt`)
+    apt_tol::Float64 = 1.0e-6             # implicit enthalpy solver: tolerance of the pseudo-transient iterations (temperature error relative to max(|T|, 1))
+    apt_max_iter::Int64 = 50_000          # implicit enthalpy solver: maximum number of pseudo-transient iterations per solve
+    apt_check::Int64 = 10                 # implicit enthalpy solver: check convergence every `apt_check` iterations
     max_iter::Int64 = 5000            # max. number of nonlinear iterations
     verbose::Bool = false
     convergence::Float64 = 1.0e-5            # nonlinear convergence criteria
@@ -115,6 +124,8 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     b_init::Float64 = 1.5e3
     TrackTracersOnGrid::Bool = true
     TtPath_steps::Int64 = 10              # time steps between samples of the tracer T-t paths
+    seed::Union{Nothing, Int64} = nothing        # seed of the (task-local) random number generator at the start of the simulation (`nothing`: leave it unchanged)
+    print_injections::Bool = true        # print a line for every injected dike/sill
     TracerFloatType::DataType = Float32     # float type for Tracer time_vec/T_vec (Float32 saves memory)
 end
 
@@ -208,4 +219,52 @@ You can use multiple dispatch on this struct in your user code as long as the ne
     MeltFraction::Vector{Float64} = []      # Melt fraction over time
     Tav_magma::Vector{Float64} = []         # Average magma
     Tmax::Vector{Float64} = []              # Max magma temperature
+end
+
+
+"""
+    copy_params(Num::NumParam; kwargs...) -> NumParam
+
+Independent copy of the numerical parameters with the given fields changed, e.g. `copy_params(Num; Nx = 101, fac_dt = 0.2)`.
+Fields derived from other fields (grid spacing, time step, number of steps, dimension) are recomputed when one of their inputs
+is changed, unless they are given explicitly; the state of a finished run (time, iteration counter, VTK collection) is reset.
+"""
+function copy_params(Num::NumParam; kwargs...)
+    N = deepcopy(Num)
+    N.time, N.it, N.pvd = 0.0, 0, nothing
+    for (k, v) in kwargs
+        hasfield(NumParam, k) || throw(ArgumentError("NumParam has no field :$k"))
+        setfield!(N, k, convert(fieldtype(NumParam, k), v))
+    end
+    given(k) = haskey(kwargs, k)
+    if any(given, (:Nx, :Ny, :Nz, :W, :L, :H, :fac_dt, :κ_time, :maxTime_Myrs))
+        given(:dim) || (N.dim = count(>(0), (N.Nx, N.Ny, N.Nz)))
+        given(:dx) || (N.dx = N.W / (N.Nx - 1))
+        given(:dy) || (N.dy = N.L / (N.Ny - 1))
+        given(:dz) || (N.dz = N.H / (N.Nz - 1))
+        given(:Δ) || (N.Δ = [N.dx, N.dy, N.dz])
+        given(:Δmin) || (N.Δmin = minimum(N.Δ[N.Δ .> 0]))
+        given(:maxTime) || (N.maxTime = N.maxTime_Myrs * SecYear * 1.0e6)
+        given(:dt) || (N.dt = N.fac_dt * (N.Δmin^2) / N.κ_time / 4)
+        given(:nt) || (N.nt = floor(Int, N.maxTime / N.dt))
+    end
+    return N
+end
+
+"""
+    copy_params(Dikes::SillParams; kwargs...) -> SillParams
+
+Independent copy of the sill parameters with the given fields changed, e.g. `copy_params(Dikes; T_in_Celsius = 1100.0)`.
+The bookkeeping of a finished run (injected volume, injection counter, polygon) is reset.
+"""
+function copy_params(Dikes::SillParams; kwargs...)
+    D = deepcopy(Dikes)
+    D.InjectVol, D.Qrate_km3_yr, D.sill_inj = 0.0, 0.0, 0.0
+    empty!(D.sill_poly)
+    for (k, v) in kwargs
+        hasfield(SillParams, k) || throw(ArgumentError("SillParams has no field :$k"))
+        setfield!(D, k, convert(fieldtype(SillParams, k), v))
+    end
+    haskey(kwargs, :InjectionInterval_year) && !haskey(kwargs, :InjectionInterval) && (D.InjectionInterval = D.InjectionInterval_year * SecYear)
+    return D
 end

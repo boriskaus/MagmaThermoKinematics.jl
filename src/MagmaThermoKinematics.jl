@@ -59,13 +59,14 @@ include("Utils.jl")
 export Process_ZirconAges, simulate_zircon_growth_from_tracers, volume_averaged_age, copy_arrays_GPU2CPU!, copy_arrays_CPU2GPU!
 
 include("MTK_GMG_structs.jl")
-export NumParam, SillParams, TimeDepProps
+export NumParam, SillParams, TimeDepProps, copy_params
 
 include("Fields.jl")
 export CreateArrays
 
 include("Diffusion.jl")
-export Numeric_params, Nonlinear_Diffusion_step!, diffusion_step!, lithostatic_pressure!, compute_phase_param!, GridArray!, bc_zero_flux!, bc_T!, bc_z_bottom_flux!
+include("PseudoTransient.jl")
+export Numeric_params, Nonlinear_Diffusion_step!, diffusion_step!, apt_diffusion_solve!, lithostatic_pressure!, compute_phase_param!, GridArray!, bc_zero_flux!, bc_T!, bc_z_bottom_flux!
 
 include("MTK_GMG.jl")
 

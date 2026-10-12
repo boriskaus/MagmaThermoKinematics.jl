@@ -202,10 +202,12 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
     Arrays.T_it_old .= Arrays.T
     args1 = haskey(Arrays, :index) ? (; T = Arrays.T_K, P = Arrays.P, index = Arrays.index) : (; T = Arrays.T_K, P = Arrays.P)
     compute_phase_param!(Arrays.Hr, radioactive_heat_at_Z, Mat_tup, Phases, (; Z = Arrays.Z))   # independent of T
-    err, iter = 1.0, 1
+    haskey(Arrays, :Qsrc) && (Arrays.Hr .+= Arrays.Qsrc)         # volumetric source term [W/m³], set by the user
+    err, iter, apt_iter_total = 1.0, 1, 0
     while err > Num.convergence && iter < Num.max_iter
         compute_phase_param!(Arrays.ϕ, compute_meltfraction, Mat_tup, Phases, args1)
         compute_phase_param!(Arrays.dϕdT, compute_dϕdT, Mat_tup, Phases, args1)
+        iter == 1 && haskey(Arrays, :pt_phiold) && (Arrays.pt_phiold .= Arrays.ϕ)     # melt fraction at the previous time level (the first iterate is T)
         compute_phase_param!(Arrays.Rho, compute_density, Mat_tup, Phases, args1)
         lithostatic_pressure!(Arrays.P, Arrays.Rho, g, Δ[N])
         compute_phase_param!(Arrays.Cp, compute_heatcapacity, Mat_tup, Phases, args1)
@@ -218,14 +220,25 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
             @. Arrays.ϕ = ifelse(Arrays.Z < minZ, zero(FT), Arrays.ϕ)
         end
 
-        diffusion_step!(Arrays.Tnew, Arrays.T, Arrays.Kc, Arrays.Rho, Arrays.Cp, Arrays.Hr, Arrays.Hl, dt, Δ, Arrays.dϕdT; R)
-        for d in 1:(N - 1)                      # flux-free lateral boundaries
-            bc_zero_flux!(Arrays.Tnew, d)
-        end
-        if Num.flux_bottom_BC
-            bc_z_bottom_flux!(Arrays.Tnew, Arrays.Kc, Δ[N], flux_bottom)
+        if _use_implicit(Num)
+            n_apt = apt_diffusion_solve!(Arrays, dt, Δ, R, Num)    # implicit step, includes the boundary conditions
+            apt_iter_total += n_apt
+            Num.verbose && println("  pseudo-transient iterations: $(n_apt)")
         else
-            bc_T!(Arrays.Tnew, Arrays.T)    # isothermal top and bottom
+            Hheat = Arrays.Hr
+            if haskey(Arrays, :Qrelax)               # relaxation term Qrelax (Qenth - E(T_k)), lagged at the iterate
+                @. Arrays.Hq = Arrays.Hr + Arrays.Qrelax * (Arrays.Qenth - Arrays.Rho * (Arrays.Cp * Arrays.T_it_old + Arrays.Hl * Arrays.ϕ))
+                Hheat = Arrays.Hq
+            end
+            diffusion_step!(Arrays.Tnew, Arrays.T, Arrays.Kc, Arrays.Rho, Arrays.Cp, Hheat, Arrays.Hl, dt, Δ, Arrays.dϕdT; R)
+            for d in 1:(N - 1)                      # flux-free lateral boundaries
+                bc_zero_flux!(Arrays.Tnew, d)
+            end
+            if Num.flux_bottom_BC
+                bc_z_bottom_flux!(Arrays.Tnew, Arrays.Kc, Δ[N], flux_bottom)
+            else
+                bc_T!(Arrays.Tnew, Arrays.T)    # isothermal top and bottom
+            end
         end
 
         # Relaxed Picard iteration for the T used by the (nonlinear) material properties
@@ -239,6 +252,6 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
     end
     (isfinite(err) && err <= Num.convergence) ||
         error("$(N)D nonlinear diffusion did not converge after $(iter - 1) iterations (error=$(err), tolerance=$(Num.convergence)); reduce Δt or the relaxation parameter Num.ω=$(Num.ω) [0-1]")
-    Num.verbose && println("  ----")
+    Num.verbose && println("  ----  $(iter - 1) nonlinear iterations, $(apt_iter_total) pseudo-transient iterations in total")
     return nothing
 end

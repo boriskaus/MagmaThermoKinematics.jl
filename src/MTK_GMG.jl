@@ -41,7 +41,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
         Dikes.InjectVol += Vol                                                     # Keep track of injected volume
         Qrate = Dikes.InjectVol / Num.time
         Dikes.Qrate_km3_yr = Qrate * SecYear / km³
-        println("  Added new dike; time=$(Num.time / kyr) kyrs, total injected magma volume = $(Dikes.InjectVol / km³) km³; rate Q= $(Dikes.Qrate_km3_yr) km³yr⁻¹")
+        Num.print_injections && println("  Added new dike; time=$(Num.time / kyr) kyrs, total injected magma volume = $(Dikes.InjectVol / km³) km³; rate Q= $(Dikes.Qrate_km3_yr) km³yr⁻¹")
 
         if Num.advect_polygon == true && isempty(Dikes.sill_poly)
             Dikes.sill_poly = InjectSills.dike_polygon(sill)            # create sill polygon for the first time
@@ -130,6 +130,15 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
 end
 
 """
+    MTK_source!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Mat_tup::Tuple, Dikes::SillParameters)
+
+Set the optional source terms of the energy equation for the current time step: `Arrays.Qsrc` [W/m³] is added to the heat production,
+and `Arrays.Qrelax` [1/s] with `Arrays.Qenth` [J/m³] define a relaxation term `Qrate (Qenth - E(T))` with `E = ρ (cp T + Hl ϕ)` (T in °C).
+Called once per time step before the diffusion step; the default leaves all three unchanged (initially zero).
+"""
+MTK_source!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Mat_tup::Tuple, Dikes::SillParameters) = nothing
+
+"""
     Arrays = MTK_initialize_arrays(Num::NumericalParameters)
 
 Initialize arrays used in the computations
@@ -137,10 +146,11 @@ Initialize arrays used in the computations
 function MTK_initialize_arrays(Num::NumericalParameters)
 
     kw = (; backend = Num.backend, FloatType = Num.FloatType)
+    pt_arrays = Num.solver !== :explicit ? (pt_C = 0, pt_b = 0, pt_phiold = 0, pt_res = 0, pt_Tk = 0, pt_Tkm1 = 0, pt_Tn = 0) : (;)     # work arrays of the implicit solver
     if Num.dim == 2
-        Arrays = CreateArrays(Dict((Num.Nx, Num.Nz) => (T = 0, T_K = 0, Tnew = 0, T_init = 0, T_it_old = 0, Tupdate = 0, Kc = 1, Rho = 1, Cp = 1, Hr = 0, Hl = 0, ϕ = 0, dϕdT = 0, R = 0, Z = 0, P = 0)); kw...)
+        Arrays = CreateArrays(Dict((Num.Nx, Num.Nz) => merge((T = 0, T_K = 0, Tnew = 0, T_init = 0, T_it_old = 0, Tupdate = 0, Kc = 1, Rho = 1, Cp = 1, Hr = 0, Hq = 0, Qsrc = 0, Qrelax = 0, Qenth = 0, Hl = 0, ϕ = 0, dϕdT = 0, R = 0, Z = 0, P = 0), pt_arrays)); kw...)
     else
-        Arrays = CreateArrays(Dict((Num.Nx, Num.Ny, Num.Nz) => (T = 0, T_K = 0, Tnew = 0, T_init = 0, T_it_old = 0, Tupdate = 0, Kc = 1, Rho = 1, Cp = 1, Hr = 0, Hl = 0, ϕ = 0, dϕdT = 0, X = 0, Y = 0, Z = 0, P = 0)); kw...)
+        Arrays = CreateArrays(Dict((Num.Nx, Num.Ny, Num.Nz) => merge((T = 0, T_K = 0, Tnew = 0, T_init = 0, T_it_old = 0, Tupdate = 0, Kc = 1, Rho = 1, Cp = 1, Hr = 0, Hq = 0, Qsrc = 0, Qrelax = 0, Qenth = 0, Hl = 0, ϕ = 0, dϕdT = 0, X = 0, Y = 0, Z = 0, P = 0), pt_arrays)); kw...)
     end
 
     return Arrays
