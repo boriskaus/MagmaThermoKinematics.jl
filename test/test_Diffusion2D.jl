@@ -452,3 +452,31 @@ end;
     @test all(iszero, Arrays.dϕdT[deep])
     @test all(>(0), Arrays.ϕ[.!deep])
 end;
+
+@testset "relaxation term (explicit) and bottom heat flux (implicit)" begin
+    Mat = (SetMaterialParams(Phase = 1, Density = ConstantDensity(), Conductivity = ConstantConductivity(), HeatCapacity = ConstantHeatCapacity()),)
+    N = (9, 21)
+    Grid = CreateGrid(size = N, extent = (10.0e3, 20.0e3))
+    names = (:T, :T_K, :Tnew, :T_it_old, :Tupdate, :Kc, :Rho, :Cp, :Hr, :Hl, :ϕ, :dϕdT, :R, :Z, :P, :Qrelax, :Qenth, :Hq,
+        :pt_C, :pt_b, :pt_phiold, :pt_res, :pt_Tk, :pt_Tkm1, :pt_Tn)
+    Arrays = CreateArrays(Dict(N => NamedTuple{names}(ntuple(_ -> 0, length(names)))))
+    GridArray!(Arrays.R, Arrays.Z, Grid)
+    Phases = ones(Int64, N)
+    ρcp = 2900.0 * 1050.0
+
+    # uniform T relaxing towards 600 °C: the Picard fixed point is T_new = (T + dt s T*) / (1 + dt s)
+    Arrays.T .= 500.0; Arrays.Qrelax .= 1.0e-9; Arrays.Qenth .= ρcp * 600.0
+    dt = 1.0e8
+    Nonlinear_Diffusion_step!(Arrays, Mat, Phases, Grid, dt, NumParam(Nx = N[1], Nz = N[2], convergence = 1.0e-8))
+    @test Arrays.Rho[1] * Arrays.Cp[1] ≈ ρcp
+    @test all(≈((500.0 + 0.1 * 600.0) / 1.1; rtol = 1.0e-6), Arrays.Tnew[:, 2:(end - 1)])
+
+    # implicit steps far beyond the diffusion time: linear steady geotherm with the bottom flux q and the top T fixed
+    Arrays.T .= 500.0; Arrays.Qrelax .= 0
+    q = 0.06; Num = NumParam(Nx = N[1], Nz = N[2], solver = :implicit_enthalpy, flux_bottom_BC = true, flux_bottom = q, ω = 1.0)
+    for _ in 1:2
+        Nonlinear_Diffusion_step!(Arrays, Mat, Phases, Grid, 1.0e17, Num)
+        Arrays.T .= Arrays.Tnew
+    end
+    @test Arrays.Tnew ≈ 500.0 .- q ./ Arrays.Kc .* Arrays.Z rtol = 1.0e-4
+end;

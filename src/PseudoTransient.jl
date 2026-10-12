@@ -26,13 +26,15 @@ end
 "`C[I] = f ρ (cp + Hl ∂ϕ/∂T)` with `f = 1/dt + s`: the diagonal mass term of the implicit problem."
 @kernel function _apt_ceff!(C, Rho, Cp, Hl, dϕdT, Qrelax, dt)
     I = @index(Global, Cartesian)
-    C[I] = (inv(dt) + Qrelax[I]) * Rho[I] * (Cp[I] + Hl[I] * dϕdT[I])
+    f = inv(dt) + Qrelax[I]
+    C[I] = f * Rho[I] * (Cp[I] + Hl[I] * dϕdT[I])
 end
 
 "Right-hand side `b` of the linearised implicit problem (see the header)."
 @kernel function _apt_rhs!(b, Told, Tit, Rho, Cp, Hl, dϕdT, ϕ, ϕold, H, Qrelax, Qenth, dt)
     I = @index(Global, Cartesian)
-    b[I] = (inv(dt) + Qrelax[I]) * Rho[I] * Hl[I] * (dϕdT[I] * Tit[I] - ϕ[I]) + Rho[I] * (Cp[I] * Told[I] + Hl[I] * ϕold[I]) / dt + Qrelax[I] * Qenth[I] + H[I]
+    f = inv(dt) + Qrelax[I]
+    b[I] = f * Rho[I] * Hl[I] * (dϕdT[I] * Tit[I] - ϕ[I]) + Rho[I] * (Cp[I] * Told[I] + Hl[I] * ϕold[I]) / dt + Qrelax[I] * Qenth[I] + H[I]
 end
 
 "Coefficient of `T[I]` in `∇⋅(K ∇T)` along the step `e`, i.e. `-∂(∇q)/∂T[I]` for one dimension."
