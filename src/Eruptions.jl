@@ -607,7 +607,6 @@ function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; 
         reset_chamber!(state)
         return nothing
     end
-    state.cells = cells
     geo = chamber_geometry(cells, Δ, coords)
     # sums over the chamber: on the host through the cell list, on the device through the label mask
     ϕsum = inmask === nothing ? sum(I -> ϕ[I], cells) : sum(ϕ .* inmask)
@@ -619,6 +618,7 @@ function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; 
     state.init && (geo.z_lo > state.z_hi || geo.z_hi < state.z_lo) && reset_chamber!(state)
     state.init || (state.id += 1)
     state.z_lo, state.z_hi = geo.z_lo, geo.z_hi
+    state.cells = cells
 
     depth = -geo.zc
     P_lith = _lithostatic(ep, depth, T_background)
