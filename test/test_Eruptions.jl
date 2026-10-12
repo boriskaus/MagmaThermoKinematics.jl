@@ -31,8 +31,10 @@ using MagmaThermoKinematics: EruptionParams, EruptionState, step_overpressure!, 
     end
 
     @testset "Overpressure and drain" begin
-        ep = EruptionParams(m_w = 0.06, ΔP_crit = 3.0e6, σ_barrier = 0.0, w_dike = 20.0,
-            melt_viscosity = LinearMeltViscosity(A = -8.1590, B = 2.4050e4K, T0 = -430.9606K, η0 = 1Pas), solubility = Liu2005_Solubility())
+        ep = EruptionParams(
+            m_w = 0.06, ΔP_crit = 3.0e6, σ_barrier = 0.0, w_dike = 20.0,
+            melt_viscosity = LinearMeltViscosity(A = -8.159, B = 2.405e4K, T0 = -430.9606K, η0 = 1Pas), solubility = Liu2005_Solubility()
+        )
         depth = 4000.0
         st = EruptionState(); st.P_lith = st.P = _lithostatic(ep, depth, d -> 800.0)
         yr = 3.15576e7; n = 0; hsum = 0.0
@@ -67,7 +69,9 @@ end
     move_free_surface!(Ph, Pi, T, Zs, (x, z), U; air = 0, fill = 1)
     @test Zs[3] == 70.0 && Zs[1] == -300.0 && Zs[2] == -50.0     # surface starts half a cell above the top rock cell (z = −50)
     # sub-cell displacements accumulate: three uplifts of 40 m raise another column by one more cell
-    for _ in 1:3; U[2] .= 0; U[2][5, :] .= 40.0; move_free_surface!(Ph, Pi, T, Zs, (x, z), U; air = 0, fill = 1); end
+    for _ in 1:3
+        U[2] .= 0; U[2][5, :] .= 40.0; move_free_surface!(Ph, Pi, T, Zs, (x, z), U; air = 0, fill = 1)
+    end
     @test Zs[5] == 70.0 && Ph[5, 10] == 1 && Ph[5, 11] == 0
     @test Ph[3, 10] == 1 && Ph[3, 11] == 0                      # cell centred at z = 0 is now below the surface (70 m)
     @test Ph[1, 9] == 0 && Ph[1, 8] == 0 && Ph[1, 7] == 1       # cells at z = −100, −200 are above the new surface (−300 m)
@@ -136,7 +140,7 @@ end
     geo = chamber_geometry(cells, step.(coords), coords)
     @test geo.W ≈ 100 * step(coords[1]) * step(coords[2]) && geo.h ≈ 6 * step(coords[3]) && geo.R ≈ sqrt(geo.W / π)
     T = fill(20.0, nx, ny, nz); T[ϕ .> 0] .= 900.0
-    ep = EruptionParams(ΔP_crit = 1.0e5, σ_barrier = 0.0, w_dike = 50.0, h_melt_min = 10.0, melt_viscosity = LinearMeltViscosity(A = -8.1590, B = 2.4050e4K, T0 = -430.9606K, η0 = 1Pas))
+    ep = EruptionParams(ΔP_crit = 1.0e5, σ_barrier = 0.0, w_dike = 50.0, h_melt_min = 10.0, melt_viscosity = LinearMeltViscosity(A = -8.159, B = 2.405e4K, T0 = -430.9606K, η0 = 1Pas))
     st = EruptionState(); ev = nothing
     for it in 1:400
         ev = chamber_step!(st, ep, ϕ, T, coords; recharge = 2.0e5 / 3.15576e7, Δt = 10 * 3.15576e7, time = it * 10 * 3.15576e7, T_background = d -> 20.0 + 0.02d, margin = 0.0, resolve = 0.1)
