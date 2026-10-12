@@ -101,3 +101,13 @@ end
         @test flux ≈ fac * 1.0e6 rtol = 0.05
     end
 end
+
+@testset "Image source surface displacement" begin
+    # at the free surface the image doubles the vertical and cancels the horizontal displacement of the full-space source
+    X = repeat(collect(-4000.0:100:4000), 1, 41); Z = repeat(collect(-4000.0:100:0)', 81, 1)
+    U = (zero(X), zero(X)); mogi_displacement!(U, (X, Z), [0.0 -2000.0], [1.0e6]; softening = 1.0e-6, halfspace = :image, z_surface = 0.0)
+    i = 61; j = 41                     # x = 2000, z = 0
+    d = sqrt(2000.0^2 + 2000.0^2); uz_full = 1.0e6 / (4π) * 2000.0 / d^3
+    @test U[2][i, j] ≈ 2 * uz_full rtol = 1.0e-6
+    @test abs(U[1][i, j]) < 1.0e-9 * uz_full
+end
