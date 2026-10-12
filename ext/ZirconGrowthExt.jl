@@ -22,7 +22,8 @@ Three call forms are supported:
 - Pass a directory path; `dirname/Tracers_SimParams.jld2` is loaded automatically
   (saves to `dirname/ZirconGrowth.jld2` by default).
 
-Tracers with fewer than 2 time steps are skipped.
+Tracers with fewer than 2 time steps, and tracers whose zircon never grew (`NaN` age),
+are skipped.
 `Tracer.time_vec` must be in **Myr** and `Tracer.T_vec` in **°C**.
 The loop runs on all available Julia threads (`julia --threads auto`).
 
@@ -47,8 +48,7 @@ When `return_results = true` a third field `results` is included, containing a
 - `elements`       : `ZirconGrowth.ElementData` selecting which trace elements are tracked;
                      defaults to `ZirconGrowth.default_element_data()`.
 - `filename`       : path to a JLD2 file; if provided the `age_years` and
-                     `zircon_radius_um` vectors (and `results` when requested) are saved
-                     there.  Default `nothing` (no saving) for the `Tracers` form;
+                     `zircon_radius_um` vectors are saved there.  Default `nothing` (no saving) for the `Tracers` form;
                      `dirname/ZirconGrowth.jld2` for the `dirname` form.
 - `return_results` : set to `true` to include the full `Vector{SimulationResult}` in the
                      return value.  Default `false` to save memory.
@@ -75,19 +75,21 @@ age_years, zircon_radius_um, results = simulate_zircon_growth_from_tracers(
     Tracers; return_results = true)
 ```
 """
-function MagmaThermoKinematics.simulate_zircon_growth_from_tracers(Tracers;
+function MagmaThermoKinematics.simulate_zircon_growth_from_tracers(
+        Tracers;
         params::Union{Nothing, ZirconGrowth.GrowthParams} = nothing,
         nx::Int = 100,
         elements::ZirconGrowth.ElementData = ZirconGrowth.default_element_data(),
         filename::Union{Nothing, AbstractString} = nothing,
-        return_results::Bool = false)
+        return_results::Bool = false
+    )
 
-    n                = length(Tracers)
-    age_years        = Vector{Union{Nothing, Float64}}(nothing, n)
+    n = length(Tracers)
+    age_years = Vector{Union{Nothing, Float64}}(nothing, n)
     zircon_radius_um = Vector{Union{Nothing, Float64}}(nothing, n)
-    _results         = return_results ? Vector{Union{Nothing, ZirconGrowth.SimulationResult}}(nothing, n) : nothing
-    done             = Threads.Atomic{Int}(0)
-    interval         = max(1, n ÷ 20)
+    _results = return_results ? Vector{Union{Nothing, ZirconGrowth.SimulationResult}}(nothing, n) : nothing
+    done = Threads.Atomic{Int}(0)
+    interval = max(1, n ÷ 20)
 
     println("Simulating zircon growth for $n tracers on $(Threads.nthreads()) thread(s)...")
     Threads.@threads for i in eachindex(Tracers)
@@ -95,16 +97,18 @@ function MagmaThermoKinematics.simulate_zircon_growth_from_tracers(Tracers;
         isempty(tr.time_vec) && continue
 
         time_Myr = Float64.(tr.time_vec)   # already in Myr
-        T_C      = Float64.(tr.T_vec)
+        T_C = Float64.(tr.T_vec)
 
         length(time_Myr) < 2 && continue
 
-        p = isnothing(params) ? ZirconGrowth.GrowthParams(time_Myr, T_C; nx=nx) : params
+        p = isnothing(params) ? ZirconGrowth.GrowthParams(time_Myr, T_C; nx = nx) : params
 
-        res = ZirconGrowth.simulate_from_cooling_path(time_Myr, T_C;
-                  params = p, elements = elements)
+        res = ZirconGrowth.simulate_from_cooling_path(
+            time_Myr, T_C;
+            params = p, elements = elements
+        )
 
-        age_years[i]        = MagmaThermoKinematics.volume_averaged_age(res)
+        age_years[i] = MagmaThermoKinematics.volume_averaged_age(res)
         zircon_radius_um[i] = res.zircon_radius_um[end]
         return_results && (_results[i] = res)
 
@@ -112,8 +116,9 @@ function MagmaThermoKinematics.simulate_zircon_growth_from_tracers(Tracers;
         k % interval == 0 && print("\r  $k / $n done...")
     end
 
-    age_years        = Float64[v for v in age_years        if !isnothing(v)]
-    zircon_radius_um = Float64[v for v in zircon_radius_um if !isnothing(v)]
+    keep = [!isnothing(a) && !isnan(a) for a in age_years]
+    age_years = Float64[v for v in age_years[keep]]
+    zircon_radius_um = Float64[v for v in zircon_radius_um[keep]]
     println("\rDone: $(length(age_years)) / $n tracers simulated.          ")
 
     if !isnothing(filename)
@@ -122,7 +127,7 @@ function MagmaThermoKinematics.simulate_zircon_growth_from_tracers(Tracers;
     end
 
     if return_results
-        results = ZirconGrowth.SimulationResult[r for r in _results if !isnothing(r)]
+        results = ZirconGrowth.SimulationResult[r for r in _results[keep]]
         return (; age_years, zircon_radius_um, results)
     end
 
@@ -139,13 +144,17 @@ end
 Load tracers from `dirname/Tracers_SimParams.jld2` and call
 `simulate_zircon_growth_from_tracers(Tracers; kwargs...)`.
 """
-function MagmaThermoKinematics.simulate_zircon_growth_from_tracers(dirname::AbstractString;
+function MagmaThermoKinematics.simulate_zircon_growth_from_tracers(
+        dirname::AbstractString;
         filename::Union{Nothing, AbstractString} = joinpath(dirname, "ZirconGrowth.jld2"),
-        kwargs...)
+        kwargs...
+    )
 
     Tracers = JLD2.load(joinpath(dirname, "Tracers_SimParams.jld2"), "Tracers")
-    return MagmaThermoKinematics.simulate_zircon_growth_from_tracers(Tracers;
-               filename = filename, kwargs...)
+    return MagmaThermoKinematics.simulate_zircon_growth_from_tracers(
+        Tracers;
+        filename = filename, kwargs...
+    )
 end
 
 """
@@ -158,7 +167,7 @@ Each concentric shell crystallised at a different time. The shell between radii
 `time_years[end] − time_years[i]` (measured back from the end of the simulation).
 Shells with zero or negative growth are excluded.
 
-Returns the volume-weighted mean age in **years**.
+Returns the volume-weighted mean age in **years**, or `NaN` if no shell grew.
 """
 function MagmaThermoKinematics.volume_averaged_age(result::ZirconGrowth.SimulationResult)
     t = result.time_years
@@ -166,17 +175,17 @@ function MagmaThermoKinematics.volume_averaged_age(result::ZirconGrowth.Simulati
 
     age_sum = 0.0
     vol_sum = 0.0
-    t_end   = t[end]
+    t_end = t[end]
 
     for i in 1:(length(r) - 1)
-        dV = r[i+1]^3 - r[i]^3   # proportional to shell volume; 4π/3 cancels
+        dV = r[i + 1]^3 - r[i]^3   # proportional to shell volume; 4π/3 cancels
         dV <= 0 && continue
-        age_mid  = t_end - 0.5*(t[i] + t[i+1])   # age of shell midpoint
+        age_mid = t_end - 0.5 * (t[i] + t[i + 1])   # age of shell midpoint
         age_sum += age_mid * dV
         vol_sum += dV
     end
 
-    return vol_sum > 0 ? age_sum / vol_sum : 0.0
+    return vol_sum > 0 ? age_sum / vol_sum : NaN
 end
 
 """

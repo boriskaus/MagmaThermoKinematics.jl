@@ -4,31 +4,15 @@ This page documents the coding style used in [examples/MTK_GMG_2D_example2.jl](h
 
 ## GPU / CPU Selection
 
-At the very top of the script, before any other `using` statements, you must declare whether to run on the GPU or CPU:
+The arrays live on a KernelAbstractions backend, which is selected at the top of the script:
 
 ```julia
-const USE_GPU = false     # set to true to run on an NVIDIA GPU
-if USE_GPU
-    using CUDA
-end
-using ParallelStencil, ParallelStencil.FiniteDifferences2D
 using MagmaThermoKinematics
-
-@static if USE_GPU
-    environment!(:gpu, Float64, 2)
-    CUDA.device!(0)                      # select the GPU (0-indexed)
-    @init_parallel_stencil(CUDA, Float64, 2)
-else
-    environment!(:cpu, Float64, 2)
-    @init_parallel_stencil(Threads, Float64, 2)
-end
-
-using MagmaThermoKinematics.Diffusion2D  # must be loaded AFTER environment!()
-using MagmaThermoKinematics.Fields2D
-using MagmaThermoKinematics.MTK_GMG_2D
+# using CUDA                        # for an NVIDIA GPU, then: backend = CUDABackend()
+backend = CPU()
 ```
 
-`USE_GPU` must be a `const` so that `@static if` branches are resolved at compile time.  The `environment!` call and `@init_parallel_stencil` must come before any solver code is loaded.
+Use `backend = CUDABackend()` (after `using CUDA`) to run on an NVIDIA GPU.
 
 ## GeophysicalModelGenerator-Driven Setup
 
@@ -129,7 +113,7 @@ Num = NumParam(
     maxTime_Myrs        = 0.005,
     SaveOutput_steps    = 25,
     CreateFig_steps     = 5,
-    USE_GPU             = USE_GPU,
+    backend             = backend,
     ω                   = 0.5,
     AddRandomSills      = true,
     RandomSills_timestep= 5,
@@ -153,7 +137,7 @@ Sill_params = SillParams(
 
 Finally, run the simulation with:
 ```julia
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams(
     MatParam,
     Num,
     Sill_params,
@@ -162,7 +146,7 @@ Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(
 )
 ```
 
-The `USE_GPU` flag passed to `NumParam` must match the `environment!` call at the top of the script.
+The `backend` is passed to `NumParam`, which allocates all model arrays on it.
 
 ## Full Example File
 The result of the simulation looks like this:

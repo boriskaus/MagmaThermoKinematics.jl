@@ -11,34 +11,22 @@ We will show two examples here:
 
 - `Unzen3D` demonstrates a workflow where the model domain, phase structure, and thermal state are assembled from imported topography and project-specific initialization logic.
 - `Lanin3D` demonstrates a workflow where a custom topography is downloaded using GMT if the file doesn't exist, and a custom output hook is defined to print time and iteration diagnostics.
-- Both examples use the same core concepts: `CartData` setup construction (using the [GeophysicalModelGenerator](https://github.com/JuliaGeodynamics/GeophysicalModelGenerator.jl) package), material parameter definition (using [GeoParams](https://github.com/JuliaGeodynamics/GeoParams.jl/)), dike parameterization, and a customization of simulation paramaters such as output and diagnostics. With this, all aspects of the simulation can be controlled and customized  in a single file.
+- Both examples use the same core concepts: `CartData` setup construction (using the [GeophysicalModelGenerator](https://github.com/JuliaGeodynamics/GeophysicalModelGenerator.jl) package), material parameter definition (using [GeoParams](https://github.com/JuliaGeodynamics/GeoParams.jl/)), dike parameterization, and a customization of simulation parameters such as output and diagnostics. With this, all aspects of the simulation can be controlled and customized  in a single file.
 
 In practice, this means `MagmaThermoKinematics.jl` can move from synthetic benchmark setups to real-world applications by swapping geological input data and user hooks while keeping the computational framework stable.
 
 ## Example 1: Unzen3D
 
-This section documents the script in [examples/MTK_GMG_3D_example.jl](https://github.com/boriskaus/MagmaThermoKinematics.jl/blob/main/examples/MTK_GMG_3D_example.jl) which focusses on [Mount Unzen](https://en.wikipedia.org/wiki/Mount_Unzen) in Japan and produces the following script:
+This section documents the script in [examples/MTK_GMG_3D_example.jl](https://github.com/boriskaus/MagmaThermoKinematics.jl/blob/main/examples/MTK_GMG_3D_example.jl) which focuses on [Mount Unzen](https://en.wikipedia.org/wiki/Mount_Unzen) in Japan and produces the following script:
 ![](../assets/movies/Unzen3D.gif)
 
 #### Imports and Backend
 As always, we start with loading the required input:
 ```julia
-const USE_GPU = false
-if USE_GPU
-	using CUDA
-end
-
 using MagmaThermoKinematics
-@static if USE_GPU
-	environment!(:gpu, Float64, 3)
-	CUDA.device!(1)
-else
-	environment!(:cpu, Float64, 3)
-end
-using MagmaThermoKinematics.Diffusion3D
-using MagmaThermoKinematics.Fields3D
+# using CUDA                        # for an NVIDIA GPU, then: backend = CUDABackend()
+backend = CPU()
 using MagmaThermoKinematics.MTK_GMG
-using MagmaThermoKinematics.MTK_GMG_3D
 using Random, GeoParams, GeophysicalModelGenerator
 ```
 
@@ -64,7 +52,7 @@ Num         = NumParam( SimName="Unzen3D", axisymmetric=false,
                         maxTime_Myrs=0.025,
                         fac_dt=0.2,
                         SaveOutput_steps=20, CreateFig_steps=1000, plot_tracers=false, advect_polygon=false,
-                        USE_GPU=USE_GPU,
+                        backend=backend,
                         AddRandomSills = true, RandomSills_timestep=5);
 # sill parameters
 sill = PennyShapedSill(Center=Point3(0.0, 0.0, -7.0e3) * m, Angle=Vec2(0.0, 0.0) * NoUnits, R=2.5e3 * m, H=1000 * m, E=1.5e10 * Pa, ν=0.3 * NoUnits)
@@ -113,7 +101,7 @@ MatParam     = (SetMaterialParams(Name="Air", Phase=0,
 Finally, the simulation is performed as:
 ```julia
 Grid, Arrays, Tracers, Dikes, time_props =
-	MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Sill_params, CartData_input = Data_3D)
+	MTK_GeoParams(MatParam, Num, Sill_params, CartData_input = Data_3D)
 ```
 Which looks like:
 ![Unzen 3D](../assets/Unzen3D.png)
@@ -153,12 +141,11 @@ end
 We also adjust the printing info that is shown during the simulation with:
 ```julia
 import MagmaThermoKinematics.MTK_GMG
-import MagmaThermoKinematics.MTK_GMG_3D
 
 function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters,
 								  Arrays::NamedTuple, Mat_tup::Tuple,
 								  Dikes::SillParameters)
-	println("$(Num.it), Time=$(round(Num.time / Num.SecYear / 1e3, digits = 3)) kyrs")
+	println("$(Num.it), Time=$(round(Num.time / SecYear / 1e3, digits = 3)) kyrs")
 	return nothing
 end
 ```
@@ -166,7 +153,7 @@ end
 As always, the simulation is performed with:
 ```julia
 Grid, Arrays, Tracers, Dikes, time_props =
-	MTK_GMG_3D.MTK_GeoParams_3D(MatParam, Num, Sill_params, CartData_input = Data_3D)
+	MTK_GeoParams(MatParam, Num, Sill_params, CartData_input = Data_3D)
 ```
 
 Which looks like:

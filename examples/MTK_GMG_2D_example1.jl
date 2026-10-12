@@ -1,44 +1,14 @@
 # This is a first example of how to use MagmaThermoKinematics with a real setup which can be customized with user-defined functions,
 # for example for plotting or printing output.
 
-const USE_GPU=false;
-if USE_GPU
-    using CUDA      # needs to be loaded before loading Parallkel=
-end
-using ParallelStencil, ParallelStencil.FiniteDifferences2D
-
 using MagmaThermoKinematics
-@static if USE_GPU
-    environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-    CUDA.device!(0)                     # select the GPU you use (starts @ zero)
-    @init_parallel_stencil(CUDA, Float64, 2)
-else
-    environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
-    @init_parallel_stencil(Threads, Float64, 2)
-end
-using MagmaThermoKinematics.Diffusion2D # to load AFTER calling environment!()
-using MagmaThermoKinematics.Fields2D
-using MagmaThermoKinematics.MTK_GMG_2D
+# using CUDA                        # for an NVIDIA GPU, then: backend = CUDABackend()
+backend = CPU()
 using GeophysicalModelGenerator
 using GeoParams, Random
-using Plots                             # plots
+using CairoMakie                        # plots
 using MagmaThermoKinematics.MTK_GMG     # Allow overwriting user routines
 
-#=
-const USE_GPU=false;
-using MagmaThermoKinematics
-if USE_GPU
-    environment!(:gpu, Float64, 2)      # initialize parallel stencil in 2D
-else
-    environment!(:cpu, Float64, 2)      # initialize parallel stencil in 2D
-end
-using MagmaThermoKinematics.Diffusion2D
-using MagmaThermoKinematics.Fields2D
-using MagmaThermoKinematics.MTK_GMG     # Allow overwriting user routines
-using MagmaThermoKinematics.GeophysicalModelGenerator
-using Plots                             # plots
-using Random, GeoParams
-=#
 
 Random.seed!(1234);     # use the same random seed, such that we can reproduce results
 
@@ -49,33 +19,35 @@ println("Example 1 of the MTK - GMG integration")
 
 # Printing output e
 function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
-    println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
+    println("$(Num.it), Time=$(round(Num.time / SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
     return nothing
 end
 
-@static if USE_GPU
+if !(backend isa CPU)
     function MTK_GMG.MTK_print_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
-        println("$(Num.it), Time=$(round(Num.time/Num.SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
+        println("$(Num.it), Time=$(round(Num.time / SecYear)) yrs; max(T) = $(round(maximum(Arrays.Tnew)))")
         return nothing
     end
 else
     function MTK_GMG.MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
-        if mod(Num.it,Num.CreateFig_steps)==0
-            x_1d        =   Grid.coord1D[1]/1e3;
-            z_1d        =   Grid.coord1D[2]/1e3;
-            temp_data   =   Array(Arrays.Tnew)'
-            ϕ_data      =   Array(Arrays.ϕ)'
-            phase_data  =   Array(Arrays.Phases)'
+        if mod(Num.it, Num.CreateFig_steps) == 0
+            x_1d = Grid.coord1D[1] / 1.0e3
+            z_1d = Grid.coord1D[2] / 1.0e3
+            temp_data = Array(Arrays.Tnew)
+            ϕ_data = Array(Arrays.ϕ)
+            phase_data = Array(Arrays.Phases)
 
-            t   =   Num.time/SecYear;
-            p   =   plot(layout=grid(1,2) )
+            t = Num.time / SecYear
+            fig = Figure(size = (1000, 450))
 
-            Plots.heatmap!(p[1],x_1d, z_1d, temp_data, c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Temperature, t=$(round(t)) yrs", aspect_ratio=:equal, ylimits=(-20,0))
-    #        Plots.heatmap!(p[2],x_1d, z_1d, ϕ_data,    c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Melt fraction", clims=(0,1), aspect_ratio=:equal, ylimits=(-20,0))
-            Plots.heatmap!(p[2],x_1d, z_1d, phase_data,    c=:viridis, xlabel="x [km]", ylabel="z [km]", title="Phases", aspect_ratio=:equal, ylimits=(-20,0))
+            ax1 = Axis(fig[1, 1], xlabel = "x [km]", ylabel = "z [km]", title = "Temperature, t=$(round(t)) yrs", aspect = DataAspect(), limits = (nothing, (-20, 0)))
+            Colorbar(fig[1, 2], heatmap!(ax1, x_1d, z_1d, temp_data, colormap = :viridis))
+            #        ax2 =   Axis(fig[1,3], xlabel="x [km]", ylabel="z [km]", title="Melt fraction", aspect=DataAspect(), limits=(nothing, (-20,0)))
+            #        Colorbar(fig[1,4], heatmap!(ax2, x_1d, z_1d, ϕ_data, colormap=:viridis, colorrange=(0,1)))
+            ax2 = Axis(fig[1, 3], xlabel = "x [km]", ylabel = "z [km]", title = "Phases", aspect = DataAspect(), limits = (nothing, (-20, 0)))
+            Colorbar(fig[1, 4], heatmap!(ax2, x_1d, z_1d, phase_data, colormap = :viridis))
 
-           # p = plot(ps, layout=(1,2))
-            display(p)
+            save("MTK_GMG_2D_example1_$(Num.it).png", fig)
         end
         return nothing
     end
@@ -87,17 +59,17 @@ end
 Initialize temperature and phases of the grid
 """
 function MTK_GMG.MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters)
-    # Initalize T
-    Arrays.T_init   .=   @. Num.Tsurface_Celcius - Arrays.Z*Num.Geotherm;                # Initial (linear) temperature profile
+    # Initialize T
+    Arrays.T_init .= @. Num.Tsurface_Celsius - Arrays.Z * Num.Geotherm                 # Initial (linear) temperature profile
 
     # Initialize Phases
-    @views  Arrays.Phases[Arrays.Z .> -5000] .= 0;
-    Arrays.Phases_init .= Arrays.Phases;    # Initialize all as rock
+    @views  Arrays.Phases[Arrays.Z .> -5000] .= 0
+    Arrays.Phases_init .= Arrays.Phases     # Initialize all as rock
 
-     # open pvd file if requested 
-     if Num.Output_VTK
-        name =  joinpath(Num.SimName,Num.SimName*".pvd")
-        Num.pvd = movie_paraview(name=name, Initialize=true);
+    # open pvd file if requested
+    if Num.Output_VTK
+        name = joinpath(Num.SimName, Num.SimName * ".pvd")
+        Num.pvd = movie_paraview(name = name, Initialize = true)
     end
 
     return nothing
@@ -106,59 +78,65 @@ end
 
 
 # Define numerical parameters
-Num         = NumParam( Nx                      =   135*2,
-                        Nz                      =   135*2,
-                        SimName                 =   "Test1",
-                        maxTime_Myrs            =   0.005,
-                        fac_dt                  =   0.2,
-                        ω                       =   0.5,
-                        CreateFig_steps         =   20,
-                        SaveOutput_steps        =   100,
-                        USE_GPU                 =   USE_GPU,
-                        AddRandomSills          =   true,
-                        RandomSills_timestep    =   5);
+Num = NumParam(
+    Nx = 135 * 2,
+    Nz = 135 * 2,
+    SimName = "Test1",
+    maxTime_Myrs = 0.005,
+    fac_dt = 0.2,
+    ω = 0.5,
+    CreateFig_steps = 20,
+    SaveOutput_steps = 100,
+    backend = backend,
+    AddRandomSills = true,
+    RandomSills_timestep = 5
+);
 
 # Default setup: ElasticDike equivalent via PennyShapedSill.
-sill = PennyShapedSill(Center=Point2(0.0, -7.0e3)m, R=2.5e3m, H=250m, E=1.5e10Pa, ν=0.3NoUnits)
+sill = PennyShapedSill(Center = Point2(0.0, -7.0e3)m, R = 2.5e3m, H = 250m, E = 1.5e10Pa, ν = 0.3NoUnits)
 
 # Alternative sill definitions (currently unused):
 # sill = CylindricalDikeTopAccretion(Center=Point2(0.0, -7.0e3)m, W=5e3m, H=250m, E=1.5e10Pa, ν=0.3NoUnits)
 # sill =         EllipticalIntrusion(Center=Point2(0.0, -7.0e3)m, W=5e3m, H=250m, E=1.5e10Pa, ν=0.3NoUnits)
 
 Sill_params = SillParams(
-    sill                    = sill,
-    InjectionInterval_year  = 1000,
-    nTr_dike                = 300*4,
-    SillPhase               = 2,
-    T_in_Celsius            = 1000,
-    SillsAbove              = -12e3,
+    sill = sill,
+    InjectionInterval_year = 1000,
+    nTr_dike = 300 * 4,
+    SillPhase = 2,
+    T_in_Celsius = 1000,
+    SillsAbove = -12.0e3,
 )
 
-MatParam     = (SetMaterialParams(Name="Host rock 1", Phase=0,
-                                Density         = ConstantDensity(ρ=2700kg/m^3),                    # used in the parameterisation of Whittington
-                                LatentHeat      = ConstantLatentHeat(Q_L=2.55e5J/kg),
-                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=0e-7Watt/m^3),
-                                Conductivity    = T_Conductivity_Whittington(),                       # T-dependent k
-                                HeatCapacity    = T_HeatCapacity_Whittington(),                      # T-dependent cp
-                                Melting         = MeltingParam_Assimilation()                              # Quadratic parameterization as in Tierney et al.
-                                ),
-                SetMaterialParams(Name="Host rock", Phase=1,
-                                Density         = ConstantDensity(ρ=2700kg/m^3),                    # used in the parameterisation of Whittington
-                                LatentHeat      = ConstantLatentHeat(Q_L=2.55e5J/kg),
-                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=0e-7Watt/m^3),
-                                Conductivity    = T_Conductivity_Whittington(),                       # T-dependent k
-                                HeatCapacity    = T_HeatCapacity_Whittington(),                      # T-dependent cp
-                                Melting         = MeltingParam_Assimilation()                              # Quadratic parameterization as in Tierney et al.
-                            ),
-                SetMaterialParams(Name="Intruded rocks", Phase=2,
-                                Density         = ConstantDensity(ρ=2700kg/m^3),                     # used in the parameterisation of Whittington
-                                LatentHeat      = ConstantLatentHeat(Q_L=2.67e5J/kg),
-                                RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0=0e-7Watt/m^3),
-                                Conductivity    = T_Conductivity_Whittington(),                       # T-dependent k
-                                HeatCapacity    = T_HeatCapacity_Whittington(),                       # T-dependent cp
-                                Melting         = SmoothMelting(MeltingParam_Quadratic(T_s=(700+273.15)K, T_l=(1100+273.15)K))
-                            )
-                )
+MatParam = (
+    SetMaterialParams(
+        Name = "Host rock 1", Phase = 0,
+        Density = ConstantDensity(ρ = 2700kg / m^3),                    # used in the parameterisation of Whittington
+        LatentHeat = ConstantLatentHeat(Q_L = 2.55e5J / kg),
+        RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0 = 0.0e-7Watt / m^3),
+        Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
+        HeatCapacity = T_HeatCapacity_Whittington(),                      # T-dependent cp
+        Melting = MeltingParam_Assimilation()                              # Quadratic parameterization as in Tierney et al.
+    ),
+    SetMaterialParams(
+        Name = "Host rock", Phase = 1,
+        Density = ConstantDensity(ρ = 2700kg / m^3),                    # used in the parameterisation of Whittington
+        LatentHeat = ConstantLatentHeat(Q_L = 2.55e5J / kg),
+        RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0 = 0.0e-7Watt / m^3),
+        Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
+        HeatCapacity = T_HeatCapacity_Whittington(),                      # T-dependent cp
+        Melting = MeltingParam_Assimilation()                              # Quadratic parameterization as in Tierney et al.
+    ),
+    SetMaterialParams(
+        Name = "Intruded rocks", Phase = 2,
+        Density = ConstantDensity(ρ = 2700kg / m^3),                     # used in the parameterisation of Whittington
+        LatentHeat = ConstantLatentHeat(Q_L = 2.67e5J / kg),
+        RadioactiveHeat = ExpDepthDependentRadioactiveHeat(H_0 = 0.0e-7Watt / m^3),
+        Conductivity = T_Conductivity_Whittington(),                       # T-dependent k
+        HeatCapacity = T_HeatCapacity_Whittington(),                       # T-dependent cp
+        Melting = SmoothMelting(MeltingParam_Quadratic(T_s = (700 + 273.15)K, T_l = (1100 + 273.15)K))
+    ),
+)
 
 # Call the main code with the specified material parameters
-Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams_2D(MatParam, Num, Sill_params);
+Grid, Arrays, Tracers, Dikes, time_props = MTK_GeoParams(MatParam, Num, Sill_params);
