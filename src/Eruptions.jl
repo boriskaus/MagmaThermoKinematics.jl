@@ -695,13 +695,15 @@ end
 Realise the eruption `event` of [`chamber_step!`](@ref): a Mogi sink of volume `f·dV` in every chamber
 cell (3D-equivalent volumes) gives the host-rock displacement `U`, with which the temperature `T`
 (any backend; `Tbuf` is a work array) and the tracers are advected. Tracers inside the chamber are
-removed with probability `f` and returned as `cargo`. `softening` regularises the point sources.
+removed with probability `f` and returned as `cargo`. `softening` regularises the point sources; `volume_factor` scales
+the displaced volume (1 = the drained volume).
 """
-function erupt!(T, Tbuf, Tracers, coords, event; ν = 0.25, coarsen = 1, softening = nothing, rng = Random.default_rng(), halfspace = :mogi, z_surface = 0.0)
+function erupt!(T, Tbuf, Tracers, coords, event; ν = 0.25, coarsen = 1, softening = nothing, rng = Random.default_rng(), halfspace = :mogi, z_surface = 0.0, volume_factor = 1.0)
     N = length(coords)
     Δ = ntuple(k -> step(coords[k]), N)
     softening === nothing && (softening = minimum(Δ))
     centers, ΔV, L = erupt_sources(event, coords; coarsen)
+    ΔV .*= volume_factor                                                 # e.g. the fraction of a sill's cross-section that its 3-D opening displaces in a 2-D section
     backend = get_backend(T)
     X = ntuple(N) do k
         A = KernelAbstractions.allocate(backend, eltype(T), size(T))
