@@ -512,7 +512,7 @@ are summed (linear elasticity). In a 2D section a source with `L[s] > 0` is inst
 along the out-of-plane direction over `[-L, L]`, with `ΔV` the volume change per unit length: the
 integrated kernel is `2L · d/(|d|² √(|d|² + L²))`. The sum runs on the backend of `X[1]`; `softening` [m]
 regularises the singularity at the sources' own nodes. With `halfspace = :image` the sources are volume-consistent
-dilatation centres (`ΔV/(4π) · d/|d|³`, whose divergence integrates to `ΔV`) mirrored at `z_surface`; the `:mogi`
+dilatation centres (`ΔV/(4π) · d/|d|³`, whose divergence integrates to `ΔV`) with opposite-sign images mirrored at `z_surface` (surface uplift twice the full-space value); the `:mogi`
 kernel is the surface formula of the half-space solution and over-dilates the interior by `4(1 − ν)`.
 """
 function mogi_displacement!(U, X, centers, ΔV; L = zeros(length(ΔV)), ν = 0.25, softening, halfspace = :mogi, z_surface = 0.0)
@@ -523,10 +523,11 @@ function mogi_displacement!(U, X, centers, ΔV; L = zeros(length(ΔV)), ν = 0.2
     if halfspace === :mogi
         cen, str, len = centers, (1 - ν) / π .* ΔV, L
     else
-        # volume-consistent dilatation centres (strength ΔV/4π, so ∇·U integrates to ΔV) plus their images above the free
-        # surface, which doubles the vertical surface displacement (the exact half-space factor is 4(1 − ν))
+        # volume-consistent dilatation centres (strength ΔV/4π, so ∇·U integrates to ΔV) plus opposite-sign images above
+        # the free surface: the vertical surface displacement is then twice the full-space value and the horizontal one
+        # vanishes (the exact half-space factor is 4(1 − ν) for the vertical component)
         img = copy(centers); img[:, N] .= 2 * z_surface .- centers[:, N]
-        cen = vcat(centers, img); str = vcat(ΔV, ΔV) ./ (4π); len = vcat(L, L)
+        cen = vcat(centers, img); str = vcat(ΔV, -ΔV) ./ (4π); len = vcat(L, L)
     end
     c = KernelAbstractions.allocate(backend, FT, size(cen)); copyto!(c, FT.(cen))
     s = KernelAbstractions.allocate(backend, FT, length(str)); copyto!(s, FT.(str))
