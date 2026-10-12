@@ -83,6 +83,7 @@ Base.@kwdef mutable struct EruptionState
     id::Int = 0
     z_lo::Float64 = NaN
     z_hi::Float64 = NaN
+    cells::Any = nothing        # cells of the chamber at the last step (Vector{CartesianIndex})
     init::Bool = false
 end
 
@@ -606,6 +607,7 @@ function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; 
         reset_chamber!(state)
         return nothing
     end
+    state.cells = cells
     geo = chamber_geometry(cells, Δ, coords)
     # sums over the chamber: on the host through the cell list, on the device through the label mask
     ϕsum = inmask === nothing ? sum(I -> ϕ[I], cells) : sum(ϕ .* inmask)
