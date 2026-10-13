@@ -176,3 +176,18 @@ end
     @test flux ≈ ΔV rtol = 0.1
     @test_throws ArgumentError mogi_displacement!((zero(X[:, 1, :]), zero(X[:, 1, :])), (X[:, 1, :], Z[:, 1, :]), [0.0 -c], [ΔV]; softening = 1.0, halfspace = :mindlin)
 end
+
+@testset "Mindlin kernel vs InjectSills.MindlinSphere" begin
+    using MagmaThermoKinematics: mogi_displacement!
+    r = 800.0; ΔP = 5.0e6; G = 1.0e10; ν = 0.3; c = 4000.0
+    ΔV = π * ΔP * r^3 / G
+    s = InjectSills.MindlinSphere(Center = Point3(300.0, -200.0, -c) * m, r = r * m, ΔP = ΔP * Pa, G = G * Pa, ν = ν * NoUnits)
+    g = -3000.0:250:3000; X = [x for x in g, y in g, z in -7000.0:250:0]; Y = [y for x in g, y in g, z in -7000.0:250:0]; Z = [z for x in g, y in g, z in -7000.0:250:0]
+    U = (zero(X), zero(X), zero(X)); mogi_displacement!(U, (X, Y, Z), [300.0 -200.0 -c], [ΔV]; softening = 1.0e-9, halfspace = :mindlin, z_surface = 0.0, ν = ν)
+    for I in (CartesianIndex(5, 9, 3), CartesianIndex(20, 13, 29), CartesianIndex(13, 13, 15))
+        d = InjectSills.hostrock_displacement(s, Point3(X[I], Y[I], Z[I]))
+        @test U[1][I] ≈ d[1] rtol = 1.0e-10
+        @test U[2][I] ≈ d[2] rtol = 1.0e-10
+        @test U[3][I] ≈ d[3] rtol = 1.0e-10
+    end
+end
