@@ -131,6 +131,18 @@ Supported configurations include:
 - 2D axisymmetric (via specific workflows in examples).
 - 3D Cartesian.
 
+### Out-of-plane heat loss in 2D sections
+
+A planar 2D model ignores conduction along the third direction, so a compact body cools more slowly than it would in 3D. With `NumParam(out_of_plane = true)` the missing term ``K\,\partial^2\theta/\partial y^2`` of the temperature anomaly ``\theta = T - T_{bg}`` is added as a volumetric heat sink. For an anomaly that is Gaussian along the out-of-plane direction with variance ``L^2``, ``\partial^2\theta/\partial y^2 = -\theta/L^2``, so
+
+```math
+H_{oop} = -f\,\frac{K\,(T - T_{bg})}{L^2(z)} .
+```
+
+The length scale is measured from the model itself: at every depth, ``L^2(z)`` is the horizontal variance of the positive anomaly, ``\int \theta\,(x-\bar x)^2\,dx / \int \theta\,dx``, averaged over `out_of_plane_smooth` depth cells either side and bounded below by `out_of_plane_Lmin`. This assumes that the body is as wide along y as along x, and it adapts as the anomaly grows. For a Gaussian anomaly `f = 1` reproduces the 3D solution on the section. The thermal halo of a long-lived intrusion has heavier tails than a Gaussian, so its variance exceeds that of its core; the default `f = out_of_plane_factor = 1.5` reproduces 3D (and axisymmetric) models of such a body best.
+
+The background temperature is `Arrays.Tbg`, which is set to the initial temperature field. The sink uses `T` and the conductivity of the previous time step, and acts on cells that are not of phase 0 (air). It is available for planar 2D models only.
+
 ## Material Parameter Handling
 
 Material properties are integrated through GeoParams-based parameterizations and package-level helper routines for conductivity, density, heat capacity, melt fraction, and related quantities.
