@@ -266,6 +266,10 @@ function MTK_save_output(Grid::GridData, Arrays::NamedTuple, Tracers::StructArra
             Data_set3D = add_data_CartData(Data_set3D, "Temp", Float32.(Array(Arrays.Tnew)))
             Data_set3D = add_data_CartData(Data_set3D, "Phases", Int32.(Array(Arrays.Phases)))
             Data_set3D = add_data_CartData(Data_set3D, "MeltFraction", Float64.(Array(Arrays.ϕ)))
+            if Num.convection && haskey(Arrays, :Nu)        # convecting melt-rich regions (Nusselt number of the last step)
+                Data_set3D = add_data_CartData(Data_set3D, "Nusselt", Float32.(Array(Arrays.Nu)))
+                Data_set3D = add_data_CartData(Data_set3D, "Convecting", Int32.(Array(Arrays.Nu) .> 1))
+            end
 
             # Save output to CartData
             Num.pvd = write_paraview(Data_set3D, name, pvd = Num.pvd, time = Num.time / SecYear / 1.0e3)

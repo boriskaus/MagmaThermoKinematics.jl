@@ -142,3 +142,29 @@ end
     Num = NumParam(Nx = 5, Nz = 61, solver = :implicit_enthalpy, convection = true)
     @test_throws ArgumentError Nonlinear_Diffusion_step!(B, Mat_conv, Phases, Grid, 1.0e8, Num)
 end
+
+@testset "convecting chamber in a simulation and its VTK output" begin
+    dir = mktempdir()
+    Num = NumParam(
+        Nx = 33, Nz = 33, SimName = "conv", maxTime_Myrs = 0.006, fac_dt = 0.2, ω = 0.5, Geotherm = 30 / 1.0e3, solver = :implicit_enthalpy,
+        convection = true, SaveOutput_steps = 10, Output_VTK = true, CreateFig_steps = 100000, verbose = false
+    )
+    sill = CylindricalDikeTopAccretion(Center = Point2(0.0, -7.0e3) * m, W = 8.0e3 * m, H = 500.0 * m)
+    Dikes = SillParams(sill = sill, InjectionInterval_year = 500, nTr_dike = 30)
+    Mat = (
+        SetMaterialParams(
+            Name = "Rock", Phase = 1, Density = ConstantDensity(ρ = 2700kg / m^3), LatentHeat = ConstantLatentHeat(Q_L = 3.13e5J / kg),
+            Conductivity = ConstantConductivity(k = 3Watt / K / m), HeatCapacity = ConstantHeatCapacity(Cp = 1000J / kg / K), Melting = SmoothMelting(MeltingParam_4thOrder())
+        ),
+    )
+    Grid, Arrays, Tracers, Dikes, time_props = cd(dir) do
+        redirect_stdout(devnull) do
+            MTK_GeoParams(Mat, Num, Dikes)
+        end
+    end
+    @test all(isfinite, Arrays.Tnew)
+    vts = filter(endswith(".vts"), readdir(joinpath(dir, Num.SimName); join = true))
+    @test !isempty(vts)
+    txt = read(last(sort(vts)), String)
+    @test occursin("Nusselt", txt) && occursin("Convecting", txt)
+end
