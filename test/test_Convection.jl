@@ -46,13 +46,14 @@ function convection_arrays(dims; FT = Float64)
     ϕ[ntuple(d -> d == length(dims) ? 11 : 2, length(dims))...] = 0.2
     T[ntuple(d -> d == length(dims) ? 14 : 1, length(dims))...] += 80                           # temperature contrast in the first run
     Phases[ntuple(d -> d == length(dims) ? 5 : 1, length(dims))...] = 0                         # an air cell at the bottom of the first run
-    return (; Kc, T, ϕ, Rho, Cp, Phases)
+    Z = zeros(FT, dims); for k in 1:nz; selectdim(Z, length(dims), k) .= FT(-(nz - k) * 50); end        # z is negative downward, index 1 at the bottom
+    return (; Kc, T, ϕ, Rho, Cp, Phases, Z)
 end
 
 # Nusselt numbers of the arrays of `convection_arrays`, optionally with another viscosity law
 function nusselt_of(A, visc = DEFAULT_CONVECTION_VISCOSITY; kw...)
     Nu = similar(A.Kc)
-    compute_convective_nusselt!(Nu, A.Kc, A.T, A.ϕ, A.Rho, A.Cp, A.Phases, 50.0, visc; kw...)
+    compute_convective_nusselt!(Nu, A.Kc, A.T, A.ϕ, A.Rho, A.Cp, A.Phases, A.Z, 50.0, visc; kw...)
     return Nu
 end
 
@@ -76,12 +77,29 @@ end
     @test Nu[1, 10] ≈ convective_nusselt(80.0, 9 * 50.0, 2500.0, 3.0 / (2500.0 * 1100.0), η) rtol = 1.0e-10
 end
 
+@testset "two chambers with their own viscosity laws" begin
+    A = convection_arrays((6, 30))
+    # column 2 holds two chambers (cells 5:9 and 12:20); the lower one (cell index < 10) and the upper one differ in composition
+    rhy = DEFAULT_CONVECTION_VISCOSITY
+    mafic = GiordanoMeltViscosity()                                          # basaltic melt, much less viscous
+    zsplit = A.Z[2, 10]
+    N_rr = nusselt_of(A, rhy); N_mm = nusselt_of(A, mafic)
+    N_tuple = nusselt_of(A, (rhy, mafic); z_split = (zsplit,))
+    @test all(N_tuple[2, 12:20] .== N_rr[2, 12:20])                           # upper chamber: first law
+    @test all(N_tuple[2, 5:9] .== N_mm[2, 5:9])                               # lower chamber: second law
+    @test N_mm[2, 5] ≥ N_rr[2, 5]                                             # the less viscous magma convects at least as vigorously
+    @test all(N_tuple[3:end, :] .== 1.0)
+    @test_throws ArgumentError nusselt_of(A, (rhy, mafic))                    # a split is needed per additional law
+    @test_throws ArgumentError nusselt_of(A, (rhy, mafic); z_split = (1.0, 2.0))
+    @test_throws ArgumentError nusselt_of(A, (rhy, mafic, rhy); z_split = (-3000.0, -1000.0))     # splits must descend
+end
+
 @testset "compute_convective_nusselt! in 3D and on JLArrays" begin
     A = convection_arrays((4, 4, 30)); Nu = nusselt_of(A)
     @test all(Nu[1, 1, 6:14] .> 1.0) && all(Nu[3:end, 3:end, :] .== 1.0)
     a = convection_arrays((6, 30)); Na = nusselt_of(a)
     j = map(x -> JLArray(x), convection_arrays((6, 30))); Nj = similar(j.Kc)
-    compute_convective_nusselt!(Nj, j.Kc, j.T, j.ϕ, j.Rho, j.Cp, j.Phases, 50.0)
+    compute_convective_nusselt!(Nj, j.Kc, j.T, j.ϕ, j.Rho, j.Cp, j.Phases, j.Z, 50.0)
     @test Array(Nj) ≈ Na
     f = convection_arrays((6, 30); FT = Float32); Nf = nusselt_of(f)
     @test eltype(Nf) == Float32
