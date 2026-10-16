@@ -38,7 +38,7 @@ const DEFAULT_CONVECTION_VISCOSITY = ViscosityPartialMelt_Costa_etal_2009(η = G
     return compute_τII(law, ε; T, ϕ) / (2 * ε)
 end
 
-@kernel function _convection_columns!(Nu_out, Kc, T, ϕ, Rho, Cp, Phases, visc, nz, ϕc, g, α, coeffs, Ra_crit, Nu_max, ε, Δz)
+@kernel function _convection_columns!(Nu_out, Kc, T, ϕ, Rho, Cp, Phases, Z, visc, splits, nz, ϕc, g, α, coeffs, Ra_crit, Nu_max, ε, Δz)
     I = @index(Global, Cartesian)
     FT = eltype(Kc)
     k = 1
@@ -52,13 +52,13 @@ end
                 k2 += 1
             end
             n = k2 - k + 1
-            Tmin = T[I, k]; Tmax = Tmin; Tsum = zero(FT); ϕsum = zero(FT); ρsum = zero(FT); κsum = zero(FT)
+            Tmin = T[I, k]; Tmax = Tmin; Tsum = zero(FT); ϕsum = zero(FT); ρsum = zero(FT); κsum = zero(FT); zsum = zero(FT)
             for kk in k:k2
                 Tkk = T[I, kk]
                 Tmin = min(Tmin, Tkk); Tmax = max(Tmax, Tkk)
-                Tsum += Tkk; ϕsum += ϕ[I, kk]; ρsum += Rho[I, kk]; κsum += Kc[I, kk] / (Rho[I, kk] * Cp[I, kk])
+                Tsum += Tkk; zsum += Z[I, kk]; ϕsum += ϕ[I, kk]; ρsum += Rho[I, kk]; κsum += Kc[I, kk] / (Rho[I, kk] * Cp[I, kk])
             end
-            η = convective_viscosity(visc, Tsum / n, ϕsum / n, ε)
+            η = _viscosity_at(visc, splits, zsum / n, Tsum / n, ϕsum / n, ε)
             Nu = convective_nusselt(Tmax - Tmin, n * Δz, ρsum / n, κsum / n, η; g, α, coeffs, Ra_crit, Nu_max)
             for kk in k:k2
                 Nu_out[I, kk] = Nu
@@ -70,19 +70,30 @@ end
     end
 end
 
+# the viscosity law of a region follows from its mean depth: `laws[i]` applies above `splits[i]` (z, negative downward; the last law below all splits)
+@inline _viscosity_at(laws::Tuple{Any}, ::Tuple{}, z, T, ϕ, ε) = convective_viscosity(laws[1], T, ϕ, ε)
+@inline _viscosity_at(laws::Tuple, splits::Tuple, z, T, ϕ, ε) = z >= splits[1] ? convective_viscosity(laws[1], T, ϕ, ε) : _viscosity_at(Base.tail(laws), Base.tail(splits), z, T, ϕ, ε)
+
 @inline _is_melt(ϕ, Phases, I, k, ϕc) = (ϕ[I, k] >= ϕc) & (Phases[I, k] != 0)
 
 """
-    compute_convective_nusselt!(Nu, Kc, T, ϕ, Rho, Cp, Phases, Δz, visc = DEFAULT_CONVECTION_VISCOSITY; g = 9.81, ϕ_crit = 0.5, α = 3.0e-5, coeffs = (0.0087, 0.1350, -0.2943), Ra_crit = 1708.0, Nu_max = 100.0, strainrate = 1.0e-12)
+    compute_convective_nusselt!(Nu, Kc, T, ϕ, Rho, Cp, Phases, Z, Δz, visc = DEFAULT_CONVECTION_VISCOSITY; z_split = (), g = 9.81, ϕ_crit = 0.5, α = 3.0e-5,
+                                coeffs = (0.0087, 0.1350, -0.2943), Ra_crit = 1708.0, Nu_max = 100.0, strainrate = 1.0e-12)
 
 Fill `Nu` with the Nusselt number of the convecting region every cell belongs to (1 outside): a region is a vertical run of cells with `ϕ ≥ ϕ_crit` (air cells, phase 0, excluded),
-see the header of `Convection.jl`. `Kc` is the conductivity, `T` the temperature in K. `visc` is a GeoParams creep law (any law with `compute_τII(law, ε; T, ϕ)`, e.g.
-`GiordanoMeltViscosity` or `ViscosityPartialMelt_Costa_etal_2009`), evaluated at the strain rate `strainrate` [1/s] (relevant for strain-rate dependent laws).
+see the header of `Convection.jl`; every region (e.g. two chambers at different depths, separated by cells with less melt) has its own thickness, temperature contrast and Rayleigh number.
+`Kc` is the conductivity, `T` the temperature in K and `Z` the vertical coordinate of the cells [m]. `visc` is a GeoParams creep law (any law with `compute_τII(law, ε; T, ϕ)`, e.g.
+`GiordanoMeltViscosity` or `ViscosityPartialMelt_Costa_etal_2009`), evaluated at the strain rate `strainrate` [1/s] (relevant for strain-rate dependent laws), or a tuple of laws for chambers of
+different composition: `visc[i]` applies to the regions whose mean `z` is above `z_split[i]` and the last law to the regions below all splits (`length(z_split) == length(visc) - 1`, `z_split` descending, e.g. `(-8.0e3,)`).
 The conductivity to use in the energy equation is `Nu .* Kc`. The vertical direction is the last one; works for 2D, axisymmetric and 3D arrays on any backend.
 """
-function compute_convective_nusselt!(Nu, Kc, T, ϕ, Rho, Cp, Phases, Δz, visc = DEFAULT_CONVECTION_VISCOSITY; g = 9.81, ϕ_crit = 0.5, α = 3.0e-5, coeffs = (0.0087, 0.1350, -0.2943), Ra_crit = 1708.0, Nu_max = 100.0, strainrate = 1.0e-12)
+function compute_convective_nusselt!(Nu, Kc, T, ϕ, Rho, Cp, Phases, Z, Δz, visc = DEFAULT_CONVECTION_VISCOSITY; z_split = (), g = 9.81, ϕ_crit = 0.5, α = 3.0e-5, coeffs = (0.0087, 0.1350, -0.2943), Ra_crit = 1708.0, Nu_max = 100.0, strainrate = 1.0e-12)
     FT = eltype(Nu)
     nz = size(Nu, ndims(Nu))
-    _launch!(_convection_columns!, Nu, size(Nu)[1:(end - 1)], Nu, Kc, T, ϕ, Rho, Cp, Phases, visc, nz, FT(ϕ_crit), FT(g), FT(α), FT.(coeffs), FT(Ra_crit), FT(Nu_max), FT(strainrate), FT(Δz))
+    laws = visc isa Tuple ? visc : (visc,)
+    splits = Tuple(FT.(z_split))
+    length(splits) == length(laws) - 1 || throw(ArgumentError("z_split needs one depth less than the viscosity laws: got $(length(splits)) split(s) for $(length(laws)) law(s)"))
+    issorted(splits; rev = true) || throw(ArgumentError("z_split must be in descending order (z is negative downward)"))
+    _launch!(_convection_columns!, Nu, size(Nu)[1:(end - 1)], Nu, Kc, T, ϕ, Rho, Cp, Phases, Z, laws, splits, nz, FT(ϕ_crit), FT(g), FT(α), FT.(coeffs), FT(Ra_crit), FT(Nu_max), FT(strainrate), FT(Δz))
     return nothing
 end
