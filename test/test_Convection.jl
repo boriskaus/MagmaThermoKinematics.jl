@@ -8,7 +8,7 @@ MagmaThermoKinematics.KernelAbstractions.synchronize(::JLArrays.JLBackend) = not
     ρ, κ, η, ΔT, L = 2500.0, 1.0e-6, 1.0e5, 100.0, 1.0e3
     Ra = ρ * 9.81 * 3.0e-5 * ΔT * L^3 / (κ * η)
     x = log10(Ra)
-    @test convective_nusselt(ΔT, L, ρ, κ, η; Nu_max = Inf) ≈ 10^(0.0087 * x^2 + 0.1350 * x - 0.2943)
+    @test convective_nusselt(ΔT, L, ρ, κ, η; Nu_max = Inf) ≈ 10^(0.0087 * x^2 + 0.135 * x - 0.2943)
     @test convective_nusselt(ΔT, L, ρ, κ, η; coeffs = (0.0, 1 / 3, log10(0.089)), Nu_max = Inf) ≈ 0.089 * cbrt(Ra)      # other fits, e.g. the Ra^(1/3) law
     @test convective_nusselt(0.0, L, ρ, κ, η) == 1.0                         # no temperature contrast: conduction
     @test convective_nusselt(ΔT, 1.0, ρ, κ, η) == 1.0                        # thin layer: below the onset
@@ -46,7 +46,9 @@ function convection_arrays(dims; FT = Float64)
     ϕ[ntuple(d -> d == length(dims) ? 11 : 2, length(dims))...] = 0.2
     T[ntuple(d -> d == length(dims) ? 14 : 1, length(dims))...] += 80                           # temperature contrast in the first run
     Phases[ntuple(d -> d == length(dims) ? 5 : 1, length(dims))...] = 0                         # an air cell at the bottom of the first run
-    Z = zeros(FT, dims); for k in 1:nz; selectdim(Z, length(dims), k) .= FT(-(nz - k) * 50); end        # z is negative downward, index 1 at the bottom
+    Z = zeros(FT, dims); for k in 1:nz
+        selectdim(Z, length(dims), k) .= FT(-(nz - k) * 50)
+    end        # z is negative downward, index 1 at the bottom
     return (; Kc, T, ϕ, Rho, Cp, Phases, Z)
 end
 

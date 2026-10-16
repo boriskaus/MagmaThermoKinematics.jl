@@ -23,7 +23,7 @@ Parameters that control the nonlinear diffusion solver.
     convection::Bool = false               # parameterised convection of melt-rich regions (see `add_convective_conductivity!`); needs the implicit solver
     convection_phi::Float64 = 0.5          # melt fraction above which a region convects
     convection_Nu_max::Float64 = 100.0
-    convection_coeffs::NTuple{3, Float64} = (0.0087, 0.1350, -0.2943)
+    convection_coeffs::NTuple{3, Float64} = (0.0087, 0.135, -0.2943)
     convection_Ra_crit::Float64 = 1708.0
     convection_alpha::Float64 = 3.0e-5
     convection_viscosity::Any = nothing    # GeoParams creep law of the melt-rich regions (`nothing`: `DEFAULT_CONVECTION_VISCOSITY`)
@@ -253,8 +253,10 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
         compute_phase_param!(Arrays.Rho, compute_density, Mat_tup, Phases, args1)
         compute_phase_param!(Arrays.Cp, compute_heatcapacity, Mat_tup, Phases, args1)
         compute_phase_param!(Arrays.Kc, compute_conductivity, Mat_tup, Phases, args1)
-        compute_convective_nusselt!(Arrays.Nu, Arrays.Kc, Arrays.T_K, Arrays.ϕ, Arrays.Rho, Arrays.Cp, Phases, Arrays.Z, Δ[N], something(Num.convection_viscosity, DEFAULT_CONVECTION_VISCOSITY); z_split = Num.convection_z_split, g, ϕ_crit = Num.convection_phi,
-            α = Num.convection_alpha, coeffs = Num.convection_coeffs, Ra_crit = Num.convection_Ra_crit, Nu_max = Num.convection_Nu_max, strainrate = Num.convection_strainrate)
+        compute_convective_nusselt!(
+            Arrays.Nu, Arrays.Kc, Arrays.T_K, Arrays.ϕ, Arrays.Rho, Arrays.Cp, Phases, Arrays.Z, Δ[N], something(Num.convection_viscosity, DEFAULT_CONVECTION_VISCOSITY); z_split = Num.convection_z_split, g, ϕ_crit = Num.convection_phi,
+            α = Num.convection_alpha, coeffs = Num.convection_coeffs, Ra_crit = Num.convection_Ra_crit, Nu_max = Num.convection_Nu_max, strainrate = Num.convection_strainrate
+        )
     end
     err, iter, apt_iter_total = 1.0, 1, 0
     while err > Num.convergence && iter < Num.max_iter

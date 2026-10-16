@@ -19,7 +19,7 @@ Rayleigh number `Ra = ρ g α ΔT L³/(κ η)`: `Nu = 1` below `Ra_crit`, and ab
 Grossmann & Lohse (2001) for Prandtl numbers above 10⁶ (where `Nu` no longer depends on the Prandtl number) used for magma chambers by Gerbault et al. (2025, Solid Earth 16, 1307);
 the critical Rayleigh number is that of a layer with rigid boundaries (1708).
 """
-function convective_nusselt(ΔT, L, ρ, κ, η; g = 9.81, α = 3.0e-5, coeffs = (0.0087, 0.1350, -0.2943), Ra_crit = 1708.0, Nu_max = 100.0)
+function convective_nusselt(ΔT, L, ρ, κ, η; g = 9.81, α = 3.0e-5, coeffs = (0.0087, 0.135, -0.2943), Ra_crit = 1708.0, Nu_max = 100.0)
     Ra = ρ * oftype(ρ, g) * oftype(ρ, α) * max(ΔT, zero(ΔT)) * L^3 / (κ * η)
     Ra < oftype(Ra, Ra_crit) && return one(Ra)
     x = log10(Ra)
@@ -87,7 +87,7 @@ see the header of `Convection.jl`; every region (e.g. two chambers at different 
 different composition: `visc[i]` applies to the regions whose mean `z` is above `z_split[i]` and the last law to the regions below all splits (`length(z_split) == length(visc) - 1`, `z_split` descending, e.g. `(-8.0e3,)`).
 The conductivity to use in the energy equation is `Nu .* Kc`. The vertical direction is the last one; works for 2D, axisymmetric and 3D arrays on any backend.
 """
-function compute_convective_nusselt!(Nu, Kc, T, ϕ, Rho, Cp, Phases, Z, Δz, visc = DEFAULT_CONVECTION_VISCOSITY; z_split = (), g = 9.81, ϕ_crit = 0.5, α = 3.0e-5, coeffs = (0.0087, 0.1350, -0.2943), Ra_crit = 1708.0, Nu_max = 100.0, strainrate = 1.0e-12)
+function compute_convective_nusselt!(Nu, Kc, T, ϕ, Rho, Cp, Phases, Z, Δz, visc = DEFAULT_CONVECTION_VISCOSITY; z_split = (), g = 9.81, ϕ_crit = 0.5, α = 3.0e-5, coeffs = (0.0087, 0.135, -0.2943), Ra_crit = 1708.0, Nu_max = 100.0, strainrate = 1.0e-12)
     FT = eltype(Nu)
     nz = size(Nu, ndims(Nu))
     laws = visc isa Tuple ? visc : (visc,)

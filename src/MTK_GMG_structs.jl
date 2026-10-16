@@ -102,7 +102,7 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     convection::Bool = false              # parameterised convection of melt-rich regions: conductivity multiplied by the Nusselt number of the region (needs `solver = :implicit_enthalpy`)
     convection_phi::Float64 = 0.5         # melt fraction above which a region convects
     convection_Nu_max::Float64 = 100.0    # upper bound of the Nusselt number
-    convection_coeffs::NTuple{3, Float64} = (0.0087, 0.1350, -0.2943)   # log10 Nu = a₂ log10(Ra)² + a₁ log10(Ra) + a₀ (Grossmann & Lohse 2001, high Prandtl number)
+    convection_coeffs::NTuple{3, Float64} = (0.0087, 0.135, -0.2943)   # log10 Nu = a₂ log10(Ra)² + a₁ log10(Ra) + a₀ (Grossmann & Lohse 2001, high Prandtl number)
     convection_Ra_crit::Float64 = 1708.0  # Nu = 1 below this Rayleigh number
     convection_alpha::Float64 = 3.0e-5    # thermal expansivity [1/K]
     convection_viscosity::Any = nothing   # GeoParams creep law for the viscosity of the melt-rich regions (`nothing`: Giordano et al. 2008 hydrous rhyolite with the Costa et al. 2009 crystal correction)
