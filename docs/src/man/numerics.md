@@ -131,6 +131,24 @@ Supported configurations include:
 - 2D axisymmetric (via specific workflows in examples).
 - 3D Cartesian.
 
+### Parameterised convection of melt-rich regions
+
+Magma with a low crystal content convects vigorously, which keeps its interior close to isothermal and moves heat to its boundaries much faster than conduction. With `NumParam(solver = :implicit_enthalpy, convection = true)` this is mimicked by an enhanced ("hyper-") conductivity ``K_{eff} = Nu\,K`` in every connected melt-rich region, the same approach as the effective conductivity used for magma chambers by [Gerbault et al. (2025)](https://doi.org/10.5194/se-16-1307-2025).
+
+A region is a vertical run of cells in a column with melt fraction ``\phi \ge`` `convection_phi` (0.5), air cells (phase 0) excluded. For each region the Rayleigh number
+
+```math
+Ra = \frac{\rho\, g\, \alpha\, \Delta T\, L^3}{\kappa\, \eta}
+```
+
+is computed from the thickness ``L`` of the region, the temperature contrast ``\Delta T`` across it (maximum minus minimum temperature), the mean density and thermal diffusivity ``\kappa = K/(\rho c_p)``, the expansivity `convection_alpha` (``3\cdot10^{-5}`` 1/K) and the viscosity ``\eta`` at the mean temperature and melt fraction of the region. The viscosity is any GeoParams creep law, `convection_viscosity`, evaluated at the strain rate `convection_strainrate` (default: the melt viscosity of [Giordano et al. (2008)](https://doi.org/10.1016/j.epsl.2008.03.016) for a hydrous rhyolite with the crystal correction `ViscosityPartialMelt_Costa_etal_2009`). The Nusselt number is ``Nu = 1`` for ``Ra`` below `convection_Ra_crit` (1708) and otherwise
+
+```math
+\log_{10} Nu = a_2 \log_{10}(Ra)^2 + a_1 \log_{10}(Ra) + a_0 ,
+```
+
+with `convection_coeffs` ``= (a_2, a_1, a_0) = (0.0087, 0.1350, -0.2943)`` (a fit to the high-Prandtl-number data of Grossmann & Lohse, 2001), bounded by `convection_Nu_max` (100): once the interior is homogenised within a time step a larger value changes the result little but makes the implicit solve more expensive. The Nusselt numbers are computed once per time step from the state at the beginning of the step (`Arrays.Nu`, created by `MTK_GeoParams`), which keeps the nonlinear iteration free of the on/off switching of the regions. The explicit solver is not supported, because the enhanced conductivity is far above its stability limit. The option works for planar 2D, axisymmetric and 3D models and on all backends.
+
 ## Material Parameter Handling
 
 Material properties are integrated through GeoParams-based parameterizations and package-level helper routines for conductivity, density, heat capacity, melt fraction, and related quantities.

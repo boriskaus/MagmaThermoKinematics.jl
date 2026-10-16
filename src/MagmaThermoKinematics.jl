@@ -64,8 +64,10 @@ export NumParam, SillParams, TimeDepProps, copy_params
 include("Fields.jl")
 export CreateArrays
 
+include("Convection.jl")
 include("Diffusion.jl")
 include("PseudoTransient.jl")
+export convective_nusselt, compute_convective_nusselt!
 export Numeric_params, Nonlinear_Diffusion_step!, diffusion_step!, apt_diffusion_solve!, lithostatic_pressure!, compute_phase_param!, GridArray!, bc_zero_flux!, bc_T!, bc_z_bottom_flux!
 
 include("MTK_GMG.jl")

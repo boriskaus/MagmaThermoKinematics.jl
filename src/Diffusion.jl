@@ -17,7 +17,18 @@ Parameters that control the nonlinear diffusion solver.
     flux_bottom::Float64 = 0.0             # flux @ bottom, in case flux_bottom_BC=true
     deactivate_La_at_depth::Bool = false           # no latent heat and melt below `deactivationDepth`?
     deactivationDepth::Float64 = -15.0e3           # depth [m] below which latent heat and melt are switched off
+    convection::Bool = false               # parameterised convection of melt-rich regions (see `add_convective_conductivity!`); needs the implicit solver
+    convection_phi::Float64 = 0.5          # melt fraction above which a region convects
+    convection_Nu_max::Float64 = 100.0
+    convection_coeffs::NTuple{3, Float64} = (0.0087, 0.135, -0.2943)
+    convection_Ra_crit::Float64 = 1708.0
+    convection_alpha::Float64 = 3.0e-5
+    convection_viscosity::Any = nothing    # GeoParams creep law of the melt-rich regions (`nothing`: `DEFAULT_CONVECTION_VISCOSITY`)
+    convection_strainrate::Float64 = 1.0e-12
+    convection_z_split::Any = ()           # depths [m] separating chambers of different viscosity law (`convection_viscosity` a tuple of laws)
 end
+
+_convection(Num) = hasproperty(Num, :convection) ? Num.convection : false        # lightweight parameter structs have no `convection` field
 
 "Launch the KernelAbstractions kernel `kernel!` over `ndrange` on the backend of `A`."
 function _launch!(kernel!, A, ndrange, args...)
@@ -203,6 +214,18 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
     args1 = haskey(Arrays, :index) ? (; T = Arrays.T_K, P = Arrays.P, index = Arrays.index) : (; T = Arrays.T_K, P = Arrays.P)
     compute_phase_param!(Arrays.Hr, radioactive_heat_at_Z, Mat_tup, Phases, (; Z = Arrays.Z))   # independent of T
     haskey(Arrays, :Qsrc) && (Arrays.Hr .+= Arrays.Qsrc)         # volumetric source term [W/m³], set by the user
+    if _convection(Num)                           # Nusselt numbers of the melt-rich regions from the state at the beginning of the step
+        _use_implicit(Num) || throw(ArgumentError("convection needs the implicit solver (solver = :implicit_enthalpy): the enhanced conductivity is far above the explicit stability limit"))
+        haskey(Arrays, :Nu) || throw(ArgumentError("convection needs the array `Arrays.Nu` (created by `MTK_GeoParams`)"))
+        compute_phase_param!(Arrays.ϕ, compute_meltfraction, Mat_tup, Phases, args1)
+        compute_phase_param!(Arrays.Rho, compute_density, Mat_tup, Phases, args1)
+        compute_phase_param!(Arrays.Cp, compute_heatcapacity, Mat_tup, Phases, args1)
+        compute_phase_param!(Arrays.Kc, compute_conductivity, Mat_tup, Phases, args1)
+        compute_convective_nusselt!(
+            Arrays.Nu, Arrays.Kc, Arrays.T_K, Arrays.ϕ, Arrays.Rho, Arrays.Cp, Phases, Arrays.Z, Δ[N], something(Num.convection_viscosity, DEFAULT_CONVECTION_VISCOSITY); z_split = Num.convection_z_split, g, ϕ_crit = Num.convection_phi,
+            α = Num.convection_alpha, coeffs = Num.convection_coeffs, Ra_crit = Num.convection_Ra_crit, Nu_max = Num.convection_Nu_max, strainrate = Num.convection_strainrate
+        )
+    end
     err, iter, apt_iter_total = 1.0, 1, 0
     while err > Num.convergence && iter < Num.max_iter
         compute_phase_param!(Arrays.ϕ, compute_meltfraction, Mat_tup, Phases, args1)
@@ -212,6 +235,7 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
         lithostatic_pressure!(Arrays.P, Arrays.Rho, g, Δ[N])
         compute_phase_param!(Arrays.Cp, compute_heatcapacity, Mat_tup, Phases, args1)
         compute_phase_param!(Arrays.Kc, compute_conductivity, Mat_tup, Phases, args1)
+        _convection(Num) && (Arrays.Kc .*= Arrays.Nu)         # enhanced conductivity of the melt-rich regions (Nusselt numbers of the beginning of the step)
         compute_phase_param!(Arrays.Hl, compute_latent_heat, Mat_tup, Phases, args1)
 
         if Num.deactivate_La_at_depth       # no latent heat and melt below `deactivationDepth`
