@@ -74,6 +74,26 @@ end
 @inline _viscosity_at(laws::Tuple{Any}, ::Tuple{}, z, T, ϕ, ε) = convective_viscosity(laws[1], T, ϕ, ε)
 @inline _viscosity_at(laws::Tuple, splits::Tuple, z, T, ϕ, ε) = z >= splits[1] ? convective_viscosity(laws[1], T, ϕ, ε) : _viscosity_at(Base.tail(laws), Base.tail(splits), z, T, ϕ, ε)
 
+# The outermost cells of a convecting region keep Nu = 1: the solver takes the conductivity of a cell face as the arithmetic mean of the two cells, so a jump of Nu across a region boundary
+# would let the cold wall conduct at about the average conductivity (Nu K / 2) instead of at its own. The cell layer at the boundary is the conductive thermal boundary layer of the region.
+@kernel function _convection_boundary_layer!(Nu_out, Nu_in)
+    I = @index(Global, Cartesian)
+    FT = eltype(Nu_out)
+    Nu_out[I] = Nu_in[I]
+    if Nu_in[I] > one(FT)
+        for d in 1:ndims(Nu_in), s in (-1, 1)
+            J = I + s * _unit(d, Nu_in)
+            inside = true
+            for k in 1:ndims(Nu_in)
+                inside &= (1 <= J[k] <= size(Nu_in, k))
+            end
+            if inside && Nu_in[J] <= one(FT)
+                Nu_out[I] = one(FT)
+            end
+        end
+    end
+end
+
 @inline _is_melt(ϕ, Phases, I, k, ϕc) = (ϕ[I, k] >= ϕc) & (Phases[I, k] != 0)
 
 """
@@ -85,9 +105,10 @@ see the header of `Convection.jl`; every region (e.g. two chambers at different 
 `Kc` is the conductivity, `T` the temperature in K and `Z` the vertical coordinate of the cells [m]. `visc` is a GeoParams creep law (any law with `compute_τII(law, ε; T, ϕ)`, e.g.
 `GiordanoMeltViscosity` or `ViscosityPartialMelt_Costa_etal_2009`), evaluated at the strain rate `strainrate` [1/s] (relevant for strain-rate dependent laws), or a tuple of laws for chambers of
 different composition: `visc[i]` applies to the regions whose mean `z` is above `z_split[i]` and the last law to the regions below all splits (`length(z_split) == length(visc) - 1`, `z_split` descending, e.g. `(-8.0e3,)`).
+With `boundary_layer = true` (default) the outermost cells of every region keep `Nu = 1`: the solver averages the conductivity of two cells arithmetically on their face, so a jump of `Nu` across a region boundary would let the cold wall conduct at about `Nu K/2`; the boundary layer of one cell is the conductive thermal boundary layer of the region.
 The conductivity to use in the energy equation is `Nu .* Kc`. The vertical direction is the last one; works for 2D, axisymmetric and 3D arrays on any backend.
 """
-function compute_convective_nusselt!(Nu, Kc, T, ϕ, Rho, Cp, Phases, Z, Δz, visc = DEFAULT_CONVECTION_VISCOSITY; z_split = (), g = 9.81, ϕ_crit = 0.5, α = 3.0e-5, coeffs = (0.0087, 0.135, -0.2943), Ra_crit = 1708.0, Nu_max = 100.0, strainrate = 1.0e-12)
+function compute_convective_nusselt!(Nu, Kc, T, ϕ, Rho, Cp, Phases, Z, Δz, visc = DEFAULT_CONVECTION_VISCOSITY; z_split = (), g = 9.81, ϕ_crit = 0.5, α = 3.0e-5, coeffs = (0.0087, 0.135, -0.2943), Ra_crit = 1708.0, Nu_max = 100.0, strainrate = 1.0e-12, boundary_layer = true)
     FT = eltype(Nu)
     nz = size(Nu, ndims(Nu))
     laws = visc isa Tuple ? visc : (visc,)
@@ -95,5 +116,9 @@ function compute_convective_nusselt!(Nu, Kc, T, ϕ, Rho, Cp, Phases, Z, Δz, vis
     length(splits) == length(laws) - 1 || throw(ArgumentError("z_split needs one depth less than the viscosity laws: got $(length(splits)) split(s) for $(length(laws)) law(s)"))
     issorted(splits; rev = true) || throw(ArgumentError("z_split must be in descending order (z is negative downward)"))
     _launch!(_convection_columns!, Nu, size(Nu)[1:(end - 1)], Nu, Kc, T, ϕ, Rho, Cp, Phases, Z, laws, splits, nz, FT(ϕ_crit), FT(g), FT(α), FT.(coeffs), FT(Ra_crit), FT(Nu_max), FT(strainrate), FT(Δz))
+    if boundary_layer                                  # the outermost cells of every region keep Nu = 1 (conductive boundary layer)
+        Nu0 = copy(Nu)
+        _launch!(_convection_boundary_layer!, Nu, size(Nu), Nu, Nu0)
+    end
     return nothing
 end

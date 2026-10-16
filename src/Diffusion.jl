@@ -28,6 +28,7 @@ Parameters that control the nonlinear diffusion solver.
     convection_alpha::Float64 = 3.0e-5
     convection_viscosity::Any = nothing    # GeoParams creep law of the melt-rich regions (`nothing`: `DEFAULT_CONVECTION_VISCOSITY`)
     convection_strainrate::Float64 = 1.0e-12
+    convection_boundary_layer::Bool = true  # the outermost cells of a convecting region keep Nu = 1 (conductive boundary layer)
     convection_z_split::Any = ()           # depths [m] separating chambers of different viscosity law (`convection_viscosity` a tuple of laws)
 end
 
@@ -255,7 +256,7 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
         compute_phase_param!(Arrays.Kc, compute_conductivity, Mat_tup, Phases, args1)
         compute_convective_nusselt!(
             Arrays.Nu, Arrays.Kc, Arrays.T_K, Arrays.ϕ, Arrays.Rho, Arrays.Cp, Phases, Arrays.Z, Δ[N], something(Num.convection_viscosity, DEFAULT_CONVECTION_VISCOSITY); z_split = Num.convection_z_split, g, ϕ_crit = Num.convection_phi,
-            α = Num.convection_alpha, coeffs = Num.convection_coeffs, Ra_crit = Num.convection_Ra_crit, Nu_max = Num.convection_Nu_max, strainrate = Num.convection_strainrate
+            α = Num.convection_alpha, coeffs = Num.convection_coeffs, Ra_crit = Num.convection_Ra_crit, Nu_max = Num.convection_Nu_max, strainrate = Num.convection_strainrate, boundary_layer = Num.convection_boundary_layer
         )
     end
     err, iter, apt_iter_total = 1.0, 1, 0

@@ -107,6 +107,7 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     convection_alpha::Float64 = 3.0e-5    # thermal expansivity [1/K]
     convection_viscosity::Any = nothing   # GeoParams creep law for the viscosity of the melt-rich regions (`nothing`: Giordano et al. 2008 hydrous rhyolite with the Costa et al. 2009 crystal correction)
     convection_strainrate::Float64 = 1.0e-12   # reference strain rate [1/s] at which the viscosity law is evaluated
+    convection_boundary_layer::Bool = true   # the outermost cells of a convecting region keep Nu = 1 (conductive boundary layer, see `compute_convective_nusselt!`)
     convection_z_split::Any = ()          # chambers of different composition: depths z [m, descending, negative downward] separating the laws of a tuple `convection_viscosity` (law i above split i, the last law below all)
     apt_tol::Float64 = 1.0e-6             # implicit enthalpy solver: tolerance of the pseudo-transient iterations (temperature error relative to max(|T|, 1))
     apt_max_iter::Int64 = 50_000          # implicit enthalpy solver: maximum number of pseudo-transient iterations per solve

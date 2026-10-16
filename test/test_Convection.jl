@@ -55,7 +55,7 @@ end
 # Nusselt numbers of the arrays of `convection_arrays`, optionally with another viscosity law
 function nusselt_of(A, visc = DEFAULT_CONVECTION_VISCOSITY; kw...)
     Nu = similar(A.Kc)
-    compute_convective_nusselt!(Nu, A.Kc, A.T, A.ϕ, A.Rho, A.Cp, A.Phases, A.Z, 50.0, visc; kw...)
+    compute_convective_nusselt!(Nu, A.Kc, A.T, A.ϕ, A.Rho, A.Cp, A.Phases, A.Z, 50.0, visc; boundary_layer = false, kw...)
     return Nu
 end
 
@@ -77,6 +77,20 @@ end
     # the value is the Nusselt number of the run: thickness 9 cells (air cell excluded), contrast 80 K
     η = convective_viscosity(DEFAULT_CONVECTION_VISCOSITY, 1173.15 + 80 / 9, 0.8, 1.0e-12)
     @test Nu[1, 10] ≈ convective_nusselt(80.0, 9 * 50.0, 2500.0, 3.0 / (2500.0 * 1100.0), η) rtol = 1.0e-10
+end
+
+@testset "conductive boundary layer of a convecting region" begin
+    # a block of convecting cells: its ring of edge cells (also in the horizontal direction) keeps Nu = 1, the interior is unchanged
+    B = convection_arrays((9, 30)); B.ϕ .= 0.2; B.T .= 1173.15 + 0.0; B.ϕ[3:7, 8:20] .= 0.8; B.T[3:7, 8:20] .+= range(0.0, 100.0; length = 13)'
+    NB = similar(B.Kc); compute_convective_nusselt!(NB, B.Kc, B.T, B.ϕ, B.Rho, B.Cp, B.Phases, B.Z, 50.0)
+    N0 = similar(B.Kc); compute_convective_nusselt!(N0, B.Kc, B.T, B.ϕ, B.Rho, B.Cp, B.Phases, B.Z, 50.0; boundary_layer = false)
+    @test all(NB[4:6, 9:19] .> 1.0) && NB[4:6, 9:19] == N0[4:6, 9:19]
+    @test all(N0[3:7, 8:20] .> 1.0)
+    @test all(NB[3, 8:20] .== 1.0) && all(NB[7, 8:20] .== 1.0) && all(NB[3:7, 8] .== 1.0) && all(NB[3:7, 20] .== 1.0)
+    @test all(NB[[1, 2, 8, 9], :] .== 1.0)
+    # on the face between the boundary layer and the cold wall the (arithmetic-mean) conductivity is the wall's own, K
+    Keff = B.Kc .* NB
+    @test (Keff[3, 12] + Keff[2, 12]) / 2 == B.Kc[3, 12]
 end
 
 @testset "two chambers with their own viscosity laws" begin
@@ -101,7 +115,7 @@ end
     @test all(Nu[1, 1, 6:14] .> 1.0) && all(Nu[3:end, 3:end, :] .== 1.0)
     a = convection_arrays((6, 30)); Na = nusselt_of(a)
     j = map(x -> JLArray(x), convection_arrays((6, 30))); Nj = similar(j.Kc)
-    compute_convective_nusselt!(Nj, j.Kc, j.T, j.ϕ, j.Rho, j.Cp, j.Phases, j.Z, 50.0)
+    compute_convective_nusselt!(Nj, j.Kc, j.T, j.ϕ, j.Rho, j.Cp, j.Phases, j.Z, 50.0; boundary_layer = false)
     @test Array(Nj) ≈ Na
     f = convection_arrays((6, 30); FT = Float32); Nf = nusselt_of(f)
     @test eltype(Nf) == Float32
