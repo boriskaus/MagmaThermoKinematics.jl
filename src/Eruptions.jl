@@ -241,6 +241,12 @@ function pending_withdrawal!(state::EruptionState, h_requested, h_available, Δ;
     return h_realizable > 2Δ ? h_realizable : 0.0
 end
 
+"""
+    commit_pending_withdrawal!(state, h_realized) -> state
+
+Debit the realised drained thickness `h_realized` [m] from the queue of [`pending_withdrawal!`](@ref) and clear the
+queue once it is used up.
+"""
 function commit_pending_withdrawal!(state::EruptionState, h_realized)
     state.h_pending -= h_realized
     if state.h_pending <= 64eps(max(h_realized, 1.0))
