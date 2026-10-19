@@ -15,6 +15,8 @@ This mutable structure represents numerical parameters in the program. It is use
 - `dx::Float64`: Grid spacing in the x direction.
 - `dz::Float64`: Grid spacing in the z direction.
 - `Tsurface_Celsius::Float64`: Surface temperature in Celsius.
+- `sticky_air_BC::Bool`: hold every cell of phase `AirPhase` at `Tsurface_Celsius` at the end of each time step (default `false`). The usual alternative, a very large air conductivity, makes the air the fastest-diffusing phase and so shrinks the time step of the whole model (see `bc_sticky_air!`).
+- `AirPhase::Int64`: phase number of the air (default 0), used by `sticky_air_BC`.
 - `Geotherm::Float64`: Geothermal gradient in K/m.
 - `maxTime_Myrs::Float64`: Maximum simulation time in Myrs.
 - `maxTime::Float64`: Maximum simulation time in seconds.
@@ -76,6 +78,8 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     dy::Float64 = L / (Ny - 1)
     dz::Float64 = H / (Nz - 1)        # grid spacing in z
     Tsurface_Celsius::Float64 = 0               # Surface T in Celsius
+    sticky_air_BC::Bool = false           # hold the air phase at `Tsurface_Celsius` every time step?
+    AirPhase::Int64 = 0               # phase number of the air
     Geotherm::Float64 = 40 / 1.0e3          # in K/m
     maxTime_Myrs::Float64 = 1.5             # maximum timestep
     maxTime::Float64 = maxTime_Myrs * SecYear * 1.0e6 # maximum timestep  in seconds
