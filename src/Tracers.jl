@@ -376,17 +376,25 @@ end
 """
     update_Tvec!(Tracers::StructArray, time)
 
-Updates temperature & time vector on every tracer
+Updates temperature & time vector on every tracer.
+
+Tracers that are first sampled in the same call share one `time_vec` object (it is pushed
+once per call), so the time history costs one vector per sampling call instead of one per
+tracer. Treat `time_vec` as read-only.
 """
 function update_Tvec!(Tracers::StructArray, time_val::Float64)
-
-    if isassigned(Tracers, 1)
-        for iT in 1:length(Tracers)
-            FT = eltype(LazyRow(Tracers, iT).time_vec)
-            LazyRow(Tracers, iT).time_vec = push!(LazyRow(Tracers, iT).time_vec, FT(time_val))
-            LazyRow(Tracers, iT).T_vec = push!(LazyRow(Tracers, iT).T_vec, FT(LazyRow(Tracers, iT).T))
+    isassigned(Tracers, 1) || return Tracers
+    time_vecs, T_vecs, T = Tracers.time_vec, Tracers.T_vec, Tracers.T
+    shared = nothing    # time_vec handed to every tracer sampled for the first time in this call
+    for iT in eachindex(time_vecs, T_vecs, T)
+        tv, Tv = time_vecs[iT], T_vecs[iT]
+        if isempty(tv) && isempty(Tv)
+            shared === nothing && (shared = tv)
+            tv = time_vecs[iT] = shared
         end
+        push!(Tv, T[iT])
+        length(tv) < length(Tv) && push!(tv, time_val)
+        length(tv) == length(Tv) || error("Tracer $iT: time_vec (length $(length(tv))) and T_vec (length $(length(Tv))) are out of sync")
     end
-
     return Tracers
 end
