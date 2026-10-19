@@ -17,7 +17,12 @@ Parameters that control the nonlinear diffusion solver.
     flux_bottom::Float64 = 0.0             # flux @ bottom, in case flux_bottom_BC=true
     deactivate_La_at_depth::Bool = false           # no latent heat and melt below `deactivationDepth`?
     deactivationDepth::Float64 = -15.0e3           # depth [m] below which latent heat and melt are switched off
+    sticky_air_BC::Bool = false            # hold the air phase at `Tsurface_Celsius` (see `bc_sticky_air!`)
+    AirPhase::Int64 = 0                # phase number of the air
+    Tsurface_Celsius::Float64 = 0.0               # surface temperature [C]
 end
+
+_sticky_air(Num) = hasproperty(Num, :sticky_air_BC) ? Num.sticky_air_BC : false       # lightweight parameter structs have no `sticky_air_BC` field
 
 "Launch the KernelAbstractions kernel `kernel!` over `ndrange` on the backend of `A`."
 function _launch!(kernel!, A, ndrange, args...)
@@ -133,6 +138,34 @@ function bc_T!(Tnew, T)
     selectdim(Tnew, N, 1) .= selectdim(T, N, 1)
     selectdim(Tnew, N, n) .= selectdim(T, N, n)
     return nothing
+end
+
+"""
+    bc_sticky_air!(T, Phases, AirPhase, Tair)
+
+Hold every cell of phase `AirPhase` at the temperature `Tair`.
+
+The air above the topography is a numerical device that keeps the ground surface
+at a prescribed temperature. Emulating that with a very high air conductivity
+makes the air the fastest-diffusing phase of the model, and since the time step
+is set by the largest diffusivity anywhere (`κ_time`), the whole domain is then
+advanced with a time step that is one to three orders of magnitude smaller than
+the rock requires. Prescribing `T` in the air instead imposes the same surface
+condition directly and leaves `κ_time` to the rocks.
+
+`Phases` is the current phase array, so the condition follows the surface when
+sills inflate the model and displace the host rock.
+"""
+function bc_sticky_air!(T, Phases, AirPhase, Tair)
+    _launch!(_bc_sticky_air!, T, size(T), T, Phases, AirPhase, Tair)
+    return nothing
+end
+
+@kernel function _bc_sticky_air!(T, @Const(Phases), AirPhase, Tair)
+    I = @index(Global, Cartesian)
+    @inbounds if Phases[I] == AirPhase
+        T[I] = Tair
+    end
 end
 
 """
@@ -252,6 +285,7 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
     end
     (isfinite(err) && err <= Num.convergence) ||
         error("$(N)D nonlinear diffusion did not converge after $(iter - 1) iterations (error=$(err), tolerance=$(Num.convergence)); reduce Δt or the relaxation parameter Num.ω=$(Num.ω) [0-1]")
+    _sticky_air(Num) && bc_sticky_air!(Arrays.Tnew, Phases, Num.AirPhase, FT(Num.Tsurface_Celsius))     # once per time step
     Num.verbose && println("  ----  $(iter - 1) nonlinear iterations, $(apt_iter_total) pseudo-transient iterations in total")
     return nothing
 end
