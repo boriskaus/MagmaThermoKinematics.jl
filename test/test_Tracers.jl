@@ -49,6 +49,21 @@ end
         end
     end
 
+    @testset "update_Tvec! shares time_vec between tracers sampled together" begin
+        Tr = StructArray([Tracer{Float32}(coord = [0.0, 0.0], T = 900.0 + i) for i in 1:3])
+        update_Tvec!(Tr, 1.0)
+        push!(Tr, Tracer{Float32}(coord = [0.0, 0.0], T = 1000.0))
+        update_Tvec!(Tr, 2.0)
+        update_Tvec!(Tr, 3.0)
+        @test Tr.time_vec[1] === Tr.time_vec[2] === Tr.time_vec[3]
+        @test Tr.time_vec[1] == Float32[1, 2, 3]
+        @test Tr.time_vec[4] == Float32[2, 3]
+        @test Tr.T_vec[2] == Float32[902, 902, 902]
+        @test Tr.T_vec[4] == Float32[1000, 1000]
+        Tr.T_vec[1] = Float32[]     # out-of-sync history must not be silently extended
+        @test_throws "out of sync" update_Tvec!(Tr, 4.0)
+    end
+
     @testset "PhaseRatioFromTracers! DistanceWeighted, tracers on a node" begin
         Grid = CreateGrid(size = (5, 5), x = (0.0, 1.0), z = (0.0, 1.0))
         node = [Grid.coord1D[1][3], Grid.coord1D[2][3]]
