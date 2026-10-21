@@ -20,7 +20,7 @@ Parameters that control the nonlinear diffusion solver.
     sticky_air_BC::Bool = false            # hold the air phase at `Tsurface_Celsius` (see `bc_sticky_air!`)
     AirPhase::Int64 = 0                # phase number of the air
     Tsurface_Celsius::Float64 = 0.0               # surface temperature [C]
-    convection::Bool = false               # parameterised convection of melt-rich regions (see `add_convective_conductivity!`); needs the implicit solver
+    convection::Bool = false               # parameterised convection of melt-rich regions (see `compute_convective_nusselt!`); needs the implicit solver
     convection_phi::Float64 = 0.5          # melt fraction above which a region convects
     convection_Nu_max::Float64 = 100.0
     convection_coeffs::NTuple{3, Float64} = (0.0087, 0.135, -0.2943)
