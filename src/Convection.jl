@@ -2,8 +2,8 @@
 #
 # A body of low-crystallinity magma convects vigorously, which keeps its interior close to isothermal and moves heat to its boundaries much faster than
 # conduction does. This is mimicked by an enhanced ("hyper-") conductivity `K_eff = Nu K` in every connected melt-rich region, with the Nusselt number
-# from the Rayleigh number of the region, `Ra = ρ g α ΔT L³ / (κ η)`, with the high-Prandtl-number fit `log10 Nu = a₂ log10(Ra)² + a₁ log10(Ra) + a₀` of Grossmann & Lohse (2001) as used for
-# magma chambers by Gerbault et al. (2025, Solid Earth 16, 1307) and `Nu = 1` below the critical Rayleigh number 1708:
+# from the Rayleigh number of the region, `Ra = ρ g α ΔT L³ / (κ η)`, with the high-Prandtl-number fit `log10 Nu = a₂ log10(Ra)² + a₁ log10(Ra) + a₀` of Grossmann & Lohse (2001), which
+# Gerbault et al. (2025, Solid Earth 16, 1307) adopted for magma chambers and checked with their own CFD calculations, and `Nu = 1` below the critical Rayleigh number 1708:
 #   - the region is a vertical run of cells with melt fraction ϕ ≥ ϕ_c in a column (not air); `L` is its thickness and `ΔT` the temperature contrast across it,
 #   - `κ = K/(ρ cp)` and `ρ` are averaged over the run, `η` is the viscosity of a crystal-bearing melt at the mean temperature and melt fraction of the run:
 #     a GeoParams viscosity law (default: Giordano et al. 2008 rhyolitic melt with the Costa et al. 2009 crystal correction).
@@ -16,7 +16,8 @@
 Nusselt number of a convecting layer of thickness `L` [m] with temperature contrast `ΔT` [K], density `ρ`, thermal diffusivity `κ` [m²/s] and viscosity `η` [Pa s], with the
 Rayleigh number `Ra = ρ g α ΔT L³/(κ η)`: `Nu = 1` below `Ra_crit`, and above it
 `log10(Nu) = a₂ log10(Ra)² + a₁ log10(Ra) + a₀`, `coeffs = (a₂, a₁, a₀)`, bounded by `Nu_max`. The default coefficients are the fit to the experiments and simulations of
-Grossmann & Lohse (2001) for Prandtl numbers above 10⁶ (where `Nu` no longer depends on the Prandtl number) used for magma chambers by Gerbault et al. (2025, Solid Earth 16, 1307);
+Grossmann & Lohse (2001) for Prandtl numbers above 10⁶ (where `Nu` no longer depends on the Prandtl number), which Gerbault et al. (2025, Solid Earth 16, 1307)
+adopted for magma chambers and checked with their own CFD calculations;
 the critical Rayleigh number is that of a layer with rigid boundaries (1708).
 """
 function convective_nusselt(ΔT, L, ρ, κ, η; g = 9.81, α = 3.0e-5, coeffs = (0.0087, 0.135, -0.2943), Ra_crit = 1708.0, Nu_max = 100.0)
