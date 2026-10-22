@@ -20,9 +20,15 @@ Parameters that control the nonlinear diffusion solver.
     sticky_air_BC::Bool = false            # hold the air phase at `Tsurface_Celsius` (see `bc_sticky_air!`)
     AirPhase::Int64 = 0                # phase number of the air
     Tsurface_Celsius::Float64 = 0.0               # surface temperature [C]
+    out_of_plane::Bool = false             # planar 2D: add the out-of-plane heat loss (see `add_out_of_plane_loss!`)
+    out_of_plane_factor::Float64 = 1.5
+    out_of_plane_smooth::Int64 = 10
+    out_of_plane_Lmin::Float64 = 1.0e3
 end
 
 _sticky_air(Num) = hasproperty(Num, :sticky_air_BC) ? Num.sticky_air_BC : false       # lightweight parameter structs have no `sticky_air_BC` field
+
+_out_of_plane(Num) = hasproperty(Num, :out_of_plane) ? Num.out_of_plane : false        # lightweight parameter structs have no `out_of_plane` field
 
 "Launch the KernelAbstractions kernel `kernel!` over `ndrange` on the backend of `A`."
 function _launch!(kernel!, A, ndrange, args...)
@@ -236,6 +242,11 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
     args1 = haskey(Arrays, :index) ? (; T = Arrays.T_K, P = Arrays.P, index = Arrays.index) : (; T = Arrays.T_K, P = Arrays.P)
     compute_phase_param!(Arrays.Hr, radioactive_heat_at_Z, Mat_tup, Phases, (; Z = Arrays.Z))   # independent of T
     haskey(Arrays, :Qsrc) && (Arrays.Hr .+= Arrays.Qsrc)         # volumetric source term [W/m³], set by the user
+    if _out_of_plane(Num)                                         # out-of-plane heat loss of a 2D section (lagged: T and Kc of the previous step)
+        (N == 2 && !Num.axisymmetric) || throw(ArgumentError("out_of_plane is available for planar 2D models only"))
+        haskey(Arrays, :Tbg) || throw(ArgumentError("out_of_plane needs the background temperature `Arrays.Tbg`"))
+        add_out_of_plane_loss!(Arrays.Hr, Arrays.T, Arrays.Tbg, Arrays.Kc, Arrays.R, Phases; factor = Num.out_of_plane_factor, smooth = Num.out_of_plane_smooth, Lmin = Num.out_of_plane_Lmin, air_phase = hasproperty(Num, :AirPhase) ? Num.AirPhase : 0)
+    end
     err, iter, apt_iter_total = 1.0, 1, 0
     while err > Num.convergence && iter < Num.max_iter
         compute_phase_param!(Arrays.ϕ, compute_meltfraction, Mat_tup, Phases, args1)

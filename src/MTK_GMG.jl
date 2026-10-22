@@ -119,6 +119,7 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
     FT = eltype(Arrays.T_init)
     Tsurf, Geotherm = FT(Num.Tsurface_Celsius), FT(Num.Geotherm)
     Arrays.T_init .= @. Tsurf - Arrays.Z * Geotherm                 # Initial (linear) temperature profile
+    haskey(Arrays, :Tbg) && (Arrays.Tbg .= Arrays.T_init)           # background temperature of the out-of-plane loss (2D models)
 
     # Open pvd file if requested
     if Num.Output_VTK
@@ -148,7 +149,7 @@ function MTK_initialize_arrays(Num::NumericalParameters)
     kw = (; backend = Num.backend, FloatType = Num.FloatType)
     pt_arrays = Num.solver !== :explicit ? (pt_C = 0, pt_b = 0, pt_phiold = 0, pt_res = 0, pt_Tk = 0, pt_Tkm1 = 0, pt_Tn = 0) : (;)     # work arrays of the implicit solver
     if Num.dim == 2
-        Arrays = CreateArrays(Dict((Num.Nx, Num.Nz) => merge((T = 0, T_K = 0, Tnew = 0, T_init = 0, T_it_old = 0, Tupdate = 0, Kc = 1, Rho = 1, Cp = 1, Hr = 0, Hq = 0, Qsrc = 0, Qrelax = 0, Qenth = 0, Hl = 0, ϕ = 0, dϕdT = 0, R = 0, Z = 0, P = 0), pt_arrays)); kw...)
+        Arrays = CreateArrays(Dict((Num.Nx, Num.Nz) => merge((T = 0, T_K = 0, Tnew = 0, T_init = 0, T_it_old = 0, Tupdate = 0, Kc = 1, Rho = 1, Cp = 1, Hr = 0, Hq = 0, Qsrc = 0, Qrelax = 0, Qenth = 0, Tbg = 0, Hl = 0, ϕ = 0, dϕdT = 0, R = 0, Z = 0, P = 0), pt_arrays)); kw...)
     else
         Arrays = CreateArrays(Dict((Num.Nx, Num.Ny, Num.Nz) => merge((T = 0, T_K = 0, Tnew = 0, T_init = 0, T_it_old = 0, Tupdate = 0, Kc = 1, Rho = 1, Cp = 1, Hr = 0, Hq = 0, Qsrc = 0, Qrelax = 0, Qenth = 0, Hl = 0, ϕ = 0, dϕdT = 0, X = 0, Y = 0, Z = 0, P = 0), pt_arrays)); kw...)
     end
@@ -169,6 +170,7 @@ function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParam
         Temp, Phases = CartData_input.fields.Temp, CartData_input.fields.Phases
     end
     copy_to_device!(Arrays.T_init, Temp)
+    haskey(Arrays, :Tbg) && copy_to_device!(Arrays.Tbg, Temp)               # background temperature of the out-of-plane loss (2D models)
     copy_to_device!(Arrays.Phases, Phases)
     copy_to_device!(Arrays.Phases_init, Phases)
 
