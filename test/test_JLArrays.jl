@@ -110,4 +110,24 @@ end
         @test jl.Phases == cpu.Phases
         @test jl.MeltFraction ≈ cpu.MeltFraction rtol = 1.0e-12    # GPU reductions sum in a different order
     end
+
+    @testset "revolved eruption sink and inflation" begin
+        using MagmaThermoKinematics: StructArray, Tracer, chamber_geometry, revolved_inflation_rate
+        dx = 100.0; x = range(-3000.0, 3000.0, step = dx); z = range(-6000.0, 500.0, step = dx)
+        cells = [CartesianIndex(i, j) for i in eachindex(x), j in eachindex(z) if abs(x[i]) <= 4 * dx && -3500.0 <= z[j] <= -2800.0]
+        event = (; cells, f = 0.2, geo = chamber_geometry(cells, (dx, dx), (x, z)))
+        T0 = [zz < 0 ? 700.0 + 0.1 * abs(zz) + 50 * exp(-((xx / 800)^2 + ((zz + 3000) / 500)^2)) : 10.0 for xx in x, zz in z]
+        tr = StructArray([Tracer{Float32}(num = 1, coord = [x[10], -3000.0], Phase = 1)])
+        Tcpu = copy(T0); Ucpu, _ = erupt!(Tcpu, similar(Tcpu), tr, (x, z), event; revolve = true, nθ = 8, rng = MersenneTwister(1))
+        Tjl = JLArray(copy(T0)); Ujl, _ = erupt!(Tjl, similar(Tjl), tr, (x, z), event; revolve = true, nθ = 8, rng = MersenneTwister(1))
+        @test Ujl[1] isa JLArray
+        @test Array(Ujl[1]) ≈ Ucpu[1] rtol = 1.0e-10 atol = 1.0e-12
+        @test Array(Ujl[2]) ≈ Ucpu[2] rtol = 1.0e-10
+        @test Array(Tjl) ≈ Tcpu rtol = 1.0e-10
+        Xc = ([xx for xx in x, zz in z], [zz for xx in x, zz in z]); Xj = map(JLArray, Xc)
+        rate_c = revolved_inflation_rate(Xc, [0.0, 0.0], [300.0, 500.0], [-3000.0, -3200.0], [600.0, 800.0], 1.0e9; thickness = 10.0, nθ = 4)
+        rate_j = revolved_inflation_rate(Xj, [0.0, 0.0], [300.0, 500.0], [-3000.0, -3200.0], [600.0, 800.0], 1.0e9; thickness = 10.0, nθ = 4)
+        @test Array(rate_j[2]) ≈ rate_c[2] rtol = 1.0e-10
+        @test Array(rate_j[1]) ≈ rate_c[1] rtol = 1.0e-10 atol = 1.0e-12 * maximum(abs, rate_c[1])
+    end
 end
