@@ -68,6 +68,8 @@ include("Fields.jl")
 export CreateArrays
 
 include("Convection.jl")
+include("OutOfPlane.jl")
+export out_of_plane_width2, add_out_of_plane_loss!
 include("Diffusion.jl")
 include("PseudoTransient.jl")
 export Numeric_params, Nonlinear_Diffusion_step!, diffusion_step!, apt_diffusion_solve!, lithostatic_pressure!, compute_phase_param!, GridArray!, bc_zero_flux!, bc_T!, bc_z_bottom_flux!, bc_sticky_air!
