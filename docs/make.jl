@@ -112,6 +112,7 @@ makedocs(;
                 "MTK_GMG 3D Examples" => "man/example_mtk_gmg_3d.md"
             ],
             "Numerics and Physics" => "man/numerics.md",
+            "Implicit Enthalpy Solver" => "man/implicit_solver.md",
             "Eruptions" => "man/eruptions.md",
             "Zircon ages" => "man/zircon_growth.md",
             "Upgrading" => Any[

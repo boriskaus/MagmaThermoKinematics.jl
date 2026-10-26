@@ -55,7 +55,9 @@ An important point to keep in mind, though, is that $\partial\phi/\partial T$ sh
 
 ## Explicit Time Discretisation
 
-The diffusion operator in (A3) is discretised explicitly:
+By default the diffusion operator in (A3) is discretised explicitly. An implicit alternative, which solves a backward-Euler step of the enthalpy balance and allows much larger time steps, is described in [Implicit Enthalpy Solver](implicit_solver.md) (`NumParam(solver = :implicit_enthalpy)`).
+
+The explicit discretisation is:
 
 $$T^{n+1}_{i,j} = T^*_{i,j} + \frac{\Delta t}{\rho C_p^{\text{eff}}} \left[\left(\nabla \cdot k \nabla T\right)^n_{i,j} + H_{i,j}\right] \tag{A4}$$
 
@@ -64,7 +66,7 @@ $$T^{n+1}_{i,j} = T^*_{i,j} + \frac{\Delta t}{\rho C_p^{\text{eff}}} \left[\left
 The spatial derivatives in (A4) are evaluated on a staggered grid:
 - Temperature $T$ and scalar material properties ($\rho$, $C_p$, $\phi$) are defined at cell centers.
 - Heat fluxes $q = -k\,\nabla T$ are defined on cell faces (half-integer indices).
-- Conductivity $k$ is harmonically averaged to cell faces to conserve flux continuity across material interfaces.
+- Conductivity $k$ on a cell face is the arithmetic mean of the two adjacent cells.
 
 The discrete Laplacian in 2D is:
 
@@ -89,7 +91,7 @@ Because $C_p^{\text{eff}}$ itself depends on $T^{n+1}$ through $\partial\phi/\pa
 
 **Predictor** — evaluate material properties at the current iterate $T^{(k)}$:
 
-$$C_p^{\text{eff},(k)} = C_p\!\left(T^{(k)}\right) - L\,\frac{\partial \phi}{\partial T}\bigg|_{T^{(k)}} \tag{A5}$$
+$$C_p^{\text{eff},(k)} = C_p\!\left(T^{(k)}\right) + L\,\frac{\partial \phi}{\partial T}\bigg|_{T^{(k)}} \tag{A5}$$
 
 **Corrector** — advance temperature with the updated effective heat capacity:
 
