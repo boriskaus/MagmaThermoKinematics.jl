@@ -131,6 +131,55 @@ Supported configurations include:
 - 2D axisymmetric (via specific workflows in examples).
 - 3D Cartesian.
 
+### Parameterised convection of melt-rich regions
+
+Magma with a low crystal content convects vigorously, which keeps its interior close to isothermal and moves heat to its boundaries much faster than conduction. With `NumParam(solver = :implicit_enthalpy, convection = true)` this is mimicked by an enhanced ("hyper-") conductivity ``K_{eff} = Nu\,K`` in every connected melt-rich region, with the Nusselt number ``Nu`` from the Rayleigh number of the region. The same approach, an effective conductivity ``k = k_m Nu(Ra)``, is used for magma chambers by [Gerbault et al. (2025)](https://doi.org/10.5194/se-16-1307-2025). The default is `convection = false`, which leaves everything unchanged.
+
+**Regions.** A region is a vertical run of cells in a column with melt fraction ``\phi \ge`` `convection_phi` (default 0.5), air cells (phase 0) excluded. Every run has its own thickness, temperature contrast and Rayleigh number, so chambers at different depths, separated by cells with less melt, convect independently. Nothing is prescribed: the thickness is measured from the model at every time step.
+
+**Rayleigh and Nusselt number.** For each region
+
+```math
+Ra = \frac{\rho\, g\, \alpha\, \Delta T\, L^3}{\kappa\, \eta}
+```
+
+is computed from the thickness ``L`` of the region, the temperature contrast ``\Delta T`` across it (maximum minus minimum temperature), the mean density ``\rho`` and thermal diffusivity ``\kappa = K/(\rho c_p)``, the thermal expansivity ``\alpha`` and the viscosity ``\eta`` at the mean temperature and melt fraction of the region. The Nusselt number is ``Nu = 1`` for ``Ra`` below `convection_Ra_crit` (1708, the onset of convection of a layer with rigid boundaries) and otherwise
+
+```math
+\log_{10} Nu = a_2 \log_{10}(Ra)^2 + a_1 \log_{10}(Ra) + a_0 ,
+```
+
+with `convection_coeffs` ``= (a_2, a_1, a_0)``, bounded by `convection_Nu_max`. The default coefficients ``(0.0087, 0.1350, -0.2943)`` are the fit for very high Prandtl numbers (``Pr > 10^6``, where ``Nu`` no longer depends on ``Pr``) to the data of Grossmann & Lohse (2000, 2001). Gerbault et al. (2025, Eq. 10) adopted this fit from that earlier work for magma chambers and checked it with their own CFD calculations. They can be replaced, for example by ``Nu = 0.089\,Ra^{1/3}`` with `(0.0, 1/3, log10(0.089))`. Once the interior is homogenised within a time step a larger `convection_Nu_max` changes the result little but makes the implicit solve more expensive.
+
+**Viscosity.** `convection_viscosity` is any GeoParams creep law, evaluated with the temperature and melt fraction of the region at the reference strain rate `convection_strainrate` (``10^{-12}`` 1/s; it only matters for strain-rate dependent laws). The default (`nothing`) is the viscosity of a hydrous rhyolitic melt of [Giordano et al. (2008)](https://doi.org/10.1016/j.epsl.2008.03.016) (72 wt % SiO₂, 6 wt % H₂O) with the crystal correction of Costa et al. (2009), `ViscosityPartialMelt_Costa_etal_2009`. For chambers of different composition `convection_viscosity` can be a tuple of laws, and `convection_z_split` the depths ``z`` [m] that separate them (descending, negative downward): law ``i`` applies to the regions whose mean depth is above split ``i``, and the last law to those below all splits.
+
+**Conductive boundary layer.** The solver takes the conductivity of a cell face as the arithmetic mean of the two neighbouring cells. A jump of ``Nu`` across the edge of a region would therefore let the cold wall conduct at about ``Nu K/2`` instead of ``K``. With `convection_boundary_layer = true` (default) the outermost cells of every region (in all directions) keep ``Nu = 1``; this cell layer is the conductive thermal boundary layer of the region.
+
+**Implementation.** The Nusselt numbers are computed once per time step from the state at the beginning of the step (`Arrays.Nu`, created by `MTK_GeoParams`), and the conductivity of every nonlinear iteration is multiplied by them; this keeps the iteration free of the on/off switching of the regions. The explicit solver is refused with an `ArgumentError`, because the enhanced conductivity is far above its stability limit. The option works for planar 2D, axisymmetric and 3D models and on all backends. With `convection = true` the VTK files contain the Nusselt number of the last step (`Nusselt`) and a flag for the convecting regions (`Convecting`). The scalar function `convective_nusselt` and the array routine `compute_convective_nusselt!` can also be used on their own.
+
+| `NumParam` field | default | meaning |
+|:-----------------|:--------|:--------|
+| `convection` | `false` | switch on convection (needs `solver = :implicit_enthalpy`) |
+| `convection_phi` | 0.5 | melt fraction above which a region convects |
+| `convection_Nu_max` | 100 | upper bound of ``Nu`` |
+| `convection_coeffs` | `(0.0087, 0.135, -0.2943)` | ``(a_2, a_1, a_0)`` of the ``Nu``-``Ra`` fit |
+| `convection_Ra_crit` | 1708 | ``Nu = 1`` below this ``Ra`` |
+| `convection_alpha` | ``3\cdot10^{-5}`` | thermal expansivity [1/K] |
+| `convection_viscosity` | `nothing` | GeoParams creep law, or a tuple of laws (default: Giordano et al. 2008 rhyolite with Costa et al. 2009 crystal correction) |
+| `convection_strainrate` | ``10^{-12}`` | strain rate [1/s] at which the law is evaluated |
+| `convection_z_split` | `()` | depths [m] separating the laws of a tuple |
+| `convection_boundary_layer` | `true` | outermost cells of a region keep ``Nu = 1`` |
+
+```julia
+Num = NumParam(
+    solver = :implicit_enthalpy, convection = true, fac_dt = 4.0,
+    convection_phi = 0.6,
+    convection_viscosity = (rhyolite_law, basalt_law), convection_z_split = (-8.0e3,),   # rhyolite above 8 km depth, basalt below
+)
+```
+
+The thickness is the vertical extent of the run of melt-rich cells, which is the relevant length for a layer that is wide compared with its thickness; a narrow body that is taller than it is wide convects less than this estimate gives.
+
 ## Material Parameter Handling
 
 Material properties are integrated through GeoParams-based parameterizations and package-level helper routines for conductivity, density, heat capacity, melt fraction, and related quantities.

@@ -33,6 +33,7 @@ This mutable structure represents numerical parameters in the program. It is use
 - `time::Float64`: Current time.
 - `nt::Int64`: Total number of time steps.
 - `it::Int64`: Current iteration.
+- `convection::Bool`: parameterised convection (default `false`): the conductivity of every connected region with melt fraction ≥ `convection_phi` is multiplied by the Nusselt number of its Rayleigh number (`log10 Nu` quadratic in `log10 Ra` with coefficients `convection_coeffs`, `Nu = 1` below `convection_Ra_crit`, bounded by `convection_Nu_max`); needs `solver = :implicit_enthalpy`. `convection_alpha`, `convection_viscosity` (a GeoParams creep law) and `convection_strainrate` set the scaling; `convection_viscosity` may be a tuple of laws with `convection_z_split` the depths separating them (chambers of different composition), see `compute_convective_nusselt!`.
 - `ω::Float64`: Relaxation parameter for nonlinear iterations (default 0.5; values ≥ 0.7 may not converge at high resolution).
 - `seed::Union{Nothing, Int64}`: seed of the random number generator at the start of a simulation (reproducible random sills); `nothing` leaves the generator unchanged.
 - `print_injections::Bool`: print a line for every injected dike/sill (default true).
@@ -100,6 +101,16 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     it::Int64 = 0               # current iteration
     ω::Float64 = 0.5             # relaxation parameter for nonlinear iterations
     solver::Symbol = :explicit            # diffusion step: `:explicit` (default), or `:implicit_enthalpy` (implicit enthalpy method, Newton-linearised and solved with accelerated pseudo-transient iterations; `fac_dt` may then exceed 1; alias `:apt`)
+    convection::Bool = false              # parameterised convection of melt-rich regions: conductivity multiplied by the Nusselt number of the region (needs `solver = :implicit_enthalpy`)
+    convection_phi::Float64 = 0.5         # melt fraction above which a region convects
+    convection_Nu_max::Float64 = 100.0    # upper bound of the Nusselt number
+    convection_coeffs::NTuple{3, Float64} = (0.0087, 0.135, -0.2943)   # log10 Nu = a₂ log10(Ra)² + a₁ log10(Ra) + a₀ (Grossmann & Lohse 2001, high Prandtl number)
+    convection_Ra_crit::Float64 = 1708.0  # Nu = 1 below this Rayleigh number
+    convection_alpha::Float64 = 3.0e-5    # thermal expansivity [1/K]
+    convection_viscosity::Any = nothing   # GeoParams creep law for the viscosity of the melt-rich regions (`nothing`: Giordano et al. 2008 hydrous rhyolite with the Costa et al. 2009 crystal correction)
+    convection_strainrate::Float64 = 1.0e-12   # reference strain rate [1/s] at which the viscosity law is evaluated
+    convection_boundary_layer::Bool = true   # the outermost cells of a convecting region keep Nu = 1 (conductive boundary layer, see `compute_convective_nusselt!`)
+    convection_z_split::Any = ()          # chambers of different composition: depths z [m, descending, negative downward] separating the laws of a tuple `convection_viscosity` (law i above split i, the last law below all)
     apt_tol::Float64 = 1.0e-6             # implicit enthalpy solver: tolerance of the pseudo-transient iterations (temperature error relative to max(|T|, 1))
     apt_max_iter::Int64 = 50_000          # implicit enthalpy solver: maximum number of pseudo-transient iterations per solve
     apt_check::Int64 = 10                 # implicit enthalpy solver: check convergence every `apt_check` iterations
