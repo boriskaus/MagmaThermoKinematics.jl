@@ -191,3 +191,130 @@ end
         @test U[3][I] ≈ d[3] rtol = 1.0e-10
     end
 end
+
+@testset "Revolved sink of a planar section" begin
+    using MagmaThermoKinematics: revolved_sources, erupt!, chamber_geometry, mogi_displacement!
+    using MagmaThermoKinematics: StructArray, Tracer
+    dx = 50.0; x = range(-6000.0, 6000.0, step = dx); z = range(-9000.0, 500.0, step = dx)
+    cells = [CartesianIndex(i, j) for i in eachindex(x), j in eachindex(z) if abs(x[i]) <= 5 * dx && -5000.0 <= z[j] <= -4000.0]
+    geo = chamber_geometry(cells, (dx, dx), (x, z)); event = (; cells, f = 0.1, geo)
+    @testset "sources" begin
+        c, ΔV, xc = revolved_sources(event, (x, z); nθ = 8)
+        c2, ΔV2, _ = revolved_sources(event, (x, z); nθ = 8, symmetric = false)
+        @test xc ≈ 0.0 atol = 1.0e-9
+        # the drained volume is f π Σ|a| dA, the volume of the revolved chamber (cells at integer multiples of dx: Σ|a| dx = 30 dx²)
+        @test sum(ΔV) ≈ -0.1 * π * 30 * dx^2 * geo.h rtol = 1.0e-12
+        @test sum(ΔV2) ≈ sum(ΔV) rtol = 1.0e-12
+        @test size(c, 1) == length(ΔV) && size(c, 2) == 3 && size(c2, 1) == 2 * size(c, 1)
+        @test all(<=(0), ΔV)
+        cc, ΔVc, _ = revolved_sources(event, (x, z); nθ = 8, coarsen = 4)
+        @test sum(ΔVc) ≈ sum(ΔV) rtol = 1.0e-12
+        @test size(cc, 1) < size(c, 1)
+        @test_throws ArgumentError revolved_sources(event, (x, x, z))
+    end
+    @testset "displacement" begin
+        X = ntuple(k -> [k == 1 ? xx : (k == 2 ? 0.0 : zz) for xx in x, zz in z], 3)
+        function section(; kw...)
+            c, ΔV, _ = revolved_sources(event, (x, z); kw...)
+            U = map(similar, X); mogi_displacement!(U, X, c, ΔV; softening = dx, halfspace = :mindlin, ν = 0.25); U
+        end
+        U8 = section(nθ = 8); U8f = section(nθ = 8, symmetric = false)
+        @test U8[1] ≈ U8f[1] rtol = 1.0e-9 atol = 1.0e-12 * maximum(abs, U8f[1])     # ±ϑ sources give the same displacement on the section
+        @test U8[3] ≈ U8f[3] rtol = 1.0e-9 atol = 1.0e-12 * maximum(abs, U8f[3])
+        # far field at the surface: the Mogi point source of the total drained volume at the chamber centre
+        ΔVtot = -0.1 * π * 30 * dx^2 * geo.h; zc = geo.zc; ν = 0.25
+        for xs in (4000.0, 6000.0)
+            i = findfirst(==(xs), collect(x)); j = findlast(<=(0.0), collect(z)); d = sqrt(xs^2 + zc^2)
+            @test U8[3][i, j] ≈ (1 - ν) * ΔVtot / π * (-zc) / d^3 rtol = 0.02
+            @test U8[1][i, j] ≈ (1 - ν) * ΔVtot / π * xs / d^3 rtol = 0.02
+        end
+        # with z_surface at the receiver plane (here 600 m above the old plane) the Mindlin sink reproduces the Mogi surface formula
+        zs = 600.0; Xs = (X[1][:, 1:1], X[2][:, 1:1], fill(zs, length(x), 1)); Us = map(similar, Xs)
+        c, ΔV, _ = revolved_sources(event, (x, z); nθ = 8)
+        mogi_displacement!(Us, Xs, c, ΔV; softening = dx, halfspace = :mindlin, z_surface = zs, ν = ν)
+        for xs in (4000.0, 6000.0)
+            i = findfirst(==(xs), collect(x)); d = sqrt(xs^2 + (zs - zc)^2)
+            @test Us[3][i, 1] ≈ (1 - ν) * ΔVtot / π * (zs - zc) / d^3 rtol = 0.02
+            @test Us[1][i, 1] ≈ (1 - ν) * ΔVtot / π * xs / d^3 rtol = 0.02
+        end
+        # symmetric chamber: no horizontal displacement on the axis, symmetric vertical displacement
+        i0 = findfirst(==(0.0), collect(x)); @test all(abs.(U8[1][i0, :]) .< 1.0e-8 * maximum(abs, U8[1]))
+        @test U8[3] ≈ reverse(U8[3]; dims = 1) rtol = 1.0e-9 atol = 1.0e-9 * maximum(abs, U8[3])
+    end
+    @testset "erupt!" begin
+        T0 = fill(900.0, length(x), length(z)); T0[:, z .> 0] .= 10.0
+        tr = StructArray([Tracer{Float32}(num = i, coord = [x[i], -4500.0], Phase = 1) for i in 1:5]); tr.coord[1] .= [x[20], -4500.0]
+        T = copy(T0); Tb = similar(T)
+        U, cargo = erupt!(T, Tb, tr, (x, z), event; revolve = true, nθ = 8, rng = MersenneTwister(1))
+        @test length(U) == 2 && all(isfinite, U[1]) && all(isfinite, U[2]) && length(cargo) + length(tr) == 5
+        U32, _ = erupt!(copy(T0), Tb, tr, (x, z), event; revolve = true, nθ = 8, float_type = Float32, rng = MersenneTwister(1))
+        @test U32[2] ≈ U[2] rtol = 1.0e-4 atol = 1.0e-5 * maximum(abs, U[2])
+        Uh, _ = erupt!(copy(T0), Tb, tr, (x, z), event; revolve = true, nθ = 8, volume_factor = 0.5, rng = MersenneTwister(1))
+        @test Uh[2] ≈ 0.5 .* U[2] rtol = 1.0e-9
+        # the half-space kernels are valid up to z_surface: a warning if the free surface rose above it
+        @test_logs (:warn, r"lies above the plane") erupt!(copy(T0), Tb, tr, (x, z), event; revolve = true, Zsurf = fill(400.0, length(x)), z_surface = 0.0, rng = MersenneTwister(1))
+        @test_logs erupt!(copy(T0), Tb, tr, (x, z), event; revolve = true, Zsurf = fill(400.0, length(x)), z_surface = 400.0, rng = MersenneTwister(1))
+        @test_throws ArgumentError erupt!(zeros(5, 5, 5), zeros(5, 5, 5), tr, (1:5, 1:5, 1:5), event; revolve = true)
+    end
+end
+
+@testset "Revolved inflation of sills" begin
+    using MagmaThermoKinematics: revolved_inflation_rate
+    dx = 200.0; x = range(-6000.0, 6000.0, step = dx); z = range(-8000.0, 0.0, step = dx)
+    X = ([xx for xx in x, zz in z], [zz for xx in x, zz in z])
+    R = 1500.0; H = 20.0; Δt = 1.0e10
+    # one sill on the axis: the azimuthal average is the 3-D sill itself, rate = u/interval
+    sill = PennyShapedSill(Center = Point3(0.0, 0.0, -4000.0) * m, Angle = Vec2(0.0, 0.0) * NoUnits, R = R * m, H = H * m, E = 1.5e10 * Pa, ν = 0.3 * NoUnits)
+    Ux, Uz = revolved_inflation_rate(X, [0.0], [0.0], [-4000.0], [R], Δt; thickness = H)
+    i, j = 40, 38
+    u = InjectSills.hostrock_displacement(sill, Point3(x[i], 0.0, z[j]))
+    @test Ux[i, j] ≈ u[1] / Δt rtol = 1.0e-10
+    @test Uz[i, j] ≈ u[3] / Δt rtol = 1.0e-10
+    @test Uz[31, end] > 0                                                    # uplift above the sill
+    # an off-axis sill: average over azimuths of the 3-D displacement at the section points, and a shifted axis
+    nθ = 6; a = 800.0
+    Ux, Uz = revolved_inflation_rate(X, [500.0], [a], [-4000.0], [R], Δt; thickness = H, nθ)
+    uzs = 0.0; uxs = 0.0
+    for ϑ in 2π .* (0.5:nθ) ./ nθ
+        s = PennyShapedSill(Center = Point3(a * cos(ϑ), a * sin(ϑ), -4000.0) * m, Angle = Vec2(0.0, 0.0) * NoUnits, R = R * m, H = H * m, E = 1.5e10 * Pa, ν = 0.3 * NoUnits)
+        d = InjectSills.hostrock_displacement(s, Point3(x[i] - 500.0, 0.0, z[j])); uxs += d[1] / nθ; uzs += d[3] / nθ
+    end
+    @test Ux[i, j] ≈ uxs / Δt rtol = 1.0e-10
+    @test Uz[i, j] ≈ uzs / Δt rtol = 1.0e-10
+    # ensembles average: two identical sills give the rate of one, the interval scales the rate
+    U2 = revolved_inflation_rate(X, [500.0, 500.0], [a, a], [-4000.0, -4000.0], [R, R], Δt; thickness = [H, H], nθ)
+    @test U2[2] ≈ Uz rtol = 1.0e-12
+    @test revolved_inflation_rate(X, [500.0], [a], [-4000.0], [R], 2Δt; thickness = H, nθ)[2] ≈ Uz ./ 2 rtol = 1.0e-12
+    # a dipping sill is accepted
+    Ud = revolved_inflation_rate(X, [0.0], [0.0], [-4000.0], [R], Δt; thickness = H, angles = [(0.5, 0.2)], nθ = 4)
+    @test all(isfinite, Ud[2]) && Ud[2] != Uz
+    @test_throws ArgumentError revolved_inflation_rate(X, [0.0, 1.0], [0.0], [-4000.0], [R], Δt; thickness = H)
+end
+
+@testset "Lithostatic pressure with topography" begin
+    using MagmaThermoKinematics: chamber_step!, _surface_above, lithostatic_pressure!
+    ep = EruptionParams(
+        m_w = 0.06, ΔP_crit = 3.0e6, σ_barrier = 0.0, w_dike = 20.0,
+        melt_viscosity = LinearMeltViscosity(A = -8.159, B = 2.405e4K, T0 = -430.9606K, η0 = 1Pas), solubility = Liu2005_Solubility()
+    )
+    x = range(-10.0e3, 10.0e3, length = 81); z = range(-12.0e3, 3.0e3, length = 61); coords = (x, z); Δz = step(z)
+    ϕ = [abs(xx) < 3.0e3 && -6.0e3 < zz < -4.0e3 ? 0.8 : 0.0 for xx in x, zz in z]
+    T = [ϕ[i, j] > 0 ? 900.0 : 300.0 for i in eachindex(x), j in eachindex(z)]
+    ρ = 2700.0; g = 9.81
+    zc = sum(zz for xx in x, zz in z if abs(xx) < 3.0e3 && -6.0e3 < zz < -4.0e3) / count(>(0), ϕ)
+    function plith(zsurf)                                  # one top-down integration, air (above the surface) has zero density
+        P = zeros(size(T)); lithostatic_pressure!(P, [zz <= zsurf ? ρ : 0.0 for xx in x, zz in z], g, Δz)
+        st = EruptionState()
+        chamber_step!(st, ep, ϕ, T, coords; recharge = 0.0, Δt = 3.15576e7, time = 0.0, T_background = d -> 20.0 + 0.02d, P, Zsurf = fill(zsurf, length(x)))
+        return st.P_lith
+    end
+    P0 = plith(0.0); P1 = plith(1000.0)
+    @test isapprox(P0, ρ * g * (-zc + Δz / 2); rtol = 1.0e-6)     # the trapezoid rule puts the surface half a cell above the highest rock node (as move_free_surface! does)
+    @test isapprox(P1 - P0, ρ * g * 1000.0; rtol = 1.0e-6)        # 1 km of topography adds its weight
+    @test _surface_above(fill(1000.0, length(x)), findall(>(0), ϕ), z) == 1000.0
+    @test _surface_above(fill(NaN, length(x)), findall(>(0), ϕ), z) ≈ z[end] + Δz / 2
+    # without `P` the pressure of the centroid depth below z = 0 along the geotherm is used, as before
+    st = EruptionState()
+    chamber_step!(st, ep, ϕ, T, coords; recharge = 0.0, Δt = 3.15576e7, time = 0.0, T_background = d -> 20.0 + 0.02d)
+    @test st.P_lith ≈ _lithostatic(ep, -zc, d -> 20.0 + 0.02d)
+end

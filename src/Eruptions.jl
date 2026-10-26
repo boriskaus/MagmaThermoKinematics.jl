@@ -543,6 +543,8 @@ regularises the singularity at the sources' own nodes. With `halfspace = :image`
 dilatation centres (`ΔV/(4π) · d/|d|³`, whose divergence integrates to `ΔV`) with opposite-sign images mirrored at `z_surface` (surface uplift twice the full-space value); `halfspace = :mindlin` (3-D point sources) is the exact half-space
 solution of Mindlin & Cheng (1950) — volume change `ΔV` in the bulk and the Mogi displacement at the free surface `z_surface`; the `:mogi`
 kernel is the surface formula of the half-space solution and over-dilates the interior by `4(1 − ν)`.
+The half-space kernels assume a flat free surface at `z_surface` and are not valid at nodes above it; keep `z_surface` at or
+above the highest rock surface (see [`erupt!`](@ref)).
 """
 function mogi_displacement!(U, X, centers, ΔV; L = zeros(length(ΔV)), ν = 0.25, softening, halfspace = :mogi, z_surface = 0.0)
     halfspace in (:mogi, :image, :mindlin) || throw(ArgumentError("halfspace must be :mogi, :image or :mindlin"))
@@ -631,12 +633,23 @@ end
 # One chamber step on the grid
 # ---------------------------------------------------------------------------------------
 """
-    chamber_step!(state, ep, ϕ, T, coords; recharge, Δt, time, T_background, margin=0.0) -> event
+    chamber_step!(state, ep, ϕ, T, coords; recharge, Δt, time, T_background, margin=0.0, resolve=2.0, P=nothing, Zsurf=nothing) -> event
 
 Advance the chamber of the arrays `ϕ` (melt fraction) and `T` [°C] (host or device) by `Δt` [s]. `coords` are the
 1D coordinate vectors (`z` last, negative downward, free surface at `z = 0`), `recharge` the magma
 volume injected into the chamber per second in native units (m²/s in 2D, m³/s in 3D) and
 `T_background(depth)` the undisturbed geotherm [°C] at depth [m].
+
+By default the lithostatic pressure of the chamber is that of its centroid depth below `z = 0`, from the density
+law of `ep` along `T_background`. With topography, pass the lithostatic pressure field `P` [Pa] (averaged over
+the chamber cells), e.g. integrated from the top of the grid with [`lithostatic_pressure!`](@ref) from the density
+with the air cells set to zero density,
+
+    Pmask .= Arrays.Rho .* (Arrays.Phases .!= Num.air_phase)
+    MagmaThermoKinematics.lithostatic_pressure!(Plith, Pmask, g, Δz)
+
+and the surface elevation `Zsurf` (as moved by [`move_free_surface!`](@ref)), from which the depth of the chamber
+below the surface is measured (used for the dike ascent and for `T_background`).
 
 A drained thickness is queued until it exceeds `resolve` cells (the grid-resolvable withdrawal; the
 displacement field is continuous, so values below 1 are admissible).
@@ -645,7 +658,7 @@ Returns `nothing` when no eruption is realised, otherwise a named tuple with the
 `h_erupt`, the fractional volume change `f = h_erupt/h` of the chamber, the chamber `cells` and its
 geometry `geo`. Remove the volume with [`erupt_sources`](@ref) and [`mogi_displacement!`](@ref).
 """
-function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; recharge, Δt, time, T_background, margin = 0.0, resolve = 2.0)
+function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; recharge, Δt, time, T_background, margin = 0.0, resolve = 2.0, P = nothing, Zsurf = nothing)
     N = ndims(ϕ)
     Δ = ntuple(k -> step(coords[k]), N)
     if ϕ isa Array
@@ -673,8 +686,13 @@ function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; 
     state.z_lo, state.z_hi = geo.z_lo, geo.z_hi
     state.cells = cells
 
-    depth = -geo.zc
-    P_lith = _lithostatic(ep, depth, T_background)
+    # depth of the chamber centroid below the free surface (mean surface elevation of the chamber columns)
+    depth = Zsurf === nothing ? -geo.zc : _surface_above(Zsurf, cells, coords[N]) - geo.zc
+    if P === nothing                                    # lithostatic pressure from the density law of `ep` along the geotherm
+        P_lith = _lithostatic(ep, depth, T_background)
+    else                                                # the given pressure field, averaged over the chamber cells
+        P_lith = Float64(P isa Array ? sum(I -> P[I], cells) : (inmask === nothing ? sum(I -> P[I], cells) : sum(P .* inmask))) / length(cells)
+    end
     if state.P_lith == 0.0 && state.P == 0.0
         state.P = P_lith
     else
@@ -694,6 +712,13 @@ function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; 
     (h_erupt > 0 && !near_boundary) || return nothing
     commit_pending_withdrawal!(state, h_erupt)
     return (; h_erupt, f = h_erupt / geo.h, cells, geo, chamber = state.id, trigger_time = state.pending_since, time)
+end
+
+# mean surface elevation over the columns of the chamber cells (`NaN` entries: top of the grid)
+function _surface_above(Zsurf, cells::Vector{CartesianIndex{N}}, z) where {N}
+    Zs = Array(Zsurf)
+    cols = unique(CartesianIndex(ntuple(k -> I[k], N - 1)) for I in cells)
+    return sum(c -> (v = Float64(Zs[c]); isnan(v) ? z[end] + step(z) / 2 : v), cols) / length(cols)
 end
 
 # lithostatic pressure at `depth`: integrate the crustal density law over the geotherm
@@ -726,32 +751,118 @@ function erupt_sources(event, coords; coarsen = 1)
     return centers, ΔV, L
 end
 
+"""
+    revolved_sources(event, coords; coarsen=1, nθ=8, symmetric=true) -> (centers, ΔV, x_axis)
+
+Mindlin point sources of an eruption event of a planar 2D section, with the chamber treated as a body of
+revolution about its own vertical axis `x = x_axis` (the mean `x` of its cells). A cell of area `dA` at the
+horizontal distance `a = |x - x_axis|` from the axis is a ring (the cell and its mirror cell share it): it
+loses the volume `f π |a| dA`, which is split over `nθ` point sources at the azimuths
+`ϑ_j = 2π (j - 1/2)/nθ`, `(a cos ϑ_j, a sin ϑ_j, z)`. The total drained volume is `Σ f π |a| dA`, the volume of
+the revolved chamber (`f π R² h` for a chamber of half-width `R` and thickness `h`). The returned `centers`
+(`Ns × 3`, relative to the axis) and `ΔV` (negative, in m³) are to be used with receivers on the section
+through the axis, `(x - x_axis, 0, z)`, and [`mogi_displacement!`](@ref) with `halfspace = :mindlin`.
+
+Because the receivers lie in the plane `y = 0`, the sources at `±ϑ` give the same `(u_x, u_z)`: with
+`symmetric = true` (and an even `nθ`) only the azimuths in `(0, π)` are summed, with twice the volume
+(exact, half the cost). With `coarsen > 1` the cells are binned in blocks of `coarsen × coarsen` cells and every
+block becomes one ring at its weighted centroid.
+"""
+function revolved_sources(event, coords; coarsen = 1, nθ = 8, symmetric = true)
+    length(coords) == 2 || throw(ArgumentError("revolved sources are for planar 2D sections"))
+    cells = event.cells
+    Δ = step(coords[1]) * step(coords[2])
+    xc = sum(I -> coords[1][I[1]], cells) / length(cells)
+    bins = Dict{NTuple{2, Int}, NTuple{3, Float64}}()                  # block -> (Σ a w, Σ z w, Σ w) with the weight w = π |a| dA
+    for I in cells
+        a = abs(coords[1][I[1]] - xc); w = π * a * Δ
+        key = ((I[1] - 1) ÷ coarsen, (I[2] - 1) ÷ coarsen)
+        b = get(bins, key, (0.0, 0.0, 0.0))
+        bins[key] = (b[1] + a * w, b[2] + coords[2][I[2]] * w, b[3] + w)
+    end
+    half = symmetric && iseven(nθ)
+    nsrc = half ? nθ ÷ 2 : nθ; wθ = half ? 2.0 : 1.0
+    keys_ = sort!(collect(keys(bins)))
+    centers = zeros(length(keys_) * nsrc, 3); ΔV = zeros(length(keys_) * nsrc)
+    for (i, key) in enumerate(keys_)
+        b = bins[key]
+        a = b[3] > 0 ? b[1] / b[3] : 0.0; z = b[2] / max(b[3], 1.0e-30)
+        for j in 1:nsrc
+            ϑ = 2π * (j - 0.5) / nθ; k = (i - 1) * nsrc + j
+            centers[k, :] .= (a * cos(ϑ), a * sin(ϑ), z)
+            ΔV[k] = -event.f * wθ * b[3] / nθ
+        end
+    end
+    return centers, ΔV, xc
+end
+
 # ---------------------------------------------------------------------------------------
 # Apply an eruption to the grid and tracers
 # ---------------------------------------------------------------------------------------
 """
-    erupt!(T, Tbuf, Tracers, coords, event; ν=0.25, coarsen=1, softening=min(Δ), rng) -> (U, cargo)
+    erupt!(T, Tbuf, Tracers, coords, event; ν=0.25, coarsen=1, softening=min(Δ), rng, halfspace, z_surface=0.0,
+           volume_factor=1.0, revolve=false, nθ=8, symmetric=true, float_type=eltype(T), Zsurf=nothing) -> (U, cargo)
 
 Realise the eruption `event` of [`chamber_step!`](@ref): a Mogi sink of volume `f·dV` in every chamber
 cell (3D-equivalent volumes) gives the host-rock displacement `U`, with which the temperature `T`
 (any backend; `Tbuf` is a work array) and the tracers are advected. Tracers inside the chamber are
 removed with probability `f` and returned as `cargo`. `softening` regularises the point sources; `volume_factor` scales
-the displaced volume (1 = the drained volume).
+the displaced volume (1 = the drained volume). `halfspace` selects the kernel of [`mogi_displacement!`](@ref)
+(default `:mogi`, or `:mindlin` with `revolve`).
+
+With `revolve = true` (planar 2D sections only) the chamber is treated as a body of revolution about its own
+vertical axis, see [`revolved_sources`](@ref): the sources are rings of `nθ` Mindlin point sources and the
+displacement is evaluated on the section through the axis. A planar section with line sources (the default)
+has a different decay and, for the Mindlin solution, a weaker surface response than the 3D chamber it stands for;
+the revolved sink reproduces the axisymmetric response. The sum over the `Ns × Nx × Nz` point-source/node pairs
+can be done in a lower precision with `float_type = Float32`.
+
+The `:image` and `:mindlin` kernels are half-space solutions with a flat free surface at `z = z_surface`; they are
+not valid above that plane (on the axis of a source at depth `c` below it, the vertical displacement changes sign at about
+`c/3` above the plane and diverges at the mirror image, `c` above it). Topography is not part of the elastic problem, so
+`z_surface` must be at or above the highest rock surface of the model and has to be updated when the surface moves
+(for example `z_surface = maximum(Zsurf)` with the `Zsurf` of [`move_free_surface!`](@ref)). If the surface elevation
+array `Zsurf` is passed, a warning is issued when it rises above `z_surface`.
 """
-function erupt!(T, Tbuf, Tracers, coords, event; ν = 0.25, coarsen = 1, softening = nothing, rng = Random.default_rng(), halfspace = :mogi, z_surface = 0.0, volume_factor = 1.0)
+function erupt!(
+        T, Tbuf, Tracers, coords, event; ν = 0.25, coarsen = 1, softening = nothing, rng = Random.default_rng(), halfspace = nothing, z_surface = 0.0,
+        volume_factor = 1.0, revolve = false, nθ = 8, symmetric = true, float_type = eltype(T), Zsurf = nothing
+    )
     N = length(coords)
     Δ = ntuple(k -> step(coords[k]), N)
     softening === nothing && (softening = minimum(Δ))
-    centers, ΔV, L = erupt_sources(event, coords; coarsen)
-    ΔV .*= volume_factor                                                 # e.g. the fraction of a sill's cross-section that its 3-D opening displaces in a 2-D section
-    backend = get_backend(T)
-    X = ntuple(N) do k
-        A = KernelAbstractions.allocate(backend, eltype(T), size(T))
-        A .= reshape(coords[k], ntuple(j -> j == k ? length(coords[k]) : 1, N))
-        A
+    halfspace === nothing && (halfspace = revolve ? :mindlin : :mogi)
+    if Zsurf !== nothing && halfspace in (:mindlin, :image) && maximum(Zsurf) > z_surface + 1.0e-6 * abs(z_surface) + 1.0e-9
+        @warn "The free surface (max. elevation $(maximum(Zsurf)) m) lies above the plane `z_surface` = $z_surface m of the half-space kernel; " *
+            "the solution is not valid above that plane. Set `z_surface = maximum(Zsurf)` (and update it as the surface moves)." maxlog = 1
     end
-    U = map(similar, X)
-    mogi_displacement!(U, X, centers, ΔV; L, ν, softening, halfspace, z_surface)
+    backend = get_backend(T)
+    if revolve
+        N == 2 || throw(ArgumentError("revolve = true is for planar 2D sections"))
+        FT = float_type
+        centers, ΔV, xc = revolved_sources(event, coords; coarsen, nθ, symmetric)
+        ΔV .*= volume_factor
+        X = ntuple(3) do k                                             # receivers on the section through the chamber axis: (x - xc, 0, z)
+            A = KernelAbstractions.allocate(backend, FT, size(T))
+            k == 1 && (A .= reshape(coords[1] .- xc, :, 1))
+            k == 2 && fill!(A, zero(FT))
+            k == 3 && (A .= reshape(coords[2], 1, :))
+            A
+        end
+        U3 = map(similar, X)
+        mogi_displacement!(U3, X, centers, ΔV; ν, softening, halfspace, z_surface)
+        U = FT === eltype(T) ? (U3[1], U3[3]) : (eltype(T).(U3[1]), eltype(T).(U3[3]))
+    else
+        centers, ΔV, L = erupt_sources(event, coords; coarsen)
+        ΔV .*= volume_factor                                           # e.g. the fraction of a sill's cross-section that its 3-D opening displaces in a 2-D section
+        X = ntuple(N) do k
+            A = KernelAbstractions.allocate(backend, eltype(T), size(T))
+            A .= reshape(coords[k], ntuple(j -> j == k ? length(coords[k]) : 1, N))
+            A
+        end
+        U = map(similar, X)
+        mogi_displacement!(U, X, centers, ΔV; L, ν, softening, halfspace, z_surface)
+    end
     displace_temperature!(T, Tbuf, coords, U)
 
     cargo = Tracers[Int[]]
@@ -767,6 +878,54 @@ function erupt!(T, Tbuf, Tracers, coords, event; ν = 0.25, coarsen = 1, softeni
         isassigned(Tracers, 1) && AdvectTracers!(Tracers, Tuple(coords), map(Array, U), 1.0)
     end
     return U, cargo
+end
+
+# ---------------------------------------------------------------------------------------
+# Inflation by an ensemble of sills
+# ---------------------------------------------------------------------------------------
+"""
+    revolved_inflation_rate(X, axis, offset, zc, radius, interval; thickness, angles=nothing, nθ=12, E=1.5e10, ν=0.3)
+        -> (Ux, Uz)
+
+Mean host-rock displacement rate [m/s] on a planar 2D section due to an ensemble of `N` penny-shaped sills
+(`InjectSills.PennyShapedSill`) that are treated as parts of bodies of revolution. Sill `k` has its centre at the
+horizontal distance `offset[k]` from a vertical axis at `x = axis[k]` and at the depth coordinate `zc[k]` (negative
+downward), with radius `radius[k]` and thickness `thickness` (a number or a vector, in m). Its centre is moved around the axis
+through `nθ` azimuths `ϑ = 2π (j - 1/2)/nθ`, `(offset cos ϑ, offset sin ϑ)`, the displacement of the 3D sill is
+evaluated on the section through the axis, `(x - axis[k], 0, z)`, and averaged over the azimuths. `angles` are
+optional `(dip, strike)` pairs (radians) of the sills; the default is horizontal sills.
+
+`X = (x, z)` are the coordinate arrays of the section (on any backend) and `interval` is the time between two
+sills of the ensemble (the mean sill volume divided by the injection rate `Q`, `Δt = V̄/Q`):
+the result is `Σ_k ⟨u_k⟩_ϑ / (N · interval)`. Multiply it by a time step to move the host rock, for example with
+[`displace_temperature!`](@ref) and [`move_free_surface!`](@ref). In a planar section a sill is a plane-strain crack, whose
+displacement decays much more slowly with distance than that of a 3D penny; averaging over azimuths removes that artefact.
+The caller draws the positions, radii and orientations of the sills, which defines where and how the host is inflated.
+`E` [Pa] and `ν` are the elastic parameters of the sills.
+
+The displacement of a `PennyShapedSill` is a full-space solution: the volume of the surface uplift it produces is
+about half of the sill volume `V`, whereas a horizontal crack in a half-space lifts the surface by about `V` and the
+Mindlin point sink of [`erupt!`](@ref) displaces `2(1 − ν) ΔV` (about `1.5 ΔV`) at the surface. Inflation and eruption
+sinks are therefore not volume-consistent at the surface; use `volume_factor` of [`erupt!`](@ref) to scale the sinks if a
+consistent balance is wanted.
+"""
+function revolved_inflation_rate(X, axis, offset, zc, radius, interval; thickness, angles = nothing, nθ = 12, E = 1.5e10, ν = 0.3)
+    N = length(radius)
+    (length(axis) == N && length(offset) == N && length(zc) == N) || throw(ArgumentError("axis, offset, zc and radius must have the same length"))
+    Hs = thickness isa Number ? fill(float(thickness), N) : thickness
+    Yz = zero(X[1]); Ux = zero(X[1]); Uz = zero(X[1])
+    Dd = (similar(X[1]), similar(X[1]), similar(X[1]))
+    for k in 1:N
+        Xg = (X[1] .- axis[k], Yz, X[2])
+        for ϑ in 2π .* (0.5:nθ) ./ nθ
+            c = Point3(offset[k] * cos(ϑ), offset[k] * sin(ϑ), zc[k]) * m
+            dip, strike = angles === nothing ? (0.0, 0.0) : (angles[k][1], angles[k][2])
+            sill = PennyShapedSill(Center = c, Angle = Vec2(dip, strike) * NoUnits, R = radius[k] * m, H = Hs[k] * m, E = E * Pa, ν = ν * NoUnits)
+            InjectSills.hostrock_displacement!(Dd, sill, Xg)
+            Ux .+= Dd[1] ./ nθ; Uz .+= Dd[3] ./ nθ
+        end
+    end
+    return Ux ./ (N * interval), Uz ./ (N * interval)
 end
 
 # ---------------------------------------------------------------------------------------
