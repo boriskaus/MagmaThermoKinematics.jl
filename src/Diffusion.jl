@@ -81,11 +81,9 @@ function _cell_weights(Grid, A)
     return ntuple(d -> reshape(_on_backend(A, cell_widths(Grid.coord1D[d])), ntuple(k -> k == d ? Grid.N[d] : 1, N)), N)
 end
 
-# spacing to the next (`_hp`) and to the previous (`_hm`) point of index `i`: a number for constant spacing, `h[i]` and `h[i-1]` otherwise
+# spacing to the next point of index `i`: a number for constant spacing, `h[i]` otherwise
 @inline _hp(h::Number, i) = h
 @inline _hp(h::AbstractVector, i) = h[i]
-@inline _hm(h::Number, i) = h
-@inline _hm(h::AbstractVector, i) = h[i - 1]
 
 # width of the control volume of point `k` of `n` (half the distance to both neighbours; the outermost points take the distance to their only neighbour)
 @inline _cw(h::Number, k, n) = h

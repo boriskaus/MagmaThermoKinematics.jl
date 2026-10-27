@@ -111,6 +111,31 @@ end
         @test jl.MeltFraction ≈ cpu.MeltFraction rtol = 1.0e-12    # GPU reductions sum in a different order
     end
 
+    @testset "chamber step on the device" begin
+        using MagmaThermoKinematics: chamber_step!, chamber_cells, EruptionParams, EruptionState
+        ep = EruptionParams(
+            m_w = 0.06, ΔP_crit = 3.0e6, σ_barrier = 0.0, w_dike = 20.0,
+            melt_viscosity = LinearMeltViscosity(A = -8.159, B = 2.405e4K, T0 = -430.9606K, η0 = 1Pas), solubility = Liu2005_Solubility()
+        )
+        for coords in (
+                (range(-5.0e3, 5.0e3, length = 41), range(-10.0e3, 0.0, length = 41)),
+                (refined_coordinates(-5.0e3, 5.0e3, 41; zone = (-2.5e3, 2.5e3), ratio = 2, transition = 0), refined_coordinates(-10.0e3, 0.0, 41; zone = (-7.0e3, -3.0e3), ratio = 2, transition = 0)),
+            )
+            x, z = coords
+            ϕ = [abs(xx) < 2.0e3 && -6.0e3 < zz < -4.0e3 ? 0.8 : 0.0 for xx in x, zz in z]; ϕ[2, 2] = 0.9      # and a one-cell region
+            T = [ϕ[i, j] > 0 ? 900.0 + 0.01 * zz : 300.0 for (i, xx) in enumerate(x), (j, zz) in enumerate(z)]
+            @test Set(chamber_cells(JLArray(ϕ), 0.5)) == Set(chamber_cells(ϕ, 0.5))          # the same cells (flood fill vs. index order)
+            sh, sd = EruptionState(), EruptionState()
+            run!(st, ϕ, T) = chamber_step!(st, ep, ϕ, T, coords; recharge = 1.0e-3, Δt = 3.15576e9, time = 0.0, T_background = d -> 20.0 + 0.02d)
+            run!(sh, ϕ, T); run!(sd, JLArray(ϕ), JLArray(T))
+            @test sd.V ≈ sh.V rtol = 1.0e-12
+            @test sd.P ≈ sh.P rtol = 1.0e-12
+            @test sd.P_lith ≈ sh.P_lith rtol = 1.0e-12
+            @test Set(sd.cells) == Set(sh.cells)
+            @test run!(sd, JLArray(zero(ϕ)), JLArray(T)) === nothing && !sd.init          # no chamber left on the device either
+        end
+    end
+
     @testset "revolved eruption sink and inflation" begin
         using MagmaThermoKinematics: StructArray, Tracer, chamber_geometry, revolved_inflation_rate
         dx = 100.0; x = range(-3000.0, 3000.0, step = dx); z = range(-6000.0, 500.0, step = dx)
