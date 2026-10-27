@@ -138,6 +138,8 @@ There are a few functions that you can overwrite in your user code (or replace f
     end
     # --------------------------------------------
 
+    Mat_dev = materials_on_backend(Mat_tup, Num.backend)   # lookup tables (phase diagrams) on the device; the callbacks get `Mat_tup`
+
     for Num.it in 1:Num.nt   # Time loop
         Num.time += Num.dt                                      # Keep track of evolved time
 
@@ -150,7 +152,7 @@ There are a few functions that you can overwrite in your user code (or replace f
         # --------------------------------------------
 
         # Do a diffusion step, while taking T-dependencies into account
-        Nonlinear_Diffusion_step!(Arrays, Mat_tup, Arrays.Phases, Grid, Num.dt, Num)
+        Nonlinear_Diffusion_step!(Arrays, Mat_dev, Arrays.Phases, Grid, Num.dt, Num)
         # --------------------------------------------
 
         # Update variables ---------------------------

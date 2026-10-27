@@ -17,6 +17,7 @@ using JLD2                                      # Load/save data to disk
 @reexport using InjectSills                     # Re-export InjectSills API (sill constructors + helpers)
 @reexport using GeoParams                                 # Material parameters calculations
 using KernelAbstractions                        # CPU and GPU kernels; GPU backends come with CUDA.jl, Metal.jl, ...
+using Adapt                                     # copies the lookup tables of the material parameters to the backend
 
 abstract type NumericalParameters end
 abstract type SillParameters end
@@ -72,7 +73,7 @@ include("OutOfPlane.jl")
 export out_of_plane_width2, add_out_of_plane_loss!
 include("Diffusion.jl")
 include("PseudoTransient.jl")
-export Numeric_params, Nonlinear_Diffusion_step!, diffusion_step!, apt_diffusion_solve!, lithostatic_pressure!, compute_phase_param!, GridArray!, bc_zero_flux!, bc_T!, bc_z_bottom_flux!, bc_sticky_air!
+export Numeric_params, Nonlinear_Diffusion_step!, diffusion_step!, apt_diffusion_solve!, lithostatic_pressure!, compute_phase_param!, materials_on_backend, GridArray!, bc_zero_flux!, bc_T!, bc_z_bottom_flux!, bc_sticky_air!
 export convective_nusselt, compute_convective_nusselt!
 
 include("MTK_GMG.jl")
