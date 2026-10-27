@@ -270,6 +270,61 @@ end
         @test all(Zs .≈ 50.0 + 30.0)
     end
 
+    @testset "eruptions: 3D chamber, coarsened sources, surface" begin
+        using MagmaThermoKinematics: cell_sources, _surface_above
+        # 3D: refined coordinates that contain the uniform 100 m points around the chamber
+        xf = collect(-1000.0:100.0:1000.0); zf = collect(-3000.0:100.0:-1000.0)
+        x = vcat(-3000.0, -2000.0, -1500.0, xf, 1500.0, 2000.0, 3000.0); z = vcat(-6000.0, -4500.0, -3500.0, zf, -500.0, 0.0)
+        xu = -3000.0:100.0:3000.0; zu = -6000.0:100.0:0.0
+        cham(xx, yy, zz) = xx^2 + yy^2 <= 600.0^2 && -2500.0 <= zz <= -1500.0
+        geos = map(((x, x, z), (xu, xu, zu))) do c
+            cells = [I for I in CartesianIndices(map(length, c)) if cham(c[1][I[1]], c[2][I[2]], c[3][I[3]])]
+            chamber_geometry(cells, map(cell_widths, c), c)
+        end
+        for k in (:V, :W, :h, :R, :zc)
+            @test getfield(geos[1], k) ≈ getfield(geos[2], k) rtol = 1.0e-12
+        end
+        # coarsened sources with the cell volumes: the same total volume and centroid as the uniform sources
+        c2 = (x, z); cu = (xu, zu)
+        cells2(c) = [I for I in CartesianIndices(map(length, c)) if abs(c[1][I[1]]) <= 600.0 && -2500.0 <= c[2][I[2]] <= -1500.0]
+        for coarsen in (1, 3)
+            cen, ΔV = cell_sources(cells2(c2), I -> prod(ntuple(k -> cell_widths(c2[k])[I[k]], 2)), -0.1, c2; coarsen)
+            cenu, ΔVu = cell_sources(cells2(cu), 100.0^2, -0.1, cu; coarsen)
+            @test sum(ΔV) ≈ sum(ΔVu) rtol = 1.0e-12
+            @test sum(cen .* ΔV; dims = 1) ≈ sum(cenu .* ΔVu; dims = 1) rtol = 1.0e-12
+        end
+        ev = (; cells = cells2(c2), f = 0.1, geo = chamber_geometry(cells2(c2), map(cell_widths, c2), c2))
+        evu = (; cells = cells2(cu), f = 0.1, geo = chamber_geometry(cells2(cu), map(cell_widths, cu), cu))
+        @test sum(erupt_sources(ev, c2; coarsen = 3)[2]) ≈ sum(erupt_sources(evu, cu; coarsen = 3)[2]) rtol = 1.0e-12
+        @test _surface_above(fill(NaN, length(x)), cells2(c2), z) ≈ z[end] + (z[end] - z[end - 1]) / 2
+    end
+
+    @testset "out-of-plane loss and convection on a refined grid" begin
+        using MagmaThermoKinematics: _thickness, _cw
+        # the width of a Gaussian anomaly from the moments weighted with the cell widths
+        x = refined_coordinates(-20.0e3, 20.0e3, 201; zone = (-3.0e3, 3.0e3), ratio = 4, transition = 0); z = collect(range(-10.0e3, 0.0, length = 11))
+        s = 2.0e3; θ = [exp(-xx^2 / (2s^2)) for xx in x, zz in z]; X = [xx for xx in x, zz in z]
+        L2w = out_of_plane_width2(θ, X; smooth = 0, Lmin = 1.0, dx = cell_widths(x), dz = fill(1.0e3, length(z)))
+        L2u = out_of_plane_width2(θ, X; smooth = 0, Lmin = 1.0)
+        @test maximum(abs, L2w ./ s^2 .- 1) < 1.0e-2                                         # the weighted moments give the variance
+        @test maximum(abs, L2u ./ s^2 .- 1) > 0.05                                            # unweighted moments are biased by the concentrated points
+        Hr = zeros(size(θ)); L2h = add_out_of_plane_loss!(Hr, 400 .+ 100 .* θ, fill(400.0, size(θ)), fill(3.0, size(θ)), X, ones(Int, size(θ)); smooth = 0, Lmin = 1.0, dx = cell_widths(x), dz = fill(1.0e3, length(z)))
+        @test L2h ≈ L2w && minimum(Hr) < 0
+        # thickness of a convecting layer: the sum of the control-volume widths
+        h = diff(collect(z) .+ [0.0, 50.0, -30.0, 20.0, 0.0, 10.0, -10.0, 40.0, 0.0, -20.0, 0.0])
+        @test _thickness(h, 3, 6, 11) ≈ sum(_cw(h, k, 11) for k in 3:6) && _thickness(1.0e3, 3, 6, 11) == 4.0e3
+        @test _cw(h, 1, 11) == h[1] && _cw(h, 11, 11) == h[end] && _cw(h, 4, 11) == (h[3] + h[4]) / 2
+        # Nusselt numbers on a refined grid with constant spacing = those of the constant-spacing grid
+        N = (6, 40); zc = collect(range(-12.0e3, 0.0, length = 40)); Z = repeat(zc', 6)
+        T = [zz < -6.0e3 && zz > -10.0e3 ? 1250.0 + 0.05 * (-6.0e3 - zz) : 900.0 for _ in 1:6, zz in zc]; ϕ = [t > 1200 ? 0.8 : 0.0 for t in T]     # K
+        Kc, Rho, Cp = fill(3.0, N), fill(2700.0, N), fill(1000.0, N); Ph = ones(Int, N)
+        Nu1, Nu2 = ones(N), ones(N)
+        compute_convective_nusselt!(Nu1, Kc, T, ϕ, Rho, Cp, Ph, Z, step(range(-12.0e3, 0.0, length = 40)))
+        compute_convective_nusselt!(Nu2, Kc, T, ϕ, Rho, Cp, Ph, Z, diff(zc))
+        @test maximum(Nu1) > 1
+        @test Nu2 ≈ Nu1 rtol = 1.0e-10
+    end
+
     @testset "MTK_GeoParams on a refined grid" begin
         function run_model(backend, dim; solver = :explicit, refine = nothing)
             if dim == 2
