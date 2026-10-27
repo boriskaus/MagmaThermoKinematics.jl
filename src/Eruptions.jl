@@ -29,7 +29,12 @@ Parameters of the chamber/eruption model. Pressures in Pa, lengths in m, times i
 - `σ_barrier`: stress barrier that the dike has to overcome [Pa]
 - `w_dike`, `κ_magma`: dike half-width [m] and magma thermal diffusivity [m²/s] (dike freezing)
 - `μ_shear`: host-rock shear modulus [Pa]; `ν`: Poisson ratio used for the displacement field
-- `A_visc`, `G_act`: Arrhenius constants of the crustal creep law
+- `A_visc`, `G_act`: prefactor [Pa s] and activation energy [J/mol] of the Arrhenius viscosity `η = A_visc exp(G_act/(R T))` of the host rock
+- `shell_rheology`: `nothing` (default: the Arrhenius law above) or a GeoParams creep law of the host rock (e.g. `SetDislocationCreep(GeoParams.Dislocation.granite_Tirel_2008)`,
+  any law with `compute_εII(law, τ, (; T, P))`), evaluated at the local stress of the shell `τ(s) = 1.5 ΔP / s³` (`s = r/R`, `ΔP` the overpressure, at least `shell_ΔP_min`) and the lithostatic pressure
+- `shell_from_T`: take the temperature of the shell around the chamber from the simulated temperature field instead of the steady conduction profile to the undisturbed geotherm (default)
+- `shell_ratio`, `shell_nθ`: outer radius of the shell in chamber radii, and number of rays from the chamber centre along which the shell is sampled (in the section in 2D, over the sphere in 3D)
+- `η_shell_min`, `η_shell_max`: bounds of the relaxation viscosity of the shell [Pa s]
 - `m_w`: total H₂O mass fraction of the magma
 - `ρ_melt`, `ρ_x`, `crust`: densities as `(ρ0, α, β)` (reference density, expansivity, compressibility)
 - `melt_viscosity`, `solubility`, `ρ_gas`: GeoParams laws
@@ -48,6 +53,13 @@ Base.@kwdef mutable struct EruptionParams
     ν::Float64 = 0.25
     A_visc::Float64 = 4.25e7
     G_act::Float64 = 141.0e3
+    shell_rheology::Any = nothing
+    shell_from_T::Bool = false
+    shell_ratio::Float64 = 11.0
+    shell_nθ::Int = 16
+    η_shell_min::Float64 = 1.0e17
+    η_shell_max::Float64 = 1.0e24
+    shell_ΔP_min::Float64 = 1.0e4
     m_w::Float64 = 0.0
     ρ_melt::NTuple{3, Float64} = (2400.0, 3.0e-5, 1.0e-10)
     ρ_x::NTuple{3, Float64} = (2700.0, 3.0e-5, 1.5e-11)
@@ -148,24 +160,81 @@ end
 "Host-rock compliance 1/β_r of a sill-like chamber of thickness `V` and radius `R` (spherical limit at aspect ratio 1)."
 host_compliance(ep::EruptionParams, V, R) = 3 / (4 * ep.μ_shear * min(0.5 * V / R, 1.0))
 
-crustal_viscosity(ep::EruptionParams, T_K) = ep.A_visc * exp(ep.G_act / (8.314 * T_K))
+"""
+    crustal_viscosity(ep, T_K; τ = 1.0e6, P = 0.0) -> η
+
+Viscosity [Pa s] of the host rock at the temperature `T_K` [K]: the Arrhenius law `A_visc exp(G_act/(R T))`, or, with a GeoParams creep law
+`ep.shell_rheology`, `τ / (2 ε̇(τ, T, P))` at the stress `τ` [Pa] and pressure `P` [Pa] (stress dependent for nonlinear laws).
+"""
+function crustal_viscosity(ep::EruptionParams, T_K; τ = 1.0e6, P = 0.0)
+    law = ep.shell_rheology
+    law === nothing && return ep.A_visc * exp(ep.G_act / (8.314 * T_K))
+    return τ / (2 * compute_εII(law, τ, (; T = T_K, P)))
+end
+
+# stress of the shell at s = r/R around a pressurised (spherical) chamber
+_shell_stress(ep, ΔP, s) = 1.5 * max(abs(ΔP), ep.shell_ΔP_min) / s^3      # an underpressured chamber stresses the shell as well
 
 """
-    crustal_relaxation_viscosity(ep, T_mush_K, T_far_K; shell_ratio=11, n=64) -> η_r
+    crustal_relaxation_viscosity(ep, T_mush_K, T_far_K; ΔP = ep.ΔP_crit, P = 0.0, shell_ratio = ep.shell_ratio, n = 64) -> η_r
 
-Effective viscosity of the visco-elastic shell around the chamber (steady spherical conduction
-profile between the chamber wall and the far field, Simpson integration), clamped to 1e17–1e24 Pa s.
+Effective viscosity of the visco-elastic shell around the chamber, `∫ 3 η(T(s), τ(s)) / s⁴ ds` from `s = 1` to `shell_ratio` (Simpson rule), for the steady spherical conduction
+profile `T(s)` between the chamber wall (`T_mush_K`) and the far field (`T_far_K`), with the shell stress `τ(s) = 1.5 ΔP / s³` and pressure `P` (see [`crustal_viscosity`](@ref)),
+bounded by `ep.η_shell_min` and `ep.η_shell_max`.
 """
-function crustal_relaxation_viscosity(ep::EruptionParams, T_mush_K, T_far_K; shell_ratio = 11.0, n = 64)
+function crustal_relaxation_viscosity(ep::EruptionParams, T_mush_K, T_far_K; ΔP = ep.ΔP_crit, P = 0.0, shell_ratio = ep.shell_ratio, n = 64)
     T_far_K = min(T_far_K, T_mush_K)
     T_shell(s) = (T_mush_K * (shell_ratio - s) + shell_ratio * T_far_K * (s - 1)) / ((shell_ratio - 1) * s)
-    integrand(s) = 3 * crustal_viscosity(ep, T_shell(s)) / s^4
+    integrand(s) = 3 * crustal_viscosity(ep, T_shell(s); τ = _shell_stress(ep, ΔP, s), P) / s^4
     h = (shell_ratio - 1) / n
     total = integrand(1.0) + integrand(shell_ratio)
     for i in 1:(n - 1)
         total += (isodd(i) ? 4 : 2) * integrand(1 + i * h)
     end
-    return clamp(total * h / 3, 1.0e17, 1.0e24)
+    return clamp(total * h / 3, ep.η_shell_min, ep.η_shell_max)
+end
+
+# unit directions of the rays from the chamber centre: in the (x, z) plane in 2D, a Fibonacci lattice on the sphere in 3D
+function _shell_directions(N, nθ)
+    N == 2 && return [(cos(2π * (j - 0.5) / nθ), sin(2π * (j - 0.5) / nθ)) for j in 1:nθ]
+    golden = π * (3 - sqrt(5))
+    return [(z = 1 - 2 * (j - 0.5) / nθ; r = sqrt(1 - z^2); (r * cos(golden * j), r * sin(golden * j), z)) for j in 1:nθ]
+end
+
+"""
+    crustal_relaxation_viscosity_field(ep, T, coords, center, R; ΔP = ep.ΔP_crit, P = 0.0, axisymmetric = false, shell_ratio = ep.shell_ratio, n = 64, nθ = ep.shell_nθ) -> η_r
+
+Effective viscosity of the visco-elastic shell around a chamber of radius `R` centred at `center`, from the simulated temperature `T` [°C] (any backend) on the grid `coords`
+(constant spacing or refined). The shell integral of [`crustal_relaxation_viscosity`](@ref) is evaluated along `nθ` rays from the chamber centre (in the section in 2D, over
+the sphere in 3D; positions outside the grid take the nearest grid point; in an axisymmetric model the rays are mirrored at the axis), so that it sees the heated aureole of the
+chamber instead of the undisturbed geotherm. The sectors relax in parallel: the result is the harmonic mean over the rays, bounded by `ep.η_shell_min` and `ep.η_shell_max`.
+"""
+function crustal_relaxation_viscosity_field(
+        ep::EruptionParams, T::AbstractArray{<:Any, N}, coords, center, R; ΔP = ep.ΔP_crit, P = 0.0, axisymmetric = false,
+        shell_ratio = ep.shell_ratio, n = 64, nθ = ep.shell_nθ
+    ) where {N}
+    dirs = _shell_directions(N, nθ)
+    h = (shell_ratio - 1) / n
+    LI = LinearIndices(T)
+    idx = Vector{Int}(undef, nθ * (n + 1))                                   # grid points sampled by the rays
+    for (j, d) in enumerate(dirs), i in 0:n
+        s = 1 + i * h
+        p = ntuple(k -> center[k] + s * R * d[k], N)
+        axisymmetric && (p = (abs(p[1]), Base.tail(p)...))
+        idx[(j - 1) * (n + 1) + i + 1] = LI[CartesianIndex(ntuple(k -> _nearest_index(coords[k], p[k]), N))]
+    end
+    Ts = T isa Array ? T[idx] : Array(T[copyto!(similar(T, Int, length(idx)), idx)])       # gathered on the device
+    inv_sum = 0.0
+    for j in 1:nθ
+        total = 0.0
+        for i in 0:n
+            s = 1 + i * h
+            w = (i == 0 || i == n) ? 1.0 : (isodd(i) ? 4.0 : 2.0)
+            total += w * 3 * crustal_viscosity(ep, Float64(Ts[(j - 1) * (n + 1) + i + 1]) + 273.15; τ = _shell_stress(ep, ΔP, s), P) / s^4
+        end
+        inv_sum += 1 / max(total * h / 3, floatmin(Float64))
+    end
+    return clamp(nθ / inv_sum, ep.η_shell_min, ep.η_shell_max)
 end
 
 # ---------------------------------------------------------------------------------------
@@ -687,7 +756,7 @@ end
 # One chamber step on the grid
 # ---------------------------------------------------------------------------------------
 """
-    chamber_step!(state, ep, ϕ, T, coords; recharge, Δt, time, T_background, margin=0.0, resolve=2.0, P=nothing, Zsurf=nothing) -> event
+    chamber_step!(state, ep, ϕ, T, coords; recharge, Δt, time, T_background, margin=0.0, resolve=2.0, P=nothing, Zsurf=nothing, axisymmetric=false) -> event
 
 Advance the chamber of the arrays `ϕ` (melt fraction) and `T` [°C] (host or device) by `Δt` [s]. `coords` are the
 1D coordinate vectors (`z` last, negative downward, free surface at `z = 0`), `recharge` the magma
@@ -705,6 +774,10 @@ with the air cells set to zero density,
 (`Δz = diff(z)` on a refined grid), and the surface elevation `Zsurf` (as moved by [`move_free_surface!`](@ref)), from which the depth of the chamber
 below the surface is measured (used for the dike ascent and for `T_background`).
 
+The relaxation viscosity of the shell around the chamber is taken from the temperature field `T` around it (with `ep.shell_from_T`; see
+[`crustal_relaxation_viscosity_field`](@ref)), or from the steady profile to `T_background` (default). In an axisymmetric model pass `axisymmetric = true`
+(the first coordinate is the radius; the rays of the shell are mirrored at the axis).
+
 A drained thickness is queued until it exceeds `resolve` cells (the grid-resolvable withdrawal; the
 displacement field is continuous, so values below 1 are admissible). On a refined grid (`coords` are vectors) the cell
 size is the mean vertical cell size of the chamber, and the sums over the chamber are weighted with the cell volumes.
@@ -713,7 +786,7 @@ Returns `nothing` when no eruption is realised, otherwise a named tuple with the
 `h_erupt`, the fractional volume change `f = h_erupt/h` of the chamber, the chamber `cells` and its
 geometry `geo`. Remove the volume with [`erupt_sources`](@ref) and [`mogi_displacement!`](@ref).
 """
-function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; recharge, Δt, time, T_background, margin = 0.0, resolve = 2.0, P = nothing, Zsurf = nothing)
+function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; recharge, Δt, time, T_background, margin = 0.0, resolve = 2.0, P = nothing, Zsurf = nothing, axisymmetric = false)
     N = ndims(ϕ)
     Δ = ntuple(k -> cell_widths(coords[k]), N)          # numbers for constant spacing, vectors on a refined grid
     uniform = all(d -> d isa Number, Δ)
@@ -767,7 +840,16 @@ function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; 
 
     T_mush_K = csum(T) / nV + 273.15
     ϕ_mush = ϕsum / nV
-    η_r = crustal_relaxation_viscosity(ep, T_mush_K, T_background(depth) + 273.15)
+    ΔP_now = state.P - state.P_lith                       # overpressure at the beginning of the step (stress of the shell)
+    if ep.shell_from_T                                    # shell viscosity from the simulated temperature around the chamber
+        w = uniform ? (I -> 1.0) : (I -> _cell_volume(Δ, I))
+        wsum = sum(w, cells)
+        center = ntuple(k -> sum(I -> coords[k][I[k]] * w(I), cells) / wsum, N)
+        axisymmetric && (center = (0.0, Base.tail(center)...))      # the chamber is a body of revolution about the axis, with radius W
+        η_r = crustal_relaxation_viscosity_field(ep, T, coords, center, axisymmetric ? geo.W : geo.R; ΔP = ΔP_now, P = P_lith, axisymmetric)
+    else                                                  # steady conduction profile to the undisturbed geotherm
+        η_r = crustal_relaxation_viscosity(ep, T_mush_K, T_background(depth) + 273.15; ΔP = ΔP_now, P = P_lith)
+    end
     step_overpressure!(state, ep, T_mush_K, ϕ_mush, geo.h, geo.R, recharge / geo.W, Δt; depth, η_r)
 
     Δz = uniform ? Δ[N] : sum(I -> Δ[N][I[N]] * _cell_volume(Δ, I), cells) / geo.V     # mean vertical cell size of the chamber

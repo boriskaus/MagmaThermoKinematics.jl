@@ -357,3 +357,57 @@ end
     # scalar widths (constant spacing along a direction)
     @test _width(50.0, 7) == 50.0 && _cw(50.0, 3, 10) == 50.0
 end
+
+@testset "Shell viscosity from the temperature field" begin
+    using MagmaThermoKinematics: crustal_relaxation_viscosity, crustal_relaxation_viscosity_field, crustal_viscosity, chamber_step!
+    ep = EruptionParams(η_shell_min = 1.0e10, η_shell_max = 1.0e30)                  # wide bounds: compare the integrals themselves
+    Tm, Tf, R = 750.0, 500.0, 1.0e3                                                   # K, K, m
+    Tprof(s) = s <= 1 ? Tm : s >= 11 ? Tf : (Tm * (11 - s) + 11 * Tf * (s - 1)) / (10 * s)      # the steady profile of crustal_relaxation_viscosity
+    η0 = crustal_relaxation_viscosity(ep, Tm, Tf)
+    # a temperature field that has this profile around the chamber gives the same viscosity: 2D, axisymmetric (chamber on the axis) and 3D
+    x = range(-15.0e3, 15.0e3, length = 601); z = range(-20.0e3, 10.0e3, length = 601)
+    T2 = [Tprof(hypot(xx, zz + 5.0e3) / R) - 273.15 for xx in x, zz in z]
+    @test crustal_relaxation_viscosity_field(ep, T2, (x, z), (0.0, -5.0e3), R) ≈ η0 rtol = 0.03
+    r = range(0.0, 15.0e3, length = 301)
+    Ta = [Tprof(hypot(rr, zz + 5.0e3) / R) - 273.15 for rr in r, zz in z]
+    @test crustal_relaxation_viscosity_field(ep, Ta, (r, z), (0.0, -5.0e3), R; axisymmetric = true) ≈ η0 rtol = 0.03
+    x3 = range(-14.0e3, 14.0e3, length = 141); z3 = range(-19.0e3, 9.0e3, length = 141)
+    T3 = [Tprof(sqrt(xx^2 + yy^2 + (zz + 5.0e3)^2) / R) - 273.15 for xx in x3, yy in x3, zz in z3]
+    @test crustal_relaxation_viscosity_field(ep, T3, (x3, x3, z3), (0.0, 0.0, -5.0e3), R; nθ = 64) ≈ η0 rtol = 0.1
+    # a hotter aureole is softer; the bounds apply
+    @test crustal_relaxation_viscosity_field(ep, T2 .+ 100, (x, z), (0.0, -5.0e3), R) < 0.1 * η0
+    @test crustal_relaxation_viscosity_field(EruptionParams(), T2 .+ 400, (x, z), (0.0, -5.0e3), R) == EruptionParams().η_shell_min
+    # the Arrhenius law does not depend on stress; a GeoParams power-law creep law weakens with the overpressure as ΔP^(1-n)
+    @test crustal_relaxation_viscosity_field(ep, T2, (x, z), (0.0, -5.0e3), R; ΔP = 1.0e7) == crustal_relaxation_viscosity_field(ep, T2, (x, z), (0.0, -5.0e3), R; ΔP = 1.0e6)
+    law = SetDislocationCreep(GeoParams.Dislocation.granite_Tirel_2008); n = NumValue(law.n)
+    epg = EruptionParams(shell_rheology = law, η_shell_min = 1.0e5, η_shell_max = 1.0e40)
+    @test crustal_viscosity(epg, 1100.0; τ = 1.0e6, P = 1.5e8) ≈ 1.0e6 / (2 * compute_εII(law, 1.0e6, (; T = 1100.0, P = 1.5e8)))
+    η1 = crustal_relaxation_viscosity_field(epg, T2, (x, z), (0.0, -5.0e3), R; ΔP = 1.0e6, P = 1.5e8)
+    η10 = crustal_relaxation_viscosity_field(epg, T2, (x, z), (0.0, -5.0e3), R; ΔP = 1.0e7, P = 1.5e8)
+    @test η10 / η1 ≈ 10.0^(1 - n) rtol = 1.0e-8
+    @test crustal_relaxation_viscosity(epg, Tm, Tf; ΔP = 1.0e7, P = 1.5e8) / crustal_relaxation_viscosity(epg, Tm, Tf; ΔP = 1.0e6, P = 1.5e8) ≈ 10.0^(1 - n) rtol = 1.0e-8
+    @test crustal_relaxation_viscosity_field(epg, T2, (x, z), (0.0, -5.0e3), R; ΔP = 0.0) == crustal_relaxation_viscosity_field(epg, T2, (x, z), (0.0, -5.0e3), R; ΔP = epg.shell_ΔP_min)
+    @test crustal_relaxation_viscosity_field(epg, T2, (x, z), (0.0, -5.0e3), R; ΔP = -1.0e7, P = 1.5e8) == η10          # an underpressure stresses the shell as much as the same overpressure
+
+    # chamber_step!: the shell viscosity of the state comes from the field (shell_from_T) or from the geotherm profile (default)
+    epc = EruptionParams(
+        m_w = 0.06, ΔP_crit = 3.0e6, σ_barrier = 0.0, w_dike = 20.0,
+        melt_viscosity = LinearMeltViscosity(A = -8.159, B = 2.405e4K, T0 = -430.9606K, η0 = 1Pas), solubility = Liu2005_Solubility(), shell_from_T = true
+    )
+    xc = range(-10.0e3, 10.0e3, length = 81); zc = range(-14.0e3, 0.0, length = 57); coords = (xc, zc)
+    ϕ = [abs(xx) < 2.0e3 && -6.0e3 < zz < -4.0e3 ? 0.8 : 0.0 for xx in xc, zz in zc]
+    Taur = [ϕ[i, j] > 0 ? 900.0 : 20.0 - 0.02 * zz + 600 * exp(-(xx^2 + (zz + 5.0e3)^2) / (2 * 3.0e3^2)) for (i, xx) in enumerate(xc), (j, zz) in enumerate(zc)]     # hot aureole
+    Tb = d -> 20.0 + 0.02d
+    run_step(ep) = (st = EruptionState(); chamber_step!(st, ep, ϕ, Taur, coords; recharge = 0.0, Δt = 3.15576e7, time = 0.0, T_background = Tb); st)
+    sf = run_step(epc); epg_ = deepcopy(epc); epg_.shell_from_T = false; sg = run_step(epg_)
+    cells = findall(>(0), ϕ)
+    cen = (sum(I -> xc[I[1]], cells) / length(cells), sum(I -> zc[I[2]], cells) / length(cells))
+    @test sf.η_r ≈ crustal_relaxation_viscosity_field(epc, Taur, coords, cen, chamber_geometry(cells, step.(coords), coords).R; ΔP = epc.shell_ΔP_min, P = sf.P_lith)
+    @test sg.η_r ≈ crustal_relaxation_viscosity(epc, sum(I -> Taur[I], cells) / length(cells) + 273.15, Tb(-chamber_geometry(cells, step.(coords), coords).zc) + 273.15; P = sg.P_lith) rtol = 1.0e-12
+    @test sf.η_r < 1.0e-3 * sg.η_r                                                      # the aureole softens the shell
+    ra = range(0.0, 10.0e3, length = 41)
+    ϕa = [rr < 2.0e3 && -6.0e3 < zz < -4.0e3 ? 0.8 : 0.0 for rr in ra, zz in zc]; Ta_ = [ϕa[i, j] > 0 ? 900.0 : 300.0 for i in eachindex(ra), j in eachindex(zc)]
+    sa = EruptionState(); chamber_step!(sa, epc, ϕa, Ta_, (ra, zc); recharge = 0.0, Δt = 3.15576e7, time = 0.0, T_background = Tb, axisymmetric = true)
+    ca = findall(>(0), ϕa)                                                              # axisymmetric: centre on the axis, radius W = 2 km
+    @test sa.η_r ≈ crustal_relaxation_viscosity_field(epc, Ta_, (ra, zc), (0.0, sum(I -> zc[I[2]], ca) / length(ca)), 2.0e3; ΔP = epc.shell_ΔP_min, P = sa.P_lith, axisymmetric = true)
+end
