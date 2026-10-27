@@ -225,6 +225,28 @@ end
     A[I] = fn(MatParam, Int64(Phases[I]), argsI)   # GeoParams' phase lookup takes an Int64
 end
 
+"Adaptor that copies host arrays to a KernelAbstractions backend."
+struct _BackendAdaptor{B}
+    backend::B
+end
+function Adapt.adapt_storage(to::_BackendAdaptor, a::Array)
+    b = KernelAbstractions.allocate(to.backend, eltype(a), size(a))
+    copyto!(b, a)
+    return b
+end
+
+"""
+    materials_on_backend(Mat_tup, backend)
+
+Copy the arrays inside the material parameters `Mat_tup` to `backend`, e.g. the lookup
+tables of phase diagrams read with GeoParams' `MAGEMin_Diagram` or `PerpleX_LaMEM_Diagram`.
+GPU kernels cannot read host arrays, so this is needed before such materials are used with
+GPU arrays (`MTK_GeoParams` does it). Materials without arrays are returned unchanged, and
+on the `CPU()` backend `Mat_tup` is returned as is.
+"""
+materials_on_backend(Mat_tup, ::CPU) = Mat_tup
+materials_on_backend(Mat_tup, backend) = Adapt.adapt(_BackendAdaptor(backend), Mat_tup)
+
 # GeoParams' radioactive heat takes the depth `z` (positive downward); the model coordinate `Z` is negative below the surface.
 radioactive_heat_at_Z(MatParam, phase, args) = compute_radioactive_heat(MatParam, phase, (; z = -args.Z))
 
