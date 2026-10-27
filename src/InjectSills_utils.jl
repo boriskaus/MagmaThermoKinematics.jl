@@ -36,7 +36,7 @@ function add_dike(Tfield, Tr, Grid, sill::InjectSills.AbstractSill, T_in::Real, 
     # ------------------------------------------------------------------
     # 1.  Set temperature inside the sill
     # ------------------------------------------------------------------
-    _launch!(_fill_sill!, Tfield, size(Tfield), Tfield, Tuple(Grid), sill, T_in)   # ponytail: sills with array fields (FiniteEllipsoidalCavity) need Adapt for a GPU
+    _launch!(_fill_sill!, Tfield, size(Tfield), Tfield, map(c -> _on_backend(Tfield, c), Tuple(Grid)), sill, T_in)   # ponytail: sills with array fields (FiniteEllipsoidalCavity) need Adapt for a GPU
 
     # ------------------------------------------------------------------
     # 2.  Seed new tracers inside the sill
@@ -89,12 +89,12 @@ end
                      dike_poly=[])
 
 Inject a sill/dike described by the `InjectSills.AbstractSill` object `sill`
-into the temperature field `T` defined on the regular grid `Grid`.
+into the temperature field `T` defined on the grid `Grid` (constant spacing or refined).
 
 # Arguments
 - `Tracers`             – `StructArray` of `Tracer` objects (may be unassigned on first call)
 - `T`                   – temperature array [°C], mutated in-place; any backend
-- `Grid`                – 1-D coordinate vectors `(x, z)` in 2-D or `(x, y, z)` in 3-D
+- `Grid`                – 1-D coordinate vectors `(x, z)` in 2-D or `(x, y, z)` in 3-D (ranges, or vectors for a refined grid)
 - `sill`                – `AbstractSill` (e.g. `PennyShapedSill`) with the desired center,
                           orientation, size, and elastic parameters already set
 - `T_in`                – temperature of the injected magma [°C]
@@ -113,7 +113,7 @@ the equivalent 3D volume of `sill` in m³ (`InjectSills.volume`).
 ## Algorithm
 The temperature field is advected by the displacement field of
 `InjectSills.hostrock_displacement!` over `nsteps` pseudo-time steps, so that
-the displacement per step stays below `0.5 * min(dx, dz)`. With the default
+the displacement per step stays below half the smallest grid spacing. With the default
 RK2/linear scheme this runs on the backend of `T`; the other schemes need a
 CPU `Array`. Existing tracers and `dike_poly` move from `x` to `x + u(x)`,
 with `u` evaluated at their own positions. `add_dike` then sets `T = T_in`
@@ -137,7 +137,7 @@ function inject_sills(
     # ------------------------------------------------------------------
     # Number of pseudo-time steps (keeps displacement < 0.5 * min_dx)
     # ------------------------------------------------------------------
-    Spacing = [Grid[i][2] - Grid[i][1] for i in 1:dim]
+    Spacing = [min_spacing(Grid[i]) for i in 1:dim]
     d = minimum(Spacing) * 0.5
     nsteps = max(ceil(Int, H / d), 2)
     dt = inv(oftype(float(one(eltype(T))), nsteps))
@@ -149,7 +149,7 @@ function inject_sills(
     backend = get_backend(T)
     GridFull = ntuple(dim) do k
         X = KernelAbstractions.allocate(backend, eltype(T), size(T))
-        X .= reshape(Grid[k], ntuple(j -> j == k ? length(Grid[k]) : 1, dim))
+        X .= reshape(_on_backend(X, Grid[k]), ntuple(j -> j == k ? length(Grid[k]) : 1, dim))
     end
     Velocity = InjectSills.hostrock_displacement!(map(similar, GridFull), sill, GridFull)
 

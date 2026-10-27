@@ -462,9 +462,11 @@ end
 Equivalent column of a chamber: native volume `V` (m² in 2D, m³ in 3D), footprint `W` (m in 2D, m²
 in 3D), mean thickness `h = V/W`, lateral radius `R`, the factor `scale` converting native volume to
 the 3D-equivalent volume (`π R² h / V`), the volume-weighted centroid depth coordinate `zc` and the
-vertical extent. `Δ` are the cell sizes and `coords` the 1D coordinate vectors (z last).
+vertical extent. `Δ` are the cell sizes and `coords` the 1D coordinate vectors (z last). On a refined grid, `Δ`
+holds the vectors of the cell widths per direction ([`cell_widths`](@ref)).
 """
 function chamber_geometry(cells::Vector{CartesianIndex{N}}, Δ, coords) where {N}
+    all(d -> d isa Number, Δ) || return _chamber_geometry_refined(cells, Δ, coords)
     dV = prod(Δ)
     V = length(cells) * dV
     zc = sum(I -> coords[N][I[N]], cells) / length(cells)
@@ -477,6 +479,35 @@ function chamber_geometry(cells::Vector{CartesianIndex{N}}, Δ, coords) where {N
     else
         cols = Set((I[1], I[2]) for I in cells)
         W = length(cols) * Δ[1] * Δ[2]
+        R = sqrt(W / π)
+    end
+    h = V / W
+    scale = π * R^2 * h / V
+    return (; V, W, h, R, scale, zc, z_lo, z_hi)
+end
+
+# width of cell `i` along a direction with the widths `w` (a number for constant spacing), and the volume of cell `I`
+@inline _width(w::Number, i) = w
+@inline _width(w::AbstractVector, i) = w[i]
+@inline _cell_volume(Δ, I::CartesianIndex{N}) where {N} = prod(ntuple(k -> _width(Δ[k], I[k]), Val(N)))
+
+# smallest spacing of a coordinate vector, and the index of the point nearest to `x`
+_smallest_spacing(c::AbstractRange) = step(c)
+_smallest_spacing(c::AbstractVector) = minimum(diff(c))
+_nearest_index(c::AbstractRange, x) = clamp(round(Int, (x - first(c)) / step(c)) + 1, 1, length(c))
+_nearest_index(c::AbstractVector, x) = round(Int, _fractional_index(c, x))
+
+function _chamber_geometry_refined(cells::Vector{CartesianIndex{N}}, Δ, coords) where {N}
+    z, wz = coords[N], Δ[N]
+    V = sum(I -> _cell_volume(Δ, I), cells)
+    zc = sum(I -> z[I[N]] * _cell_volume(Δ, I), cells) / V
+    z_lo = minimum(I -> z[I[N]] - _width(wz, I[N]) / 2, cells)
+    z_hi = maximum(I -> z[I[N]] + _width(wz, I[N]) / 2, cells)
+    if N == 2
+        W = sum(i -> _width(Δ[1], i), Set(I[1] for I in cells))
+        R = W / 2
+    else
+        W = sum(c -> _width(Δ[1], c[1]) * _width(Δ[2], c[2]), Set((I[1], I[2]) for I in cells))
         R = sqrt(W / π)
     end
     h = V / W
@@ -585,7 +616,8 @@ end
 Point sources for a set of cells: one per cell, volume `factor · dV_native` each (a list of 3D-equivalent
 volume changes can be formed by scaling `factor` with [`chamber_geometry`](@ref)'s `scale` and the
 fractional volume change). With `coarsen > 1`, cells are binned in blocks of `coarsen` cells per direction
-and each bin becomes one source at its volume-weighted centroid (cheaper for large 3D chambers).
+and each bin becomes one source at its volume-weighted centroid (cheaper for large 3D chambers). On a refined grid,
+`dV_native` is a function that returns the volume of cell `I`.
 """
 function cell_sources(cells::Vector{CartesianIndex{N}}, dV_native, factor, coords; coarsen = 1) where {N}
     if coarsen == 1
@@ -608,6 +640,28 @@ function cell_sources(cells::Vector{CartesianIndex{N}}, dV_native, factor, coord
     end
     return centers, ΔV
 end
+function cell_sources(cells::Vector{CartesianIndex{N}}, dV_native::Function, factor, coords; coarsen = 1) where {N}
+    if coarsen == 1
+        centers = [coords[k][I[k]] for I in cells, k in 1:N]
+        return centers, [factor * dV_native(I) for I in cells]
+    end
+    bins = Dict{NTuple{N, Int}, Tuple{Vector{Float64}, Float64}}()
+    for I in cells
+        key = ntuple(k -> (I[k] - 1) ÷ coarsen, Val(N))
+        acc, v = get!(bins, key, (zeros(N), 0.0))
+        dV = dV_native(I)
+        for k in 1:N
+            acc[k] += coords[k][I[k]] * dV
+        end
+        bins[key] = (acc, v + dV)
+    end
+    centers = zeros(length(bins), N); ΔV = zeros(length(bins))
+    for (i, (_, (acc, v))) in enumerate(bins)
+        centers[i, :] .= acc ./ v
+        ΔV[i] = factor * v
+    end
+    return centers, ΔV
+end
 
 """
     displace_temperature!(T, Tbuf, coords, U; maxfrac=0.5) -> nsub
@@ -616,7 +670,7 @@ Advect the temperature field `T` with the displacement field `U` [m] (semi-Lagra
 sub-steps as needed to keep each below `maxfrac` of a cell). `Tbuf` is a work array of the same size.
 """
 function displace_temperature!(T, Tbuf, coords, U; maxfrac = 0.5)
-    Δmin = minimum(step.(Tuple(coords)))
+    Δmin = minimum(_smallest_spacing, Tuple(coords))
     umax = maximum(maximum(abs, u) for u in U)
     nsub = max(1, ceil(Int, umax / (maxfrac * Δmin)))
     V = map(u -> u ./ nsub, Tuple(U))
@@ -648,11 +702,12 @@ with the air cells set to zero density,
     Pmask .= Arrays.Rho .* (Arrays.Phases .!= Num.air_phase)
     MagmaThermoKinematics.lithostatic_pressure!(Plith, Pmask, g, Δz)
 
-and the surface elevation `Zsurf` (as moved by [`move_free_surface!`](@ref)), from which the depth of the chamber
+(`Δz = diff(z)` on a refined grid), and the surface elevation `Zsurf` (as moved by [`move_free_surface!`](@ref)), from which the depth of the chamber
 below the surface is measured (used for the dike ascent and for `T_background`).
 
 A drained thickness is queued until it exceeds `resolve` cells (the grid-resolvable withdrawal; the
-displacement field is continuous, so values below 1 are admissible).
+displacement field is continuous, so values below 1 are admissible). On a refined grid (`coords` are vectors) the cell
+size is the mean vertical cell size of the chamber, and the sums over the chamber are weighted with the cell volumes.
 
 Returns `nothing` when no eruption is realised, otherwise a named tuple with the bulk thickness
 `h_erupt`, the fractional volume change `f = h_erupt/h` of the chamber, the chamber `cells` and its
@@ -660,7 +715,8 @@ geometry `geo`. Remove the volume with [`erupt_sources`](@ref) and [`mogi_displa
 """
 function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; recharge, Δt, time, T_background, margin = 0.0, resolve = 2.0, P = nothing, Zsurf = nothing)
     N = ndims(ϕ)
-    Δ = ntuple(k -> step(coords[k]), N)
+    Δ = ntuple(k -> cell_widths(coords[k]), N)          # numbers for constant spacing, vectors on a refined grid
+    uniform = all(d -> d isa Number, Δ)
     if ϕ isa Array
         cells = chamber_cells(ϕ, ep.ϕ_erupt)
         inmask = nothing
@@ -674,9 +730,18 @@ function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; 
         return nothing
     end
     geo = chamber_geometry(cells, Δ, coords)
-    # sums over the chamber: on the host through the cell list, on the device through the label mask
-    ϕsum = inmask === nothing ? sum(I -> ϕ[I], cells) : sum(ϕ .* inmask)
-    h_melt = ϕsum * prod(Δ) / geo.W
+    # sums over the chamber: on the host through the cell list, on the device through the label mask; on a refined grid
+    # weighted with the cell volumes, so that `csum(A)/nV` is the volume average
+    if uniform
+        csum = A -> (A isa Array || inmask === nothing) ? sum(I -> A[I], cells) : sum(A .* inmask)
+        nV, dV = length(cells), prod(Δ)
+    else
+        wd = inmask === nothing ? nothing : reduce((a, b) -> a .* b, ntuple(k -> reshape(_on_backend(ϕ, Δ[k]), ntuple(j -> j == k ? length(Δ[k]) : 1, N)), N))
+        csum = A -> (A isa Array || inmask === nothing) ? sum(I -> A[I] * _cell_volume(Δ, I), cells) : sum(A .* inmask .* wd)
+        nV, dV = geo.V, 1
+    end
+    ϕsum = csum(ϕ)
+    h_melt = ϕsum * dV / geo.W
     if h_melt < ep.h_melt_min
         reset_chamber!(state)
         return nothing
@@ -691,7 +756,7 @@ function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; 
     if P === nothing                                    # lithostatic pressure from the density law of `ep` along the geotherm
         P_lith = _lithostatic(ep, depth, T_background)
     else                                                # the given pressure field, averaged over the chamber cells
-        P_lith = Float64(P isa Array ? sum(I -> P[I], cells) : (inmask === nothing ? sum(I -> P[I], cells) : sum(P .* inmask))) / length(cells)
+        P_lith = Float64(csum(P)) / nV
     end
     if state.P_lith == 0.0 && state.P == 0.0
         state.P = P_lith
@@ -700,12 +765,12 @@ function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; 
     end
     state.P_lith = P_lith
 
-    T_mush_K = (inmask === nothing ? sum(I -> T[I], cells) : sum(T .* inmask)) / length(cells) + 273.15
-    ϕ_mush = ϕsum / length(cells)
+    T_mush_K = csum(T) / nV + 273.15
+    ϕ_mush = ϕsum / nV
     η_r = crustal_relaxation_viscosity(ep, T_mush_K, T_background(depth) + 273.15)
     step_overpressure!(state, ep, T_mush_K, ϕ_mush, geo.h, geo.R, recharge / geo.W, Δt; depth, η_r)
 
-    Δz = Δ[N]
+    Δz = uniform ? Δ[N] : sum(I -> Δ[N][I[N]] * _cell_volume(Δ, I), cells) / geo.V     # mean vertical cell size of the chamber
     h_drained = state.h_erupt
     h_erupt = pending_withdrawal!(state, h_drained, geo.h, resolve * Δz / 2; time)
     near_boundary = (geo.z_lo - margin <= coords[N][1]) || (geo.z_hi + margin >= coords[N][end])
@@ -718,8 +783,12 @@ end
 function _surface_above(Zsurf, cells::Vector{CartesianIndex{N}}, z) where {N}
     Zs = Array(Zsurf)
     cols = unique(CartesianIndex(ntuple(k -> I[k], N - 1)) for I in cells)
-    return sum(c -> (v = Float64(Zs[c]); isnan(v) ? z[end] + step(z) / 2 : v), cols) / length(cols)
+    return sum(c -> (v = Float64(Zs[c]); isnan(v) ? z[end] + _top_half(z) : v), cols) / length(cols)
 end
+
+# half the spacing of the topmost cell
+_top_half(z::AbstractRange) = step(z) / 2
+_top_half(z::AbstractVector) = (z[end] - z[end - 1]) / 2
 
 # lithostatic pressure at `depth`: integrate the crustal density law over the geotherm
 function _lithostatic(ep::EruptionParams, depth, T_background; n = 200)
@@ -742,10 +811,12 @@ volume `f · π R² h`. Pass to [`mogi_displacement!`](@ref).
 """
 function erupt_sources(event, coords; coarsen = 1)
     N = length(coords)
-    Δ = ntuple(k -> step(coords[k]), N)
-    centers, ΔV = cell_sources(event.cells, prod(Δ), -event.f, coords; coarsen)
+    Δ = ntuple(k -> cell_widths(coords[k]), N)
+    uniform = all(d -> d isa Number, Δ)
+    centers, ΔV = cell_sources(event.cells, uniform ? prod(Δ) : (I -> _cell_volume(Δ, I)), -event.f, coords; coarsen)
     N == 3 && return centers, ΔV, zeros(length(ΔV))
-    xc = sum(I -> coords[1][I[1]], event.cells) / length(event.cells)
+    xc = uniform ? sum(I -> coords[1][I[1]], event.cells) / length(event.cells) :
+        sum(I -> coords[1][I[1]] * _cell_volume(Δ, I), event.cells) / sum(I -> _cell_volume(Δ, I), event.cells)
     R = event.geo.R
     L = [sqrt(max(R^2 - (centers[s, 1] - xc)^2, 0.0)) for s in axes(centers, 1)]
     return centers, ΔV, L
@@ -771,11 +842,17 @@ block becomes one ring at its weighted centroid.
 function revolved_sources(event, coords; coarsen = 1, nθ = 8, symmetric = true)
     length(coords) == 2 || throw(ArgumentError("revolved sources are for planar 2D sections"))
     cells = event.cells
-    Δ = step(coords[1]) * step(coords[2])
-    xc = sum(I -> coords[1][I[1]], cells) / length(cells)
+    widths = map(cell_widths, Tuple(coords))
+    if all(d -> d isa Number, widths)
+        dA = I -> widths[1] * widths[2]
+        xc = sum(I -> coords[1][I[1]], cells) / length(cells)
+    else                                                                # refined grid: cell areas and the area-weighted axis
+        dA = I -> _cell_volume(widths, I)
+        xc = sum(I -> coords[1][I[1]] * dA(I), cells) / sum(dA, cells)
+    end
     bins = Dict{NTuple{2, Int}, NTuple{3, Float64}}()                  # block -> (Σ a w, Σ z w, Σ w) with the weight w = π |a| dA
     for I in cells
-        a = abs(coords[1][I[1]] - xc); w = π * a * Δ
+        a = abs(coords[1][I[1]] - xc); w = π * a * dA(I)
         key = ((I[1] - 1) ÷ coarsen, (I[2] - 1) ÷ coarsen)
         b = get(bins, key, (0.0, 0.0, 0.0))
         bins[key] = (b[1] + a * w, b[2] + coords[2][I[2]] * w, b[3] + w)
@@ -829,8 +906,7 @@ function erupt!(
         volume_factor = 1.0, revolve = false, nθ = 8, symmetric = true, float_type = eltype(T), Zsurf = nothing
     )
     N = length(coords)
-    Δ = ntuple(k -> step(coords[k]), N)
-    softening === nothing && (softening = minimum(Δ))
+    softening === nothing && (softening = minimum(_smallest_spacing, Tuple(coords)))
     halfspace === nothing && (halfspace = revolve ? :mindlin : :mogi)
     if Zsurf !== nothing && halfspace in (:mindlin, :image) && maximum(Zsurf) > z_surface + 1.0e-6 * abs(z_surface) + 1.0e-9
         @warn "The free surface (max. elevation $(maximum(Zsurf)) m) lies above the plane `z_surface` = $z_surface m of the half-space kernel; " *
@@ -844,9 +920,9 @@ function erupt!(
         ΔV .*= volume_factor
         X = ntuple(3) do k                                             # receivers on the section through the chamber axis: (x - xc, 0, z)
             A = KernelAbstractions.allocate(backend, FT, size(T))
-            k == 1 && (A .= reshape(coords[1] .- xc, :, 1))
+            k == 1 && (A .= reshape(_on_backend(A, coords[1] .- xc), :, 1))
             k == 2 && fill!(A, zero(FT))
-            k == 3 && (A .= reshape(coords[2], 1, :))
+            k == 3 && (A .= reshape(_on_backend(A, coords[2]), 1, :))
             A
         end
         U3 = map(similar, X)
@@ -857,7 +933,7 @@ function erupt!(
         ΔV .*= volume_factor                                           # e.g. the fraction of a sill's cross-section that its 3-D opening displaces in a 2-D section
         X = ntuple(N) do k
             A = KernelAbstractions.allocate(backend, eltype(T), size(T))
-            A .= reshape(coords[k], ntuple(j -> j == k ? length(coords[k]) : 1, N))
+            A .= reshape(_on_backend(A, coords[k]), ntuple(j -> j == k ? length(coords[k]) : 1, N))
             A
         end
         U = map(similar, X)
@@ -870,7 +946,7 @@ function erupt!(
         inside = Set(event.cells)
         sel = Int[]
         for (j, c) in enumerate(Tracers.coord)
-            I = CartesianIndex(ntuple(k -> clamp(round(Int, (c[k] - first(coords[k])) / Δ[k]) + 1, 1, length(coords[k])), N))
+            I = CartesianIndex(ntuple(k -> _nearest_index(coords[k], c[k]), N))
             I in inside && rand(rng) < event.f && push!(sel, j)
         end
         cargo = Tracers[sel]
@@ -946,7 +1022,6 @@ the air temperature above them. All arrays may live on any backend.
 function move_free_surface!(Phases, Phases_init, T, Zsurf, coords, U; air = 0, fill = 1)
     N = length(coords)
     z = coords[N]
-    Δz = step(z)
     Ph = Array(Phases); Pi = Array(Phases_init); Th = Array(T); Uz = Array(U[N]); Zs = Array(Zsurf)
     nz = length(z)
     cols = CartesianIndices(ntuple(k -> axes(Ph, k), N - 1))
@@ -954,10 +1029,10 @@ function move_free_surface!(Phases, Phases_init, T, Zsurf, coords, U; air = 0, f
         col(k) = CartesianIndex(Tuple(c)..., k)
         if isnan(Zs[c])
             ks = findfirst(k -> Ph[col(k)] == air, 1:nz)              # first air cell from below
-            Zs[c] = ks === nothing ? z[end] + Δz / 2 : z[ks] - Δz / 2
+            Zs[c] = ks === nothing ? z[end] + _top_half(z) : _face_below(z, ks)
         end
         zs = Zs[c]
-        ks = clamp(round(Int, (zs - z[1]) / Δz) + 1, 1, nz)        # cell containing the surface
+        ks = _nearest_index(z, zs)                                  # cell containing the surface
         u = Uz[col(ks)]
         zs_new = zs + u
         Zs[c] = zs_new
@@ -975,3 +1050,7 @@ function move_free_surface!(Phases, Phases_init, T, Zsurf, coords, U; air = 0, f
     copyto!(Phases, Ph); copyto!(Phases_init, Pi); copyto!(T, Th); copyto!(Zsurf, Zs)
     return Zsurf
 end
+
+# lower face of cell `k` (midway to the point below)
+_face_below(z::AbstractRange, k) = z[k] - step(z) / 2
+_face_below(z::AbstractVector, k) = k == 1 ? z[1] - (z[2] - z[1]) / 2 : (z[k - 1] + z[k]) / 2

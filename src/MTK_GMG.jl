@@ -14,7 +14,7 @@ using StructArrays
 using MagmaThermoKinematics.Grid
 import MagmaThermoKinematics: NumericalParameters, SillParameters, TimeDependentProperties
 import MagmaThermoKinematics: update_Tvec!, inject_sills, move_free_surface!, SecYear, km³, kyr, Myr
-import MagmaThermoKinematics: PhasesFromTracers!, CreateArrays, copy_to_device!
+import MagmaThermoKinematics: PhasesFromTracers!, CreateArrays, copy_to_device!, _cell_weights
 
 @inline _active_sill(Dikes) = isnothing(Dikes.sill) ? error("SillParameters requires a valid `sill` object") : Dikes.sill
 
@@ -92,17 +92,25 @@ end
 """
     MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
 
-Update time-dependent properties during a simulation
+Update time-dependent properties during a simulation: the mean melt fraction, and the mean and maximum temperature of the
+magma (`T > 700 °C`). On a refined grid the means are weighted with the cell volumes.
 """
 function MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
     push!(time_props.Time_vec, Num.time)    # time
-    push!(time_props.MeltFraction, sum(Arrays.ϕ) / length(Arrays.ϕ))     # mean melt fraction
+    w = _cell_weights(Grid, Arrays.ϕ)
+    if w === nothing
+        push!(time_props.MeltFraction, sum(Arrays.ϕ) / length(Arrays.ϕ))     # mean melt fraction
 
-    n_hot = count(>(700), Arrays.T)
-    if n_hot > 0
-        Tav_magma_Time = mapreduce(t -> t > 700 ? t : zero(t), +, Arrays.T) / n_hot     # average T of part with magma
-    else
-        Tav_magma_Time = NaN
+        n_hot = count(>(700), Arrays.T)
+        if n_hot > 0
+            Tav_magma_Time = mapreduce(t -> t > 700 ? t : zero(t), +, Arrays.T) / n_hot     # average T of part with magma
+        else
+            Tav_magma_Time = NaN
+        end
+    else                                                                    # refined grid: volume-weighted means
+        push!(time_props.MeltFraction, sum(.*(Arrays.ϕ, w...)) / prod(sum, w))
+        V_hot = sum(.*(Arrays.T .> 700, w...))
+        Tav_magma_Time = V_hot > 0 ? sum(.*(ifelse.(Arrays.T .> 700, Arrays.T, zero(eltype(Arrays.T))), w...)) / V_hot : NaN
     end
     push!(time_props.Tav_magma, Tav_magma_Time)        # average magma T
     push!(time_props.Tmax, maximum(Arrays.T))    # maximum magma T

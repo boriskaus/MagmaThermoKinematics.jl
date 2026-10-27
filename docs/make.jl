@@ -109,9 +109,10 @@ makedocs(;
                 "MTK_GMG Style" => "man/example_mtk_gmg.md",
                 "MTK_GMG Example 1" => "man/example_mtk_gmg1.md",
                 "MTK_GMG Example 2 (Unzen)" => "man/example_mtk_gmg2.md",
-                "MTK_GMG 3D Examples" => "man/example_mtk_gmg_3d.md"
+                "MTK_GMG 3D Examples" => "man/example_mtk_gmg_3d.md",
             ],
             "Numerics and Physics" => "man/numerics.md",
+            "Grid Refinement" => "man/grid_refinement.md",
             "Implicit Enthalpy Solver" => "man/implicit_solver.md",
             "Eruptions" => "man/eruptions.md",
             "Zircon ages" => "man/zircon_growth.md",
@@ -125,7 +126,7 @@ makedocs(;
             "GeoParams Parameterisations" => Any[
                 "Melting" => "man/MeltingParameterisations.md",
                 "Conductivity" => "man/ConductivityParameterisations.md",
-            ]
+            ],
         ],
         "References" => Any[
             "Benchmarking" => "man/benchmarking.md",

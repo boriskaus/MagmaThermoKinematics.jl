@@ -16,10 +16,8 @@ This contains routines related to advection of temperature and tracers
                     2D - (x,z)
                     3D - (x,y,z)
 
-            Spacing:            (constant) spacing of the grid in each direction
-                    2D - (dx,dz)
-                    3D - (dx,dy,dz)
-            
+            The coordinate vectors are ranges (constant spacing), or vectors for a refined grid (linear interpolation only)
+
             DataGrid:           Data that is defined on the grid. Can have 1 field or 2 (2D), respectively 3 (3D) fields 
     
             Points_irregular:   Tuple with 2D or 3D arrays with coordinates of irregular points on which we want to interpolate the data
@@ -43,6 +41,15 @@ function Interpolate!(Data_interp, Grid, Data_grid, Points_irregular, Interpolat
 
 
     CorrectBounds!(Points_irregular, Grid)
+
+    if !all(g -> g isa AbstractRange, Grid)              # refined grid: linear interpolation on the coordinate vectors
+        InterpolationMethod == "Linear" || error("Interpolation method $InterpolationMethod needs a grid with constant spacing; use \"Linear\" on a refined grid")
+        for iField in 1:nField
+            interp = interpolate(Tuple(Grid), Data_grid[iField], Gridded(Linear()))
+            dim == 2 ? evaluate_interp_2D(Data_interp[iField], interp, Points_irregular) : evaluate_interp_3D(Data_interp[iField], interp, Points_irregular)
+        end
+        return
+    end
 
     for iField in 1:nField
 
@@ -214,8 +221,9 @@ end
 
 Semi-Lagrangian advection of `T` by the displacement field `Velocity` (one array
 per direction, in meters, defined on the grid nodes) over pseudo-time `dt`, into
-`Tnew`. `Grid` is the tuple of 1D coordinate ranges. The spacing is constant, so
-every departure point is index arithmetic; the RK2 velocity sample and the
+`Tnew`. `Grid` is the tuple of 1D coordinate ranges. With constant spacing,
+every departure point is index arithmetic; on a refined grid (coordinate
+vectors) its cell is found by bisection. The RK2 velocity sample and the
 temperature read are multilinear. This is the RK2/linear scheme of
 [`AdvectTemperature`](@ref), as a kernel on the backend of `T`.
 
@@ -224,8 +232,43 @@ values other nodes still need.
 """
 function AdvectTemperature!(Tnew, T, Grid, Velocity, dt)
     Tnew === T && error("AdvectTemperature!: Tnew must be a separate array from T")
-    _launch!(_advect_temperature!, T, size(T), Tnew, T, map(step, Tuple(Grid)), Tuple(Velocity), dt)
+    if all(g -> g isa AbstractRange, Tuple(Grid))
+        _launch!(_advect_temperature!, T, size(T), Tnew, T, map(step, Tuple(Grid)), Tuple(Velocity), dt)
+    else
+        _launch!(_advect_temperature_refined!, T, size(T), Tnew, T, map(c -> _on_backend(T, c), Tuple(Grid)), Tuple(Velocity), dt)
+    end
     return Tnew
+end
+
+# refined grid: the departure points in physical coordinates, located on the coordinate vectors `C`
+@kernel function _advect_temperature_refined!(Tnew, T, C, Velocity, dt)
+    I = @index(Global, Cartesian)
+    FT = eltype(T)
+    p = map((i, v, c) -> _fractional_index(c, c[i] - FT(0.5) * FT(dt) * v[I]), Tuple(I), Velocity, C)
+    q = map((i, v, c) -> _fractional_index(c, c[i] - FT(dt) * _lerp(v, p)), Tuple(I), Velocity, C)
+    Tnew[I] = _lerp(T, q)
+end
+
+"""
+    _fractional_index(c, x)
+
+Position of `x` in the increasing coordinate vector `c` as a fractional index in `[1, length(c)]` (`i + f` for
+`c[i] + f (c[i+1] - c[i])`), clamped to the ends; found by bisection, so it works for any spacing (also in kernels).
+"""
+@inline function _fractional_index(c, x)
+    n = length(c)
+    x <= c[1] && return one(x)
+    x >= c[n] && return oftype(x, n)
+    lo, hi = 1, n
+    while hi - lo > 1
+        mid = (lo + hi) >>> 1
+        if c[mid] <= x
+            lo = mid
+        else
+            hi = mid
+        end
+    end
+    return lo + (x - c[lo]) / (c[lo + 1] - c[lo])
 end
 
 @kernel function _advect_temperature!(Tnew, T, Δ, Velocity, dt)

@@ -318,3 +318,42 @@ end
     chamber_step!(st, ep, ϕ, T, coords; recharge = 0.0, Δt = 3.15576e7, time = 0.0, T_background = d -> 20.0 + 0.02d)
     @test st.P_lith ≈ _lithostatic(ep, -zc, d -> 20.0 + 0.02d)
 end
+
+@testset "Chamber resets, Newton projection and labelling limits" begin
+    using MagmaThermoKinematics: chamber_step!, reset_chamber!, project_mass_constraint!, mixture_density, chamber_labels!, _width, _cw
+    ep = EruptionParams(
+        m_w = 0.06, ΔP_crit = 3.0e6, σ_barrier = 0.0, w_dike = 20.0, h_melt_min = 300.0,
+        melt_viscosity = LinearMeltViscosity(A = -8.159, B = 2.405e4K, T0 = -430.9606K, η0 = 1Pas), solubility = Liu2005_Solubility()
+    )
+    x = range(-5.0e3, 5.0e3, length = 41); z = range(-10.0e3, 0.0, length = 41); coords = (x, z)
+    ϕ = [abs(xx) < 2.0e3 && -6.0e3 < zz < -4.0e3 ? 0.8 : 0.0 for xx in x, zz in z]; T = [ϕ[i, j] > 0 ? 900.0 : 300.0 for i in eachindex(x), j in eachindex(z)]
+    step!(st, ϕ) = chamber_step!(st, ep, ϕ, T, coords; recharge = 0.0, Δt = 3.15576e7, time = 0.0, T_background = d -> 20.0 + 0.02d)
+    st = EruptionState()
+    step!(st, ϕ)
+    @test st.init && st.id == 1 && st.V > 0
+    # the chamber solidifies: the state is reset, the generation counter kept
+    @test step!(st, zero(ϕ)) === nothing
+    @test !st.init && st.V == 0 && st.id == 1 && st.cells === nothing
+    # a melt-rich region thinner than h_melt_min is no chamber
+    ϕthin = [abs(xx) < 2.0e3 && -5.1e3 < zz < -4.9e3 ? 0.8 : 0.0 for xx in x, zz in z]
+    step!(st, ϕ); @test st.init && st.id == 2
+    @test step!(st, ϕthin) === nothing && !st.init
+
+    # Newton projection of (P, V) onto the mass of the chamber: a large mass increase makes the first step overshoot (step halving)
+    T_K, ϕm, m_w, inv_βr = 1073.15, 0.7, 0.06, 1 / 1.0e6
+    for Mfac in (1.001, 50.0)
+        s = EruptionState(); s.P, s.V = 1.2e8, 1.0e9
+        ρ0 = first(mixture_density(s.P, T_K, ϕm, ep; m_w)); s.M = Mfac * ρ0 * s.V
+        ρ = project_mass_constraint!(s, ep, T_K, ϕm, m_w, inv_βr)
+        @test ρ * s.V ≈ s.M rtol = 1.0e-10
+        @test s.P > 1.2e8
+    end
+    s = EruptionState(); s.P, s.V, s.M = 1.2e8, 1.0e9, 0.0                    # no mass: the pressure decays towards zero without reaching the constraint
+    @test_throws "did not converge" project_mass_constraint!(s, ep, T_K, ϕm, m_w, inv_βr)
+    # the labelling stops after max_iter sweeps
+    ϕs = zeros(30, 30); ϕs[2:29, 2] .= 1; ϕs[29, 2:29] .= 1; ϕs[2:29, 29] .= 1                # a long region: the labels need several sweeps
+    @test_throws "did not converge" chamber_labels!(similar(ϕs, Int32), ϕs, 0.5; max_iter = 1)
+    @test chamber_labels!(similar(ϕs, Int32), ϕs, 0.5) == chamber_labels!(similar(ϕs, Int32), ϕs, 0.5; max_iter = 100)
+    # scalar widths (constant spacing along a direction)
+    @test _width(50.0, 7) == 50.0 && _cw(50.0, 3, 10) == 50.0
+end

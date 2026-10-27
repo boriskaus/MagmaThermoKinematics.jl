@@ -75,7 +75,8 @@ $$\left(\nabla \cdot k \nabla T\right)_{i,j} \approx
 +
 \frac{k_{i,j+\frac{1}{2}}(T_{i,j+1}-T_{i,j}) - k_{i,j-\frac{1}{2}}(T_{i,j}-T_{i,j-1})}{\Delta z^2}$$
 
-with the analogous 3D extension for the $y$-direction.
+with the analogous 3D extension for the $y$-direction. On a refined grid, whose spacing varies along every direction, the
+fluxes are divided by the local spacings instead (see [Grid Refinement](grid_refinement.md)).
 
 ### CFL Stability Criterion
 
@@ -132,6 +133,8 @@ Supported configurations include:
 - 2D Cartesian.
 - 2D axisymmetric (via specific workflows in examples).
 - 3D Cartesian.
+
+Grids have constant spacing, or are refined in a zone of interest along every direction while keeping the number of grid points (see [Grid Refinement](grid_refinement.md)).
 
 ### Parameterised convection of melt-rich regions
 
