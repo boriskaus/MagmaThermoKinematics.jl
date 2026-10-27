@@ -5,7 +5,8 @@ coverage:
         informational: true
     project:
       default:
-        target: 99%
+        target: auto      # compare with the coverage of the base commit
+        threshold: 2%     # allow a small drop, e.g. from new code paths that need GPUs or long runs
     changes: false
 comment:
      layout: "condensed_header, condensed_files, condensed_footer" # add "condensed_" to "header", "files" and "footer"
