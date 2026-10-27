@@ -14,7 +14,7 @@ is at least `h_melt_min`, where ``W`` is its footprint (the width in 2D, the pro
 
 ## Overpressure
 
-The state of the chamber (`EruptionState`) is its pressure ``P``, the overpressure ``\Delta P = P - P_{lith}`` with respect to the lithostatic pressure at the centre of the chamber (integrated through the geotherm with the crustal density law), its volume and the inventories of magma and H₂O. The magma is a mixture of melt, crystals and exsolved H₂O; the amount of dissolved H₂O follows the solubility law (`solubility`, a GeoParams law), the density of the gas the equation of state `ρ_gas`, and the melt viscosity `melt_viscosity`.
+The pressure model is the lumped melt–crystal–gas chamber of Degruyter and Huber (2014), in the form used for growing chambers by Townsend et al. (2019): the chamber is pressurised by recharge and by the density change of cooling and crystallising magma, its volume change is accommodated elastically and by viscous relaxation of the surrounding crust, and it erupts at a critical overpressure. The state of the chamber (`EruptionState`) is its pressure ``P``, the overpressure ``\Delta P = P - P_{lith}`` with respect to the lithostatic pressure at the centre of the chamber (integrated through the geotherm with the crustal density law), its volume and the inventories of magma and H₂O. The magma is a mixture of melt, crystals and exsolved H₂O; the amount of dissolved H₂O follows the solubility law (`solubility`, a GeoParams law), the density of the gas the equation of state `ρ_gas`, and the melt viscosity `melt_viscosity`.
 
 During a thermal step ``\Delta t`` the grid only contributes the *change* of the chamber volume (melting and freezing at the margins). The magma mass changes by the recharge ``\dot a`` (volume per second and footprint area, supplied by the caller) and the pressure relaxes towards the equilibrium of a visco-elastic shell,
 
@@ -30,7 +30,7 @@ A chamber erupts when, at the end of a sub-step,
 
 * the overpressure has reached the critical value, ``\Delta P \ge \Delta P_{crit}``,
 * the exsolved gas fraction is below `ϕ_g_crit` (a gas-rich chamber is compressible and cannot erupt), and
-* a dike can reach the surface (`dike_ascends`): the pressure that survives the ascent exceeds the stress barrier, ``\Delta P + P_{lith} - \rho g\, d \ge \sigma_{barrier}`` for a chamber at depth ``d``, and the depth is smaller than the distance that the dike travels before it freezes, the positive root ``L`` of ``L^2 - \Delta\rho g\, c\, L - \Delta P\, c = 0`` with ``c = w^4/(3\eta\kappa)`` (`w_dike` the dike half-width, `κ_magma` the thermal diffusivity of the magma and ``\eta`` its viscosity).
+* a dike can reach the surface (`dike_ascends`; the competition between dike propagation and freezing follows Rubin, 1995): the pressure that survives the ascent exceeds the stress barrier, ``\Delta P + P_{lith} - \rho g\, d \ge \sigma_{barrier}`` for a chamber at depth ``d``, and the depth is smaller than the distance that the dike travels before it freezes, the positive root ``L`` of ``L^2 - \Delta\rho g\, c\, L - \Delta P\, c = 0`` with ``c = w^4/(3\eta\kappa)`` (`w_dike` the dike half-width, `κ_magma` the thermal diffusivity of the magma and ``\eta`` its viscosity).
 
 The chamber then drains to ``\Delta P_{relax}`` (`ΔP_relax`, zero by default); the magma mass that leaves follows from the mass balance and is returned as a bulk thickness ``h_{erupt}``, that is, as the fraction ``f = h_{erupt}/h`` of the chamber volume.
 
@@ -98,10 +98,10 @@ Multiply it by a time step to get the displacement for `displace_temperature!` a
 | `σ_barrier` | 10e6 | stress barrier that the dike has to overcome [Pa] |
 | `w_dike`, `κ_magma` | 2, 1e-6 | dike half-width [m] and thermal diffusivity of the magma [m²/s] |
 | `μ_shear`, `ν` | 1e10, 0.25 | shear modulus [Pa] and Poisson ratio of the host rock |
-| `A_visc`, `G_act` | 4.25e7, 141e3 | Arrhenius constants of the crustal creep law, ``\eta = A\exp(G/RT)`` [Pa s, J/mol] |
+| `A_visc`, `G_act` | 4.25e7, 141e3 | Arrhenius constants of the crustal creep law, ``\eta = A\exp(G/RT)`` [Pa s, J/mol] (the values of Degruyter and Huber, 2014) |
 | `m_w` | 0 | total H₂O mass fraction of the magma |
 | `ρ_melt`, `ρ_x`, `crust` | (2400, 3e-5, 1e-10), (2700, 3e-5, 1.5e-11), (2700, 3e-5, 1.5e-11) | density laws ``\rho_0\,(1 - \alpha\,(T - 273.15) + \beta P)`` of the melt, crystals and crust as `(ρ0, α, β)` |
-| `melt_viscosity`, `solubility`, `ρ_gas` | `LinearMeltViscosity()`, `Liu2005_Solubility()`, `RedlichKwong_Density()` | GeoParams laws for the melt viscosity, H₂O solubility and gas density |
+| `melt_viscosity`, `solubility`, `ρ_gas` | `LinearMeltViscosity()`, `Liu2005_Solubility()`, `RedlichKwong_Density()` | GeoParams laws for the melt viscosity, H₂O solubility (Liu et al., 2005) and gas density (Redlich–Kwong equation of state) |
 | `g` | 9.81 | gravity [m/s²] |
 
 The arguments of the functions of the model:
@@ -161,3 +161,12 @@ The complete example `examples/MTK_GMG_2D_eruptions.jl` runs this on a 2D sectio
 ## Tests
 
 `test/test_Eruptions.jl` checks the Mogi, image and Mindlin kernels (against the analytic expressions, the flux of the displacement through a box around a source and `InjectSills.MindlinSphere`), the chamber detection and labelling in 2D and 3D, the overpressure and drainage cycle, the free surface, and the revolved sink (total volume, equality of the half and full azimuth sums, the Mogi far field at the free surface and with `z_surface` at a different elevation, and the single-precision sum) and the azimuth-averaged inflation (against the 3D sill displacement); `test/test_JLArrays.jl` runs the revolved sink and the inflation on `JLArrays`.
+
+## References
+
+* Degruyter, W., and Huber, C. (2014). A model for eruption frequency of upper crustal silicic magma chambers. *Earth and Planetary Science Letters*, 403, 117–130. [doi:10.1016/j.epsl.2014.06.047](https://doi.org/10.1016/j.epsl.2014.06.047)
+* Liu, Y., Zhang, Y., and Behrens, H. (2005). Solubility of H₂O in rhyolitic melts at low pressures and a new empirical model for mixed H₂O–CO₂ solubility in rhyolitic melts. *Journal of Volcanology and Geothermal Research*, 143, 219–235. [doi:10.1016/j.jvolgeores.2004.09.019](https://doi.org/10.1016/j.jvolgeores.2004.09.019)
+* Mindlin, R. D., and Cheng, D. H. (1950). Nuclei of strain in the semi-infinite solid. *Journal of Applied Physics*, 21, 926–930. [doi:10.1063/1.1699785](https://doi.org/10.1063/1.1699785)
+* Mogi, K. (1958). Relations between the eruptions of various volcanoes and the deformations of the ground surfaces around them. *Bulletin of the Earthquake Research Institute, University of Tokyo*, 36, 99–134.
+* Rubin, A. M. (1995). Getting granite dikes out of the source region. *Journal of Geophysical Research*, 100(B4), 5911–5929. [doi:10.1029/94JB02942](https://doi.org/10.1029/94JB02942)
+* Townsend, M., Huber, C., Degruyter, W., and Bachmann, O. (2019). Magma chamber growth during intercaldera periods: Insights from thermo-mechanical modeling with applications to Laguna del Maule, Campi Flegrei, Santorini, and Aso. *Geochemistry, Geophysics, Geosystems*, 20, 1574–1591. [doi:10.1029/2018GC008103](https://doi.org/10.1029/2018GC008103)

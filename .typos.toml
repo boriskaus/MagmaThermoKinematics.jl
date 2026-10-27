@@ -1,6 +1,7 @@
 [default.extend-words]
 iy = "iy"
 iz = "iz"
+Aso = "Aso"            # Aso volcano (reference list of the eruption docs)
 
 [files]
 extend-exclude = ["*.pvsm"]
