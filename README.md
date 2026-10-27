@@ -11,8 +11,20 @@ This easy to use and versatile package simulates the thermal evolution of magmat
 
 Below we give a number of example scripts that show how it can be used to simulate a number of scenarios.
 
+## Features
+- **2D, 2D axisymmetric and 3D**, on multithreaded CPUs and on GPUs ([KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl)), in single or double precision.
+- **Explicit or implicit time stepping**: the [implicit enthalpy solver](https://boriskaus.github.io/MagmaThermoKinematics.jl/dev/man/implicit_solver) conserves energy, treats latent heat exactly for any time step, and is limited by accuracy rather than stability.
+- **Dike and sill emplacement** with [InjectSills.jl](https://github.com/JuliaGeodynamics/InjectSills.jl): penny-shaped sills, elliptical dikes, the Geneva and UCLA modes.
+- **Magma-chamber overpressure and [eruptions](https://boriskaus.github.io/MagmaThermoKinematics.jl/dev/man/eruptions)**: chamber tracking on the grid; overpressure from the mass balance of a compressible, water-bearing magma; eruption when the overpressure is critical and a dike can reach the surface; host-rock displacement; a moving free surface.
+- **Convective cooling of magma bodies**: effective conductivity of convecting magma from a Nusselt–Rayleigh relation.
+- **Out-of-plane heat loss** for planar 2D sections, to mimic 3D cases.
+- **Tracers and [zircon ages](https://boriskaus.github.io/MagmaThermoKinematics.jl/dev/man/zircon_growth)**: the UCLA and Geneva methods (benchmarked in [Schmitt et al., 2023](https://doi.org/10.1130/GES02563.1)), or zircon growth following the approach of Oleg Melnik, with [ZirconGrowth.jl](https://github.com/JuliaGeodynamics/ZirconGrowth.jl).
+- **Material properties** from [GeoParams.jl](https://github.com/JuliaGeodynamics/GeoParams.jl), including melt fractions from precomputed [MAGEMin](https://github.com/ComputationalThermodynamics/MAGEMin) phase diagrams (with the implicit solver; see [melting parameterisations](https://boriskaus.github.io/MagmaThermoKinematics.jl/dev/man/MeltingParameterisations)).
+- **Integration with [GeophysicalModelGenerator.jl](https://github.com/JuliaGeodynamics/GeophysicalModelGenerator.jl)** (GMG), to take existing geophysical and geological data into account: the setup (topography, geological units, initial thermal structure) is built in GMG, where it can be compared with tomography, seismicity, published cross-sections and other data, and then run with `MTK_GeoParams` and user callbacks. A sticky-air boundary condition holds the topography at the surface temperature. See the [MTK_GMG examples](https://boriskaus.github.io/MagmaThermoKinematics.jl/dev/man/example_mtk_gmg).
+
 ## Contents
 - [MagmaThermoKinematics.jl](#magmathermokinematicsjl)
+  - [Features](#features)
   - [Contents](#contents)
   - [100-lines 2D example](#100-lines-2d-example)
   - [100-lines 3D example](#100-lines-3d-example)
