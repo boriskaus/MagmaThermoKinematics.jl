@@ -66,13 +66,16 @@ There are a few functions that you can overwrite in your user code (or replace f
     Arrays = cb.initialize_arrays(Num)
 
     # Set up model geometry & initial T structure
+    refine = hasproperty(Num, :refine) ? Num.refine : (;)
     if !isnothing(CartData_input)
+        isempty(refine) || error("Num.refine cannot be combined with CartData input; create the CartData set on refined coordinates instead (e.g. xyz_grid with the vectors of `refined_coordinates`)")
         Grid = CreateGrid(CartData_input)
     elseif Num.dim == 2
-        Grid = CreateGrid(size = (Num.Nx, Num.Nz), extent = (Num.W, Num.H))
+        Grid = CreateGrid(size = (Num.Nx, Num.Nz), extent = (Num.W, Num.H); refine)
     else
-        Grid = CreateGrid(size = (Num.Nx, Num.Ny, Num.Nz), x = (-Num.W / 2, Num.W / 2), y = (-Num.L / 2, Num.L / 2), z = (-Num.H, 0.0))
+        Grid = CreateGrid(size = (Num.Nx, Num.Ny, Num.Nz), x = (-Num.W / 2, Num.W / 2), y = (-Num.L / 2, Num.L / 2), z = (-Num.H, 0.0); refine)
     end
+    Num isa NumParam && set_grid_spacing!(Num, Grid)          # refined grid: smallest spacing and time step
     if Num.dim == 2
         GridArray!(Arrays.R, Arrays.Z, Grid)
     else

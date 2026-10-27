@@ -44,6 +44,17 @@ end
 @inline function _apt_diag(K, I, e, Δ, R)
     return inv(R[I]) * ((R[I] + R[I + e]) / 2 * (K[I] + K[I + e]) / 2 + (R[I - e] + R[I]) / 2 * (K[I - e] + K[I]) / 2) / Δ^2
 end
+# refined grid (see `_∂q`)
+@inline function _apt_diag(K, I, e, h::AbstractVector, ::Nothing)
+    i = _along(I, e)
+    hp, hm = h[i], h[i - 1]
+    return ((K[I] + K[I + e]) / (2 * hp) + (K[I - e] + K[I]) / (2 * hm)) / ((hp + hm) / 2)
+end
+@inline function _apt_diag(K, I, e, h::AbstractVector, R)
+    i = _along(I, e)
+    hp, hm = h[i], h[i - 1]
+    return inv(R[I]) * ((R[I] + R[I + e]) / 2 * (K[I] + K[I + e]) / (2 * hp) + (R[I - e] + R[I]) / 2 * (K[I - e] + K[I]) / (2 * hm)) / ((hp + hm) / 2)
+end
 
 @inline function _apt_diag_total(K, I, T, Δ, R)
     d = _apt_diag(K, I, _unit(1, T), Δ[1], R)
@@ -83,7 +94,7 @@ end
 """
     apt_diffusion_solve!(Arrays, dt, Δ, R, Num)
 
-Solve one implicit diffusion step for the frozen properties in `Arrays` (`Kc`, `Rho`, `Cp`, `Hl`, `dϕdT`, `Hr`)
+Solve one implicit diffusion step (grid spacing `Δ` as for [`diffusion_step!`](@ref)) for the frozen properties in `Arrays` (`Kc`, `Rho`, `Cp`, `Hl`, `dϕdT`, `Hr`)
 starting from the guess `Arrays.T_it_old` (the properties are those at this iterate, with melt fraction `Arrays.ϕ`), with `Arrays.T` and `Arrays.pt_phiold` the temperature and melt fraction of the previous time level, and store the result in `Arrays.Tnew`.
 Boundary conditions are those of the explicit step: zero flux on the lateral faces, isothermal (`T` of the previous
 time level) or a prescribed flux on the bottom.
@@ -97,6 +108,7 @@ function apt_diffusion_solve!(Arrays, dt, Δ, R, Num)
     C, res, b = Arrays.pt_C, Arrays.pt_res, Arrays.pt_b
     Tk, Tkm1, Tn = Arrays.pt_Tk, Arrays.pt_Tkm1, Arrays.pt_Tn
     inner = _apt_inner(Arrays.T)
+    Δbot = _bottom_spacing(Δ[N])                   # on the host, for the bottom flux condition
 
     _launch!(_apt_ceff!, Arrays.T, size(Arrays.T), C, Arrays.Rho, Arrays.Cp, Arrays.Hl, Arrays.dϕdT, Arrays.Qrelax, dt)
     _launch!(_apt_rhs!, Arrays.T, size(Arrays.T), b, Arrays.T, Arrays.T_it_old, Arrays.Rho, Arrays.Cp, Arrays.Hl, Arrays.dϕdT, Arrays.ϕ, Arrays.pt_phiold, Arrays.Hr, Arrays.Qrelax, Arrays.Qenth, dt)
@@ -126,7 +138,7 @@ function apt_diffusion_solve!(Arrays, dt, Δ, R, Num)
             bc_zero_flux!(Tn, d)
         end
         if Num.flux_bottom_BC
-            bc_z_bottom_flux!(Tn, Arrays.Kc, Δ[N], FT(Num.flux_bottom))
+            bc_z_bottom_flux!(Tn, Arrays.Kc, Δbot, FT(Num.flux_bottom))
         else
             bc_T!(Tn, Arrays.T)
         end

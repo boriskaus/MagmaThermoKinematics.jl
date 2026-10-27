@@ -83,9 +83,12 @@ end
 
         @test_throws "Size of PhaseRatio array inconsistent with input grid" PhaseRatioFromTracers!(zeros(4, 2), Grid, Tr)
         @test_throws "Size of last dimension of PhaseRatio is too small" PhaseRatioFromTracers!(zeros(5, 1), Grid, Tr)
+        # the same coordinates as a refined grid (vectors) give the same phase ratios
         G = Grid
-        Grid_var = typeof(G)(false, G.N, G.Δ, G.L, G.min, G.max, G.coord1D, G.coord1D_cen)
-        @test_throws "only works for constant spacing" PhaseRatioFromTracers!(zeros(5, 2), Grid_var, Tr)
+        Grid_var = GridData{Float64, 1, Vector{Float64}, Vector{Float64}}(false, G.N, G.Δ, G.L, G.min, G.max, map(collect, G.coord1D), map(collect, G.coord1D_cen))
+        PhaseRatio_var = zeros(5, 2)
+        PhaseRatioFromTracers!(PhaseRatio_var, Grid_var, Tr; BackgroundPhase = 1)
+        @test PhaseRatio_var == PhaseRatio
     end
 
     @testset "zircon ages and growth from Tt-paths" begin

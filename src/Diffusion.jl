@@ -47,20 +47,78 @@ function _launch!(kernel!, A, ndrange, args...)
     return nothing
 end
 
+"`v` as a vector with the element type and on the backend of `A` (`v` itself if it already is)."
+function _on_backend(A, v::AbstractVector)
+    (get_backend(v) == get_backend(A) && eltype(v) == eltype(A)) && return v
+    b = similar(A, eltype(A), length(v))
+    copyto!(b, eltype(A).(Array(v)))
+    return b
+end
+_on_backend(A, v::AbstractRange) = v
+
+"""
+    _kernel_spacing(Grid, A)
+
+Grid spacing per direction for the kernels, in the element type of `A`: numbers for a grid with constant spacing,
+otherwise vectors with the distances between neighbouring points (`h[i] = x[i+1] - x[i]`) on the backend of `A`
+for every direction.
+"""
+function _kernel_spacing(Grid, A)
+    FT = eltype(A)
+    Grid.ConstantΔ && return FT.(Tuple(Grid.Δ))
+    return map(c -> _on_backend(A, FT.(diff(c))), Tuple(Grid.coord1D))
+end
+
+"""
+    _cell_weights(Grid, A)
+
+Widths of the grid cells per direction on the backend of `A`, shaped for broadcasting against `A` (their product is the
+cell volume), or `nothing` for a grid with constant spacing.
+"""
+function _cell_weights(Grid, A)
+    Grid.ConstantΔ && return nothing
+    N = length(Grid.N)
+    return ntuple(d -> reshape(_on_backend(A, cell_widths(Grid.coord1D[d])), ntuple(k -> k == d ? Grid.N[d] : 1, N)), N)
+end
+
+# spacing to the next (`_hp`) and to the previous (`_hm`) point of index `i`: a number for constant spacing, `h[i]` and `h[i-1]` otherwise
+@inline _hp(h::Number, i) = h
+@inline _hp(h::AbstractVector, i) = h[i]
+@inline _hm(h::Number, i) = h
+@inline _hm(h::AbstractVector, i) = h[i - 1]
+
+# width of the control volume of point `k` of `n` (half the distance to both neighbours; the outermost points take the distance to their only neighbour)
+@inline _cw(h::Number, k, n) = h
+@inline _cw(h::AbstractVector, k, n) = k == 1 ? h[1] : k == n ? h[n - 1] : (h[k - 1] + h[k]) / 2
+
+"Distance between the two lowest points (the spacing used by the bottom flux condition), on the host."
+_bottom_spacing(h::Number) = h
+_bottom_spacing(h::AbstractVector) = Array(view(h, 1:1))[1]
+
+"Index of the Cartesian index `I` along the unit step `e`."
+@inline _along(I, e) = sum(Tuple(I) .* Tuple(e))
+
 """
     lithostatic_pressure!(P, Rho, g, Δz)
 
 Fill `P` with the lithostatic pressure in Pa (the unit GeoParams' `compute_*`
 laws and phase-diagram lookups expect) for the density `Rho` [kg/m³], gravity
-`g` [m/s²], and vertical spacing `Δz` [m]. The vertical direction is the last
-one; `P` is zero at its last index (the surface) and increases downward by the
-trapezoid rule.
+`g` [m/s²], and vertical spacing `Δz` [m]: a number, or for a refined grid the
+vector of the distances between neighbouring points (`diff(z)`). The vertical
+direction is the last one; `P` is zero at its last index (the surface) and
+increases downward by the trapezoid rule.
 """
 function lithostatic_pressure!(P, Rho, g, Δz)
     axes(P) == axes(Rho) || throw(DimensionMismatch("P and Rho must match: $(axes(P)) vs $(axes(Rho))"))
-    gΔz = eltype(P)(g) * eltype(P)(Δz)
+    gΔz = _scaled_spacing(P, g, Δz)
     _launch!(_lithostatic_pressure!, P, size(P)[1:(end - 1)], P, Rho, gΔz)
     return nothing
+end
+
+_scaled_spacing(P, g, Δz::Number) = eltype(P)(g) * eltype(P)(Δz)
+function _scaled_spacing(P, g, Δz::AbstractVector)
+    length(Δz) == size(P, ndims(P)) - 1 || throw(DimensionMismatch("Δz must hold the $(size(P, ndims(P)) - 1) vertical distances between the points, got $(length(Δz))"))
+    return eltype(P)(g) .* _on_backend(P, Δz)
 end
 
 @kernel function _lithostatic_pressure!(P, Rho, gΔz)
@@ -68,7 +126,7 @@ end
     n = size(P, ndims(P))
     P[I..., n] = zero(eltype(P))
     for k in (n - 1):-1:1
-        P[I..., k] = P[I..., k + 1] + gΔz * (Rho[I..., k] + Rho[I..., k + 1]) / 2
+        P[I..., k] = P[I..., k + 1] + _hp(gΔz, k) * (Rho[I..., k] + Rho[I..., k + 1]) / 2
     end
 end
 
@@ -97,8 +155,10 @@ end
 
 Explicit update of the interior cells of `Tnew` for
 `ρ (cp + Hl ∂ϕ/∂T) ∂T/∂t = ∇⋅(K ∇T) + H`, with face conductivities the mean of
-the two neighboring cells. `Δ` holds the grid spacing per dimension. With the
-cell radii `R`, the first dimension is radial (2D axisymmetric).
+the two neighboring cells. `Δ` holds the grid spacing per dimension: numbers, or
+for a refined grid vectors with the distances between neighbouring points (on the
+backend of `T`, see `_kernel_spacing`). With the cell radii `R`, the first
+dimension is radial (2D axisymmetric).
 """
 function diffusion_step!(Tnew, T, K, Rho, Cp, H, Hl, dt, Δ, dϕdT; R = nothing)
     axes(Tnew) == axes(T) || throw(DimensionMismatch("Tnew and T must match: $(axes(Tnew)) vs $(axes(T))"))
@@ -129,6 +189,21 @@ end
     qp = (R[I] + R[I + e]) / 2 * ((K[I] + K[I + e]) / 2) * (T[I + e] - T[I]) / Δ
     qm = (R[I - e] + R[I]) / 2 * ((K[I - e] + K[I]) / 2) * (T[I] - T[I - e]) / Δ
     return inv(R[I]) * (qp - qm) / Δ
+end
+# refined grid: the fluxes through the faces midway between the points, divided by the width of the control volume
+@inline function _∂q(T, K, I, e, h::AbstractVector, ::Nothing)
+    i = _along(I, e)
+    hp, hm = h[i], h[i - 1]
+    qp = (K[I] + K[I + e]) / 2 * (T[I + e] - T[I]) / hp
+    qm = (K[I - e] + K[I]) / 2 * (T[I] - T[I - e]) / hm
+    return (qp - qm) / ((hp + hm) / 2)
+end
+@inline function _∂q(T, K, I, e, h::AbstractVector, R)
+    i = _along(I, e)
+    hp, hm = h[i], h[i - 1]
+    qp = (R[I] + R[I + e]) / 2 * ((K[I] + K[I + e]) / 2) * (T[I + e] - T[I]) / hp
+    qm = (R[I - e] + R[I]) / 2 * ((K[I - e] + K[I]) / 2) * (T[I] - T[I - e]) / hm
+    return inv(R[I]) * (qp - qm) / ((hp + hm) / 2)
 end
 
 """
@@ -188,7 +263,7 @@ end
 """
     bc_z_bottom_flux!(T, K, dz, q_z)
 
-Heat flux `q_z` through the bottom face.
+Heat flux `q_z` through the bottom face; `dz` is the distance between the two lowest points.
 """
 function bc_z_bottom_flux!(T, K, dz, q_z)
     Base.require_one_based_indexing(T, K)
@@ -243,8 +318,9 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
     # runs Float32 arithmetic in every kernel.
     FT = eltype(Arrays.T)
     dt, T₀, ω, flux_bottom = FT(dt), FT(273.15), FT(Num.ω), FT(Num.flux_bottom)
-    Δ = FT.(Tuple(Grid.Δ))
+    Δ = _kernel_spacing(Grid, Arrays.T)      # numbers, or vectors of the distances between the points of a refined grid
     N = ndims(Arrays.T)
+    Δbot = _bottom_spacing(Δ[N])
     R = Num.axisymmetric ? Arrays.R : nothing
     g = compute_gravity(Mat_tup[1])
 
@@ -268,7 +344,8 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
     if _out_of_plane(Num)                                         # out-of-plane heat loss of a 2D section (lagged: T and Kc of the previous step)
         (N == 2 && !Num.axisymmetric) || throw(ArgumentError("out_of_plane is available for planar 2D models only"))
         haskey(Arrays, :Tbg) || throw(ArgumentError("out_of_plane needs the background temperature `Arrays.Tbg`"))
-        add_out_of_plane_loss!(Arrays.Hr, Arrays.T, Arrays.Tbg, Arrays.Kc, Arrays.R, Phases; factor = Num.out_of_plane_factor, smooth = Num.out_of_plane_smooth, Lmin = Num.out_of_plane_Lmin, air_phase = hasproperty(Num, :AirPhase) ? Num.AirPhase : 0)
+        widths = Grid.ConstantΔ ? (;) : (; dx = cell_widths(Grid.coord1D[1]), dz = cell_widths(Grid.coord1D[2]))     # weights of the moments on a refined grid
+        add_out_of_plane_loss!(Arrays.Hr, Arrays.T, Arrays.Tbg, Arrays.Kc, Arrays.R, Phases; factor = Num.out_of_plane_factor, smooth = Num.out_of_plane_smooth, Lmin = Num.out_of_plane_Lmin, air_phase = hasproperty(Num, :AirPhase) ? Num.AirPhase : 0, widths...)
     end
     err, iter, apt_iter_total = 1.0, 1, 0
     while err > Num.convergence && iter < Num.max_iter
@@ -303,7 +380,7 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
                 bc_zero_flux!(Arrays.Tnew, d)
             end
             if Num.flux_bottom_BC
-                bc_z_bottom_flux!(Arrays.Tnew, Arrays.Kc, Δ[N], flux_bottom)
+                bc_z_bottom_flux!(Arrays.Tnew, Arrays.Kc, Δbot, flux_bottom)
             else
                 bc_T!(Arrays.Tnew, Arrays.T)    # isothermal top and bottom
             end

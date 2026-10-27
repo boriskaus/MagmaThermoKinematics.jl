@@ -155,7 +155,7 @@ The complete example `examples/MTK_GMG_2D_eruptions.jl` runs this on a 2D sectio
 * The displacement is the elastic response of a flat homogeneous half-space; the viscous relaxation of the host rock enters only through the pressure model (the shell viscosity ``\eta_r``).
 * The chamber is a single connected region; a chamber that splits is followed through its largest part. The overpressure model works with an equivalent column and the mean melt fraction and temperature of the chamber cells.
 * An eruption removes the same fraction `f` of the volume of every chamber cell; the removed volume of the tracers is sampled with the probability `f`.
-* The size of the smallest eruption is controlled by `resolve` and the grid spacing, see above; the total erupted volume is not.
+* The size of the smallest eruption is controlled by `resolve` and the grid spacing, see above; the total erupted volume is not. A grid that is refined around the chamber ([Grid Refinement](grid_refinement.md)) resolves smaller eruptions with the same number of grid points; ``\Delta z`` is then the mean vertical cell size of the chamber.
 * Planar sections represent the 3D chamber as a body of revolution (`revolve = true`) or by line sources over a circular footprint; combine them with the out-of-plane heat loss if the temperature field of a compact body matters.
 
 ## Tests

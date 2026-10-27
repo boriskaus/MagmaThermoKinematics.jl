@@ -60,7 +60,7 @@ end
                 Tsum += Tkk; zsum += Z[I, kk]; ϕsum += ϕ[I, kk]; ρsum += Rho[I, kk]; κsum += Kc[I, kk] / (Rho[I, kk] * Cp[I, kk])
             end
             η = _viscosity_at(visc, splits, zsum / n, Tsum / n, ϕsum / n, ε)
-            Nu = convective_nusselt(Tmax - Tmin, n * Δz, ρsum / n, κsum / n, η; g, α, coeffs, Ra_crit, Nu_max)
+            Nu = convective_nusselt(Tmax - Tmin, _thickness(Δz, k, k2, nz), ρsum / n, κsum / n, η; g, α, coeffs, Ra_crit, Nu_max)
             for kk in k:k2
                 Nu_out[I, kk] = Nu
             end
@@ -69,6 +69,16 @@ end
             k += 1
         end
     end
+end
+
+# thickness of the run of cells k:k2 (of nz in the column): `n Δz` for constant spacing, the sum of the control-volume widths on a refined grid
+@inline _thickness(Δz::Number, k, k2, nz) = (k2 - k + 1) * Δz
+@inline function _thickness(h::AbstractVector, k, k2, nz)
+    L = zero(eltype(h))
+    for kk in k:k2
+        L += _cw(h, kk, nz)
+    end
+    return L
 end
 
 # the viscosity law of a region follows from its mean depth: `laws[i]` applies above `splits[i]` (z, negative downward; the last law below all splits)
@@ -103,7 +113,7 @@ end
 
 Fill `Nu` with the Nusselt number of the convecting region every cell belongs to (1 outside): a region is a vertical run of cells with `ϕ ≥ ϕ_crit` (air cells, phase 0, excluded),
 see the header of `Convection.jl`; every region (e.g. two chambers at different depths, separated by cells with less melt) has its own thickness, temperature contrast and Rayleigh number.
-`Kc` is the conductivity, `T` the temperature in K and `Z` the vertical coordinate of the cells [m]. `visc` is a GeoParams creep law (any law with `compute_τII(law, ε; T, ϕ)`, e.g.
+`Kc` is the conductivity, `T` the temperature in K and `Z` the vertical coordinate of the cells [m]; `Δz` is the vertical spacing, or for a refined grid the vector of the distances between neighbouring points (`diff(z)`). `visc` is a GeoParams creep law (any law with `compute_τII(law, ε; T, ϕ)`, e.g.
 `GiordanoMeltViscosity` or `ViscosityPartialMelt_Costa_etal_2009`), evaluated at the strain rate `strainrate` [1/s] (relevant for strain-rate dependent laws), or a tuple of laws for chambers of
 different composition: `visc[i]` applies to the regions whose mean `z` is above `z_split[i]` and the last law to the regions below all splits (`length(z_split) == length(visc) - 1`, `z_split` descending, e.g. `(-8.0e3,)`).
 With `boundary_layer = true` (default) the outermost cells of every region keep `Nu = 1`: the solver averages the conductivity of two cells arithmetically on their face, so a jump of `Nu` across a region boundary would let the cold wall conduct at about `Nu K/2`; the boundary layer of one cell is the conductive thermal boundary layer of the region.
@@ -116,7 +126,7 @@ function compute_convective_nusselt!(Nu, Kc, T, ϕ, Rho, Cp, Phases, Z, Δz, vis
     splits = Tuple(FT.(z_split))
     length(splits) == length(laws) - 1 || throw(ArgumentError("z_split needs one depth less than the viscosity laws: got $(length(splits)) split(s) for $(length(laws)) law(s)"))
     issorted(splits; rev = true) || throw(ArgumentError("z_split must be in descending order (z is negative downward)"))
-    _launch!(_convection_columns!, Nu, size(Nu)[1:(end - 1)], Nu, Kc, T, ϕ, Rho, Cp, Phases, Z, laws, splits, nz, FT(ϕ_crit), FT(g), FT(α), FT.(coeffs), FT(Ra_crit), FT(Nu_max), FT(strainrate), FT(Δz))
+    _launch!(_convection_columns!, Nu, size(Nu)[1:(end - 1)], Nu, Kc, T, ϕ, Rho, Cp, Phases, Z, laws, splits, nz, FT(ϕ_crit), FT(g), FT(α), FT.(coeffs), FT(Ra_crit), FT(Nu_max), FT(strainrate), Δz isa Number ? FT(Δz) : _on_backend(Nu, Δz))
     if boundary_layer                                  # the outermost cells of every region keep Nu = 1 (conductive boundary layer)
         Nu0 = copy(Nu)
         _launch!(_convection_boundary_layer!, Nu, size(Nu), Nu, Nu0)

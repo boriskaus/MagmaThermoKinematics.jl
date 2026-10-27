@@ -33,7 +33,7 @@ export NumericalParameters, SillParameters, TimeDependentProperties
 
 include("Grid.jl")
 using .Grid
-export GridData, CreateGrid
+export GridData, CreateGrid, refined_coordinates, node_spacing, cell_widths, min_spacing
 
 # Routines that deal with tracers
 include("Tracers.jl")
@@ -62,7 +62,7 @@ include("Utils.jl")
 export Process_ZirconAges, simulate_zircon_growth_from_tracers, volume_averaged_age, copy_arrays_GPU2CPU!, copy_arrays_CPU2GPU!
 
 include("MTK_GMG_structs.jl")
-export NumParam, SillParams, TimeDepProps, copy_params
+export NumParam, SillParams, TimeDepProps, copy_params, set_grid_spacing!
 
 include("Fields.jl")
 export CreateArrays

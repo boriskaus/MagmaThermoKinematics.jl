@@ -59,6 +59,7 @@ Note that we employ linear interpolation using custom functions
 """
 function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T, dim}, Phi::AbstractArray{_T, dim}) where {_T, dim}
     isassigned(Tracers, 1) || return nothing     # only if the Tracers StructArray is non-empty
+    all(g -> g isa AbstractRange, Grid) || return interpolate_to_tracers_refined!((Tracers.T, Tracers.Phi), (T, Phi), Tracers.coord, Grid)
     Δ = map(x -> x[2] - x[1], Grid)
     interpolate_to_tracers!((Tracers.T, Tracers.Phi), (T, Phi), Tracers.coord, minimum.(Grid), maximum.(Grid), length.(Grid), Δ)
     return nothing
@@ -74,11 +75,11 @@ In-place, non-allocating, function that interpolates `Field`, defined on the `Gr
 - `Field`:      The 2D or 3D field
 - `FieldName``: Symbol of the name of the field on each of the Tracers
 
-Note that we employ linear interpolation using custom functions
+Note that we employ linear interpolation using custom functions; the grid may be refined.
 """
 function UpdateTracers_Field!(Tracers::StructVector{TRACERS}, Grid::GridData{_T, dim}, Field::AbstractArray{_T, dim}, FieldName::Symbol) where {TRACERS, _T, dim}
     isassigned(Tracers, 1) || return nothing     # only if the Tracers StructArray is non-empty
-    Grid.ConstantΔ || error("Routine currently only works for constant spacing in every direction")
+    Grid.ConstantΔ || return interpolate_to_tracers_refined!((getproperty(Tracers, FieldName),), (Field,), Tracers.coord, Grid.coord1D)
     interpolate_to_tracers!((getproperty(Tracers, FieldName),), (Field,), Tracers.coord, Grid.min, Grid.max, Grid.N, Grid.Δ)
     return nothing
 end
@@ -93,6 +94,19 @@ function interpolate_to_tracers!(vals::Tuple, fields::Tuple, coord, lo, hi, N, �
             pt[d] = clamp(pt[d], lo[d], hi[d])
         end
         map((v, F) -> v[iT] = interpolate_linear(pt, lo, N, Δ, F), vals, fields)
+    end
+    return nothing
+end
+
+# The same on a refined grid with the 1D coordinate vectors `coords`: the cell of every tracer is found by bisection.
+function interpolate_to_tracers_refined!(vals::Tuple, fields::Tuple, coord, coords::Tuple)
+    for iT in eachindex(coord, vals...)
+        pt = coord[iT]
+        for d in eachindex(coords)
+            pt[d] = clamp(pt[d], first(coords[d]), last(coords[d]))
+        end
+        p = ntuple(d -> _fractional_index(coords[d], pt[d]), length(coords))
+        map((v, F) -> v[iT] = _lerp(F, p), vals, fields)
     end
     return nothing
 end
@@ -213,10 +227,6 @@ function PhaseRatioFromTracers!(PhaseRatio::AbstractArray, Grid::GridData{_T, di
 
     if isassigned(Tracers, 1)                # only if the Tracers StructArray is non-empty
 
-        if !(Grid.ConstantΔ)
-            error("Routine currently only works for constant spacing in every direction")
-        end
-
         for iT in 1:length(Tracers)
             Trac = Tracers[iT]
             pt = Trac.coord
@@ -233,7 +243,15 @@ function PhaseRatioFromTracers!(PhaseRatio::AbstractArray, Grid::GridData{_T, di
             end
 
             # find Cartesian index of nearest point on grid
-            idx .= round.(Int64, (pt .- Grid.min) ./ Grid.Δ) .+ 1
+            if Grid.ConstantΔ
+                idx .= round.(Int64, (pt .- Grid.min) ./ Grid.Δ) .+ 1
+            else                                    # refined grid: the fractional index is linear in x within a cell, so the nearest point is the rounded one
+                for i in 1:dim
+                    p = _fractional_index(Grid.coord1D[i], pt[i])
+                    idx[i] = round(Int64, p)
+                    dist[i] = abs(p - idx[i])       # distance to the nearest point, relative to the spacing on the side of the tracer
+                end
+            end
             if dim == 1
                 I = CartesianIndex(idx[1])
                 Iphase = CartesianIndex(idx[1], phase)
@@ -244,10 +262,11 @@ function PhaseRatioFromTracers!(PhaseRatio::AbstractArray, Grid::GridData{_T, di
                 I = CartesianIndex(idx[1], idx[2], idx[3])
                 Iphase = CartesianIndex(idx[1], idx[2], idx[3], phase)
             end
-            pt_near = Tuple(I) .* Grid.Δ .- Grid.Δ .+ Grid.min      # coordinates of nearest point
-
             if InterpolationMethod == "DistanceWeighted"
-                dist .= abs.((pt .- pt_near) ./ Grid.Δ)      # distance of tracers to regular grid point (normalized over Δ)
+                if Grid.ConstantΔ
+                    pt_near = Tuple(I) .* Grid.Δ .- Grid.Δ .+ Grid.min      # coordinates of nearest point
+                    dist .= abs.((pt .- pt_near) ./ Grid.Δ)      # distance of tracers to regular grid point (normalized over Δ)
+                end
                 Weight = prod(1 .- 2 .* dist)               # weight of point: 1 at the node, 0 at the cell face
             elseif InterpolationMethod == "Constant"
                 Weight = 1.0

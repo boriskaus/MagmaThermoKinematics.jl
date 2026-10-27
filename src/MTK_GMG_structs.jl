@@ -14,6 +14,7 @@ This mutable structure represents numerical parameters in the program. It is use
 - `H::Float64`: Height of the domain.
 - `dx::Float64`: Grid spacing in the x direction.
 - `dz::Float64`: Grid spacing in the z direction.
+- `refine::NamedTuple`: refine the grid in a zone of interest while keeping `Nx`, `Ny`, `Nz` (default `(;)`, constant spacing): an entry per refined direction (`x`, `y`, `z`) with the keyword arguments of `refined_coordinates`, e.g. `refine = (x = (zone = (0.0, 5e3), ratio = 4), z = (zone = (-10e3, -4e3), ratio = 4))`. The spacing in the zones is `ratio` times smaller than outside. The time step is then computed from the smallest spacing (unless `dt` is given explicitly), and `dx`, `dy`, `dz` and `Δ` hold the smallest spacing per direction once `MTK_GeoParams` has created the grid.
 - `Tsurface_Celsius::Float64`: Surface temperature in Celsius.
 - `sticky_air_BC::Bool`: hold every cell of phase `AirPhase` at `Tsurface_Celsius` at the end of each time step (default `false`). The usual alternative, a very large air conductivity, makes the air the fastest-diffusing phase and so shrinks the time step of the whole model (see `bc_sticky_air!`).
 - `AirPhase::Int64`: phase number of the air (default 0), used by `sticky_air_BC`.
@@ -82,6 +83,7 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     dx::Float64 = W / (Nx - 1)
     dy::Float64 = L / (Ny - 1)
     dz::Float64 = H / (Nz - 1)        # grid spacing in z
+    refine::NamedTuple = (;)          # refined grid: zone and ratio per direction, e.g. (x = (zone = (0.0, 5e3), ratio = 4),); see `refined_coordinates`
     Tsurface_Celsius::Float64 = 0               # Surface T in Celsius
     sticky_air_BC::Bool = false           # hold the air phase at `Tsurface_Celsius` every time step?
     AirPhase::Int64 = 0               # phase number of the air
@@ -246,6 +248,26 @@ You can use multiple dispatch on this struct in your user code as long as the ne
     Tmax::Vector{Float64} = []              # Max magma temperature
 end
 
+
+"""
+    set_grid_spacing!(Num::NumParam, Grid::GridData) -> Num
+
+Store the smallest spacing per direction of a refined `Grid` in `Num` (`dx`, `dy`, `dz`, `Δ`, `Δmin`) and recompute the time
+step `dt = fac_dt Δmin²/(4 κ_time)` and the number of steps `nt`, unless they were set explicitly (they differ from the values
+derived from the constant spacing). Nothing changes for a grid with constant spacing.
+"""
+function set_grid_spacing!(Num::NumParam, Grid::GridData)
+    Grid.ConstantΔ && return Num
+    dt_derived = Num.dt == Num.fac_dt * (Num.Δmin^2) / Num.κ_time / 4
+    nt_derived = Num.nt == floor(Int, Num.maxTime / Num.dt)
+    Num.dx, Num.dz = Grid.Δ[1], Grid.Δ[end]
+    Num.dim == 3 && (Num.dy = Grid.Δ[2])
+    Num.Δ = [Num.dx, Num.dy, Num.dz]
+    Num.Δmin = minimum(Num.Δ[Num.Δ .> 0])
+    dt_derived && (Num.dt = Num.fac_dt * (Num.Δmin^2) / Num.κ_time / 4)
+    nt_derived && (Num.nt = floor(Int, Num.maxTime / Num.dt))
+    return Num
+end
 
 """
     copy_params(Num::NumParam; kwargs...) -> NumParam
