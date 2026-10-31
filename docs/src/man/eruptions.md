@@ -22,7 +22,29 @@ During a thermal step ``\Delta t`` the grid only contributes the *change* of the
 \frac{d\,\Delta P}{dt} = \frac{\Delta P_{eq} - \Delta P}{\tau}, \qquad \Delta P_{eq} = \eta_r\, S, \qquad \tau = \eta_r \left(\frac{1}{\beta_r} + \frac{1}{\beta_m}\right),
 ```
 
-with the source ``S = \dot M_{in}/(\rho V) - \dot\rho/\rho`` (recharge minus the density change of the magma by cooling and crystallisation), the compressibility of the magma ``1/\beta_m = \rho^{-1}\,\partial\rho/\partial P``, and the compliance of the host rock ``1/\beta_r = 3/\bigl(4\mu\,\min(h/2R, 1)\bigr)`` of a sill-like chamber (the spherical limit for an aspect ratio of one; ``\mu`` is `μ_shear`). The relaxation viscosity ``\eta_r`` is that of the shell around the chamber: a steady spherical conduction profile between the temperature of the chamber and the far-field geotherm, an Arrhenius creep law ``\eta = A \exp(G/RT)`` (`A_visc`, `G_act`) and a shell radius of 11 chamber radii, clamped to ``10^{17}``–``10^{24}`` Pa s (`crustal_relaxation_viscosity`). The step is divided into as many sub-steps as needed to keep the pressure change per sub-step below a tenth of `ΔP_crit`, and the pressure and volume are projected onto the mass constraint ``\rho(P)\,V(P) = M`` after every sub-step.
+with the source ``S = \dot M_{in}/(\rho V) - \dot\rho/\rho`` (recharge minus the density change of the magma by cooling and crystallisation), the compressibility of the magma ``1/\beta_m = \rho^{-1}\,\partial\rho/\partial P``, and the compliance of the host rock ``1/\beta_r = 3/\bigl(4\mu\,\min(h/2R, 1)\bigr)`` of a sill-like chamber (the spherical limit for an aspect ratio of one; ``\mu`` is `μ_shear`). The relaxation viscosity ``\eta_r`` is that of the shell around the chamber, see below. The step is divided into as many sub-steps as needed to keep the pressure change per sub-step below a tenth of `ΔP_crit`, and the pressure and volume are projected onto the mass constraint ``\rho(P)\,V(P) = M`` after every sub-step.
+
+### Viscosity of the shell around the chamber
+
+The host rock around the chamber relaxes the overpressure viscously at the rate ``\Delta P/\eta_r``. For a spherical chamber of radius ``R`` in a viscous shell that extends to ``s_{max} R`` (`shell_ratio`, default 11), the effective viscosity is
+
+```math
+\eta_r = \int_1^{s_{max}} \frac{3\,\eta\bigl(T(s), \tau(s)\bigr)}{s^4}\, ds, \qquad \tau(s) = \frac{3}{2}\frac{\Delta P}{s^3}, \qquad s = r/R,
+```
+
+where ``\tau(s)`` is the deviatoric stress around the pressurised chamber. The integral is dominated by the hot rock next to the chamber, so the temperature of that rock matters most.
+
+* **Temperature of the shell.** With `shell_from_T = true`, ``T(s)`` is taken from the simulated temperature field: the integral is evaluated along `shell_nθ` rays from the centre of the chamber (in the section in 2D, mirrored at the axis in axisymmetric models, over the sphere in 3D), and the result is the harmonic mean over the rays (the sectors relax in parallel), [`crustal_relaxation_viscosity_field`](@ref). The heated aureole of a long-lived magma body is therefore taken into account. By default (`shell_from_T = false`) the shell has the steady spherical conduction profile between the chamber and the undisturbed geotherm `T_background` ([`crustal_relaxation_viscosity`](@ref)), which ignores the aureole and gives a much stiffer shell.
+* **Rheology of the host rock.** By default the viscosity is the Arrhenius law ``\eta = A \exp(G/RT)``, with the prefactor `A_visc` [Pa s] and the activation energy `G_act` [J/mol] that sets its temperature dependence. Alternatively, `shell_rheology` takes a GeoParams creep law of the rock type, e.g. one of the laboratory dislocation-creep laws:
+
+  ```julia
+  ep = EruptionParams(shell_rheology = SetDislocationCreep(GeoParams.Dislocation.granite_Tirel_2008))
+  ```
+
+  The law is evaluated as ``\eta = \tau/(2\dot\varepsilon(\tau, T, P))`` at the shell stress ``\tau(s)`` and the lithostatic pressure of the chamber, so nonlinear (power-law) creep, which weakens with increasing overpressure, is taken into account; the overpressure is bounded below by `shell_ΔP_min` (default ``10^4`` Pa) so that the viscosity of a power-law rock stays finite at zero overpressure.
+* **Bounds.** ``\eta_r`` is bounded by `η_shell_min` and `η_shell_max` (``10^{17}`` and ``10^{24}`` Pa s).
+
+The relaxation viscosity largely controls how much of the magma that reaches the chamber erupts: a stiff shell stores little volume and nearly all recharge erupts, a soft shell accommodates the recharge by viscous creep and the chamber erupts rarely or not at all. For a hot aureole the Arrhenius default is very soft (about ``10^{14}`` Pa s at 800 °C, so the lower bound applies), whereas laboratory creep laws of crustal rocks give ``10^{19}``–``10^{23}`` Pa s at the same temperature and a stress of 1 MPa (granite: Tirel et al., 2008; diabase: Caristan, 1982; wet quartzite: Hirth et al., 2001); the rheology of the host rock should therefore be chosen for the rock type.
 
 ## Eruption
 
@@ -99,6 +121,9 @@ Multiply it by a time step to get the displacement for `displace_temperature!` a
 | `w_dike`, `κ_magma` | 2, 1e-6 | dike half-width [m] and thermal diffusivity of the magma [m²/s] |
 | `μ_shear`, `ν` | 1e10, 0.25 | shear modulus [Pa] and Poisson ratio of the host rock |
 | `A_visc`, `G_act` | 4.25e7, 141e3 | Arrhenius constants of the crustal creep law, ``\eta = A\exp(G/RT)`` [Pa s, J/mol] (the values of Degruyter and Huber, 2014) |
+| `shell_rheology` | `nothing` | GeoParams creep law of the host rock (replaces the Arrhenius law), evaluated at the shell stress |
+| `shell_from_T`, `shell_ratio`, `shell_nθ` | `false`, 11, 16 | shell temperature from the temperature field (else the profile to the undisturbed geotherm), outer radius in chamber radii, number of rays |
+| `η_shell_min`, `η_shell_max`, `shell_ΔP_min` | 1e17, 1e24, 1e4 | bounds of the shell viscosity [Pa s]; smallest overpressure used for the shell stress [Pa] |
 | `m_w` | 0 | total H₂O mass fraction of the magma |
 | `ρ_melt`, `ρ_x`, `crust` | (2400, 3e-5, 1e-10), (2700, 3e-5, 1.5e-11), (2700, 3e-5, 1.5e-11) | density laws ``\rho_0\,(1 - \alpha\,(T - 273.15) + \beta P)`` of the melt, crystals and crust as `(ρ0, α, β)` |
 | `melt_viscosity`, `solubility`, `ρ_gas` | `LinearMeltViscosity()`, `Liu2005_Solubility()`, `RedlichKwong_Density()` | GeoParams laws for the melt viscosity, H₂O solubility (Liu et al., 2005) and gas density (Redlich–Kwong equation of state) |

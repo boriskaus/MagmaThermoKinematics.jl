@@ -115,7 +115,7 @@ end
         using MagmaThermoKinematics: chamber_step!, chamber_cells, EruptionParams, EruptionState
         ep = EruptionParams(
             m_w = 0.06, ΔP_crit = 3.0e6, σ_barrier = 0.0, w_dike = 20.0,
-            melt_viscosity = LinearMeltViscosity(A = -8.159, B = 2.405e4K, T0 = -430.9606K, η0 = 1Pas), solubility = Liu2005_Solubility()
+            melt_viscosity = LinearMeltViscosity(A = -8.159, B = 2.405e4K, T0 = -430.9606K, η0 = 1Pas), solubility = Liu2005_Solubility(), shell_from_T = true
         )
         for coords in (
                 (range(-5.0e3, 5.0e3, length = 41), range(-10.0e3, 0.0, length = 41)),
@@ -132,6 +132,7 @@ end
             @test sd.P ≈ sh.P rtol = 1.0e-12
             @test sd.P_lith ≈ sh.P_lith rtol = 1.0e-12
             @test Set(sd.cells) == Set(sh.cells)
+            @test sd.η_r ≈ sh.η_r rtol = 1.0e-12                                           # shell viscosity from the temperature field, gathered on the device
             @test run!(sd, JLArray(zero(ϕ)), JLArray(T)) === nothing && !sd.init          # no chamber left on the device either
         end
     end
