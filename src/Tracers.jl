@@ -59,9 +59,7 @@ Note that we employ linear interpolation using custom functions
 """
 function UpdateTracers_T_ϕ!(Tracers, Grid::Tuple, T::AbstractArray{_T, dim}, Phi::AbstractArray{_T, dim}) where {_T, dim}
     isassigned(Tracers, 1) || return nothing     # only if the Tracers StructArray is non-empty
-    all(g -> g isa AbstractRange, Grid) || return interpolate_to_tracers_refined!((Tracers.T, Tracers.Phi), (T, Phi), Tracers.coord, Grid)
-    Δ = map(x -> x[2] - x[1], Grid)
-    interpolate_to_tracers!((Tracers.T, Tracers.Phi), (T, Phi), Tracers.coord, minimum.(Grid), maximum.(Grid), length.(Grid), Δ)
+    interpolate_to_tracers!((Tracers.T, Tracers.Phi), (T, Phi), Tracers.coord, Grid)
     return nothing
 end
 
@@ -79,27 +77,13 @@ Note that we employ linear interpolation using custom functions; the grid may be
 """
 function UpdateTracers_Field!(Tracers::StructVector{TRACERS}, Grid::GridData{_T, dim}, Field::AbstractArray{_T, dim}, FieldName::Symbol) where {TRACERS, _T, dim}
     isassigned(Tracers, 1) || return nothing     # only if the Tracers StructArray is non-empty
-    Grid.ConstantΔ || return interpolate_to_tracers_refined!((getproperty(Tracers, FieldName),), (Field,), Tracers.coord, Grid.coord1D)
-    interpolate_to_tracers!((getproperty(Tracers, FieldName),), (Field,), Tracers.coord, Grid.min, Grid.max, Grid.N, Grid.Δ)
+    interpolate_to_tracers!((getproperty(Tracers, FieldName),), (Field,), Tracers.coord, Grid.coord1D)
     return nothing
 end
 
-# For every tracer, clamp its coordinates (in place) to the grid box [lo, hi] and
-# set `vals[k][iT]` to the multilinear interpolation of `fields[k]` at that point.
-# `fields` live on a grid with `N` points, starting at `lo`, with constant spacing `Δ`.
-function interpolate_to_tracers!(vals::Tuple, fields::Tuple, coord, lo, hi, N, Δ)
-    for iT in eachindex(coord, vals...)
-        pt = coord[iT]
-        for d in eachindex(lo, hi)
-            pt[d] = clamp(pt[d], lo[d], hi[d])
-        end
-        map((v, F) -> v[iT] = interpolate_linear(pt, lo, N, Δ, F), vals, fields)
-    end
-    return nothing
-end
-
-# The same on a refined grid with the 1D coordinate vectors `coords`: the cell of every tracer is found by bisection.
-function interpolate_to_tracers_refined!(vals::Tuple, fields::Tuple, coord, coords::Tuple)
+# For every tracer, clamp its coordinates (in place) to the grid box and set `vals[k][iT]` to the multilinear
+# interpolation of `fields[k]` at that point. `coords` are the 1D coordinate vectors of the grid (ranges or vectors).
+function interpolate_to_tracers!(vals::Tuple, fields::Tuple, coord, coords::Tuple)
     for iT in eachindex(coord, vals...)
         pt = coord[iT]
         for d in eachindex(coords)
@@ -109,62 +93,6 @@ function interpolate_to_tracers_refined!(vals::Tuple, fields::Tuple, coord, coor
         map((v, F) -> v[iT] = _lerp(F, p), vals, fields)
     end
     return nothing
-end
-
-interpolate_linear(pt, lo, N, Δ, F::AbstractArray{<:Any, 2}) = interpolate_linear_2D(pt[1], pt[2], lo, N, Δ[1], Δ[2], F)
-interpolate_linear(pt, lo, N, Δ, F::AbstractArray{<:Any, 3}) = interpolate_linear_3D(pt[1], pt[2], pt[3], lo, N, Δ[1], Δ[2], Δ[3], F)
-
-"""
-
-Implements 2D bilinear interpolation
-"""
-function interpolate_linear_2D(pt_x, pt_z, Bound_min, N, Δx, Δz, Field)
-    # 0-based cell index, clamped so that boundary points use the first/last cell
-    ix = clamp(floor(Int64, (pt_x - Bound_min[1]) / Δx), 0, N[1] - 2)
-    iz = clamp(floor(Int64, (pt_z - Bound_min[2]) / Δz), 0, N[2] - 2)
-
-    fac_x = (pt_x - ix * Δx - Bound_min[1]) / Δx     # distance to lower left point
-    fac_z = (pt_z - iz * Δz - Bound_min[2]) / Δz     # distance to lower left point
-
-    # interpolate in x
-    val_x_bot = (1.0 - fac_x) * Field[ix + 1, iz + 1] + (fac_x) * Field[ix + 2, iz + 1]
-    val_x_top = (1.0 - fac_x) * Field[ix + 1, iz + 2] + (fac_x) * Field[ix + 2, iz + 2]
-
-    # Interpolate value in z
-    val = (1.0 - fac_z) * val_x_bot + fac_z * val_x_top
-
-    return val
-end
-
-"""
-
-Implements 3D trilinear interpolation
-"""
-function interpolate_linear_3D(pt_x, pt_y, pt_z, Bound_min, N, Δx, Δy, Δz, Field)
-
-    # 0-based cell index, clamped so that boundary points use the first/last cell
-    ix = clamp(floor(Int64, (pt_x - Bound_min[1]) / Δx), 0, N[1] - 2)
-    iy = clamp(floor(Int64, (pt_y - Bound_min[2]) / Δy), 0, N[2] - 2)
-    iz = clamp(floor(Int64, (pt_z - Bound_min[3]) / Δz), 0, N[3] - 2)
-
-    fac_x = (pt_x - ix * Δx - Bound_min[1]) / Δx     # distance to lower left point
-    fac_y = (pt_y - iy * Δy - Bound_min[2]) / Δy     # distance to lower left point
-    fac_z = (pt_z - iz * Δz - Bound_min[3]) / Δz     # distance to lower left point
-
-    # Interpolate in x
-    val_x_bot_left = (1.0 - fac_x) * Field[ix + 1, iy + 1, iz + 1] + (fac_x) * Field[ix + 2, iy + 1, iz + 1]
-    val_x_top_left = (1.0 - fac_x) * Field[ix + 1, iy + 1, iz + 2] + (fac_x) * Field[ix + 2, iy + 1, iz + 2]
-    val_x_bot_right = (1.0 - fac_x) * Field[ix + 1, iy + 2, iz + 1] + (fac_x) * Field[ix + 2, iy + 2, iz + 1]
-    val_x_top_right = (1.0 - fac_x) * Field[ix + 1, iy + 2, iz + 2] + (fac_x) * Field[ix + 2, iy + 2, iz + 2]
-
-    # Interpolate in y
-    val_y_bot = (1.0 - fac_y) * val_x_bot_left + fac_y * val_x_bot_right
-    val_y_top = (1.0 - fac_y) * val_x_top_left + fac_y * val_x_top_right
-
-    # Interpolate value in z
-    val = (1.0 - fac_z) * val_y_bot + fac_z * val_y_top
-
-    return val
 end
 
 """

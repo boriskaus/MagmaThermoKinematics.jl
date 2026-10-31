@@ -270,6 +270,8 @@ Position of `x` in the increasing coordinate vector `c` as a fractional index in
     end
     return lo + (x - c[lo]) / (c[lo + 1] - c[lo])
 end
+# constant spacing: directly
+@inline _fractional_index(c::AbstractRange, x) = clamp((x - first(c)) / step(c) + 1, one(x), oftype(x, length(c)))
 
 @kernel function _advect_temperature!(Tnew, T, Δ, Velocity, dt)
     I = @index(Global, Cartesian)

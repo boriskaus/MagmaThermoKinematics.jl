@@ -93,7 +93,6 @@ end
         Gc = CreateGrid(CartData(X, Y, Z, (Z = Z,)))
         @test !Gc.ConstantΔ && Gc.coord1D[1] ≈ 1.0e3 .* xr && Gc.coord1D[3] ≈ 1.0e3 .* zr
 
-        @test node_spacing(0.0:0.5:2.0) == 0.5 && node_spacing([0.0, 1.0, 3.0]) == [1.0, 2.0]
         @test cell_widths(0.0:0.5:2.0) == 0.5 && cell_widths([0.0, 1.0, 3.0, 4.0]) == [1.0, 1.5, 1.5, 1.0]
         @test min_spacing([0.0, 1.0, 3.0]) == 1.0
     end

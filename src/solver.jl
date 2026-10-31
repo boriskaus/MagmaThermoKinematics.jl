@@ -66,7 +66,7 @@ There are a few functions that you can overwrite in your user code (or replace f
     Arrays = cb.initialize_arrays(Num)
 
     # Set up model geometry & initial T structure
-    refine = hasproperty(Num, :refine) ? Num.refine : (;)
+    refine = _opt(Num, :refine, (;))
     if !isnothing(CartData_input)
         isempty(refine) || error("Num.refine cannot be combined with CartData input; create the CartData set on refined coordinates instead (e.g. xyz_grid with the vectors of `refined_coordinates`)")
         Grid = CreateGrid(CartData_input)

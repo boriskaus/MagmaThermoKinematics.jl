@@ -70,21 +70,21 @@ function erupt_and_inflate(Grid::GridData, Arrays::NamedTuple, Tracers::StructAr
         INFL[] === nothing && (INFL[] = setup_inflation!(Arrays, Grid))
         U = map(u -> u .* (INFL_EVERY * Num.dt), INFL[])
         displace_temperature!(Arrays.T, similar(Arrays.T), coords, U)
-        move_free_surface!(Arrays.Phases, Arrays.Phases_init, Arrays.T, Arrays.Zsurf, coords, U; air = Num.air_phase, fill = Dikes.BackgroundPhase)
+        move_free_surface!(Arrays.Phases, Arrays.Phases_init, Arrays.T, Arrays.Zsurf, coords, U; air = Num.AirPhase, fill = Dikes.BackgroundPhase)
         Arrays.Tnew .= Arrays.T
     end
     # lithostatic pressure: one top-down integration of the density, with the air above the free surface at zero density
     PLITH[] === nothing && (PLITH[] = (similar(Arrays.P), similar(Arrays.Rho)))
     Pl, ρ_rock = PLITH[]
-    @. ρ_rock = ifelse(Arrays.Phases == Num.air_phase, 0.0, Arrays.Rho)
+    @. ρ_rock = ifelse(Arrays.Phases == Num.AirPhase, 0.0, Arrays.Rho)
     MagmaThermoKinematics.lithostatic_pressure!(Pl, ρ_rock, 9.81, step(coords[end]))       # (GeophysicalModelGenerator exports a function of the same name)
     # chamber overpressure; `recharge` is the magma volume that the source adds to the chamber per second [m²/s]
     recharge = STATE.init ? A_DOT * length(unique(I[1] for I in STATE.cells)) * step(coords[1]) : 0.0       # ȧ × chamber width
     ev = chamber_step!(STATE, EP, Arrays.ϕ, Arrays.T, coords; recharge, Δt = Num.dt, time = Num.time, T_background = depth -> T_GEO(depth), margin = 500.0, resolve = 0.5, P = Pl, Zsurf = Arrays.Zsurf)
     ev === nothing && return Tracers
     zsurf = max(0.0, maximum(filter(!isnan, Array(Arrays.Zsurf)); init = 0.0))
-    U, _ = erupt!(Arrays.T, similar(Arrays.T), Tracers, coords, ev; ν = EP.ν, revolve = true, nθ = 8, coarsen = 2, z_surface = zsurf, Zsurf = Arrays.Zsurf)
-    move_free_surface!(Arrays.Phases, Arrays.Phases_init, Arrays.T, Arrays.Zsurf, coords, U; air = Num.air_phase, fill = Dikes.BackgroundPhase)
+    U, _ = erupt!(Arrays.T, similar(Arrays.T), Tracers, coords, ev; revolve = true, nθ = 8, coarsen = 2, z_surface = zsurf, Zsurf = Arrays.Zsurf)
+    move_free_surface!(Arrays.Phases, Arrays.Phases_init, Arrays.T, Arrays.Zsurf, coords, U; air = Num.AirPhase, fill = Dikes.BackgroundPhase)
     Arrays.Tnew .= Arrays.T
     push!(EVENTS, (Num.time / SecYear / 1.0e3, ev.f, ev.f * π * ev.geo.R^2 * ev.geo.h / km³, -ev.geo.zc / 1.0e3, maximum(filter(!isnan, Array(Arrays.Zsurf)))))
     return Tracers
@@ -103,7 +103,7 @@ MTK_GMG.MTK_visualize_output(Grid::GridData, Num::NumericalParameters, Arrays::N
 Num = NumParam(
     SimName = "Eruptions2D", maxTime_Myrs = 0.05, fac_dt = 0.4, Output_VTK = false, SaveOutput_steps = 10^9, CreateFig_steps = 10^9,
     Tsurface_Celsius = 10.0, sticky_air_BC = true, AirPhase = 0,
-    move_free_surface = true, air_phase = 0,                                        # the free surface moves with the displacement of the injections
+    move_free_surface = true,                                                       # the free surface moves with the displacement of the injections
     backend = backend,
 )
 Sill_params = SillParams(                                                           # sills are not injected: the placeholder source is the only supply

@@ -77,6 +77,9 @@ end
     # the value is the Nusselt number of the run: thickness 9 cells (air cell excluded), contrast 80 K
     η = convective_viscosity(DEFAULT_CONVECTION_VISCOSITY, 1173.15 + 80 / 9, 0.8, 1.0e-12)
     @test Nu[1, 10] ≈ convective_nusselt(80.0, 9 * 50.0, 2500.0, 3.0 / (2500.0 * 1100.0), η) rtol = 1.0e-10
+    # another air phase: the phase-0 cell is melt and joins the run
+    Na = nusselt_of(A; air_phase = 9)
+    @test Na[1, 5] > 1.0 && all(Na[1, 5:14] .== Na[1, 5])
 end
 
 @testset "conductive boundary layer of a convecting region" begin

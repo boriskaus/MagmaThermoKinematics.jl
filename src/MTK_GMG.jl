@@ -14,7 +14,7 @@ using StructArrays
 using MagmaThermoKinematics.Grid
 import MagmaThermoKinematics: NumericalParameters, SillParameters, TimeDependentProperties
 import MagmaThermoKinematics: update_Tvec!, inject_sills, move_free_surface!, SecYear, km³, kyr, Myr
-import MagmaThermoKinematics: PhasesFromTracers!, CreateArrays, copy_to_device!, _cell_weights
+import MagmaThermoKinematics: PhasesFromTracers!, CreateArrays, copy_to_device!, _cell_weights, _stable_dt
 
 @inline _active_sill(Dikes) = isnothing(Dikes.sill) ? error("SillParameters requires a valid `sill` object") : Dikes.sill
 
@@ -32,7 +32,7 @@ function MTK_inject_dikes(Grid::GridData, Num::NumericalParameters, Arrays::Name
 
         Tracers, _, Vol, poly_out, Displacement = inject_sills(Tracers, Arrays.T, Grid.coord1D, sill, Float64(Dikes.T_in_Celsius), Dikes.SillPhase, Dikes.nTr_dike, dike_poly = Dikes.sill_poly)      # Add dike, move hostrocks
         Dikes.sill_poly = poly_out
-        Num.move_free_surface && move_free_surface!(Arrays.Phases, Arrays.Phases_init, Arrays.T, Arrays.Zsurf, Grid.coord1D, Displacement; air = Num.air_phase, fill = Dikes.BackgroundPhase)
+        Num.move_free_surface && move_free_surface!(Arrays.Phases, Arrays.Phases_init, Arrays.T, Arrays.Zsurf, Grid.coord1D, Displacement; air = Num.AirPhase, fill = Dikes.BackgroundPhase)
 
         if Num.flux_bottom_BC == false
             # Keep bottom T constant (advection modifies this)
@@ -97,22 +97,11 @@ magma (`T > 700 °C`). On a refined grid the means are weighted with the cell vo
 """
 function MTK_update_TimeDepProps!(time_props::TimeDependentProperties, Grid::GridData, Num::NumericalParameters, Arrays::NamedTuple, Mat_tup::Tuple, Dikes::SillParameters)
     push!(time_props.Time_vec, Num.time)    # time
-    w = _cell_weights(Grid, Arrays.ϕ)
-    if w === nothing
-        push!(time_props.MeltFraction, sum(Arrays.ϕ) / length(Arrays.ϕ))     # mean melt fraction
-
-        n_hot = count(>(700), Arrays.T)
-        if n_hot > 0
-            Tav_magma_Time = mapreduce(t -> t > 700 ? t : zero(t), +, Arrays.T) / n_hot     # average T of part with magma
-        else
-            Tav_magma_Time = NaN
-        end
-    else                                                                    # refined grid: volume-weighted means
-        push!(time_props.MeltFraction, sum(.*(Arrays.ϕ, w...)) / prod(sum, w))
-        V_hot = sum(.*(Arrays.T .> 700, w...))
-        Tav_magma_Time = V_hot > 0 ? sum(.*(ifelse.(Arrays.T .> 700, Arrays.T, zero(eltype(Arrays.T))), w...)) / V_hot : NaN
-    end
-    push!(time_props.Tav_magma, Tav_magma_Time)        # average magma T
+    w = something(_cell_weights(Grid, Arrays.ϕ), ())                       # cell widths of a refined grid (volume-weighted means), () for constant spacing
+    push!(time_props.MeltFraction, sum(.*(Arrays.ϕ, w...)) / (isempty(w) ? length(Arrays.ϕ) : prod(sum, w)))     # mean melt fraction
+    hot = Arrays.T .> 700                                                   # part with magma
+    V_hot = sum(.*(hot, w...))
+    push!(time_props.Tav_magma, V_hot > 0 ? sum(.*(ifelse.(hot, Arrays.T, zero(eltype(Arrays.T))), w...)) / V_hot : NaN)        # average magma T
     push!(time_props.Tmax, maximum(Arrays.T))    # maximum magma T
 
     return nothing
@@ -157,13 +146,12 @@ function MTK_initialize_arrays(Num::NumericalParameters)
 
     kw = (; backend = Num.backend, FloatType = Num.FloatType)
     pt_arrays = Num.solver !== :explicit ? (pt_C = 0, pt_b = 0, pt_phiold = 0, pt_res = 0, pt_Tk = 0, pt_Tkm1 = 0, pt_Tn = 0) : (;)     # work arrays of the implicit solver
-    if Num.dim == 2
-        Arrays = CreateArrays(Dict((Num.Nx, Num.Nz) => merge((T = 0, T_K = 0, Tnew = 0, T_init = 0, T_it_old = 0, Tupdate = 0, Kc = 1, Rho = 1, Cp = 1, Hr = 0, Hq = 0, Qsrc = 0, Qrelax = 0, Qenth = 0, Nu = 1, Tbg = 0, Hl = 0, ϕ = 0, dϕdT = 0, R = 0, Z = 0, P = 0), pt_arrays), (Num.Nx,) => (Zsurf = NaN,)); kw...)
-    else
-        Arrays = CreateArrays(Dict((Num.Nx, Num.Ny, Num.Nz) => merge((T = 0, T_K = 0, Tnew = 0, T_init = 0, T_it_old = 0, Tupdate = 0, Kc = 1, Rho = 1, Cp = 1, Hr = 0, Hq = 0, Qsrc = 0, Qrelax = 0, Qenth = 0, Nu = 1, Hl = 0, ϕ = 0, dϕdT = 0, X = 0, Y = 0, Z = 0, P = 0), pt_arrays), (Num.Nx, Num.Ny) => (Zsurf = NaN,)); kw...)
-    end
-
-    return Arrays
+    fields = (T = 0, T_K = 0, Tnew = 0, T_init = 0, T_it_old = 0, Tupdate = 0, Kc = 1, Rho = 1, Cp = 1, Hr = 0, Hq = 0, Qsrc = 0, Qrelax = 0, Qenth = 0, Hl = 0, ϕ = 0, dϕdT = 0, Z = 0, P = 0)
+    Num.convection && (fields = merge(fields, (Nu = 1,)))                                   # Nusselt numbers of the convecting regions
+    Num.dim == 2 && Num.out_of_plane && (fields = merge(fields, (Tbg = 0,)))                # background temperature of the out-of-plane loss
+    fields = merge(fields, Num.dim == 2 ? (R = 0,) : (X = 0, Y = 0), pt_arrays)
+    N = Num.dim == 2 ? (Num.Nx, Num.Nz) : (Num.Nx, Num.Ny, Num.Nz)
+    return CreateArrays(Dict(N => fields, N[1:(end - 1)] => (Zsurf = NaN,)); kw...)
 end
 
 """
@@ -378,7 +366,7 @@ function Setup_Model_CartData(d::CartData, Num::NumericalParameters, Mat_tup::Tu
     Num.Δ = collect(Δ)
     Num.Δmin = minimum(Num.Δ[Num.Δ .> 0])                # minimum grid spacing
 
-    Num.dt = Num.fac_dt * (Num.Δmin^2) ./ Num.κ_time / 4    # timestep
+    Num.dt = _stable_dt(Num.fac_dt, Num.Δmin, Num.κ_time)    # timestep
     Num.nt = floor(Num.maxTime / Num.dt)
 
     return Num

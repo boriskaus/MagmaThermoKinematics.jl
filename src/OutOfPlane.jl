@@ -16,11 +16,7 @@ depth cells and `L²` bounded below by `Lmin²`. `X` holds the horizontal coordi
 weight the moments.
 """
 function out_of_plane_width2(θ::AbstractMatrix, X::AbstractMatrix; smooth::Integer = 10, Lmin::Real = 1.0e3, dx = nothing, dz = nothing)
-    if dx !== nothing                                   # weights relative to the mean width, so that the anomaly threshold below keeps its meaning
-        wx = similar(θ, size(θ, 1), 1)
-        copyto!(wx, reshape(eltype(θ).(dx ./ (sum(dx) / length(dx))), :, 1))
-        θ = θ .* wx
-    end
+    dx === nothing || (θ = θ .* _on_backend(θ, dx ./ (sum(dx) / length(dx))))     # weights relative to the mean width, so that the anomaly threshold below keeps its meaning
     m0 = Array(sum(θ; dims = 1))[1, :]
     m1 = Array(sum(θ .* X; dims = 1))[1, :]
     m2 = Array(sum(θ .* X .^ 2; dims = 1))[1, :]
@@ -53,8 +49,7 @@ function add_out_of_plane_loss!(Hr, T, Tbg, Kc, X, Phases; factor::Real = 1.5, s
     FT = eltype(Hr)
     θ = @. ifelse(Phases == air_phase, zero(FT), max(T - Tbg, zero(FT)))
     L2 = out_of_plane_width2(θ, X; smooth, Lmin, dx, dz)
-    L2d = similar(Hr, 1, length(L2))
-    copyto!(L2d, reshape(FT.(L2), 1, :))
+    L2d = reshape(_on_backend(Hr, L2), 1, :)
     @. Hr -= ifelse(Phases == air_phase, zero(FT), FT(factor) * Kc * (T - Tbg) / L2d)
     return L2
 end

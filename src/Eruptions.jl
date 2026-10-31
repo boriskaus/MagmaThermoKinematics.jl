@@ -78,20 +78,14 @@ Base.@kwdef mutable struct EruptionState
     V_grid_prev::Float64 = 0.0
     M::Float64 = 0.0            # [kg/m²]
     M_H2O::Float64 = 0.0
-    M_initial::Float64 = 0.0
-    M_in::Float64 = 0.0
-    M_out::Float64 = 0.0
-    M_boundary::Float64 = 0.0
-    mass_residual::Float64 = 0.0
     ϕ_g::Float64 = 0.0
     T_prev::Float64 = NaN
     ϕ_prev::Float64 = NaN
     h_erupt::Float64 = 0.0      # bulk thickness drained during the last step [m]
     h_pending::Float64 = 0.0
     pending_since::Float64 = NaN
-    ρ_magma::Float64 = 0.0
     η_magma::Float64 = 0.0
-    η_r::Float64 = 0.0
+    η_r::Float64 = 0.0          # relaxation viscosity of the shell in the last step [Pa s]
     id::Int = 0
     z_lo::Float64 = NaN
     z_hi::Float64 = NaN
@@ -119,31 +113,18 @@ crust_density(ep::EruptionParams, P, T_K) = _pt_density(ep.crust, P, T_K)
 condensed_density(ep, P, T_K, ϕ) = ϕ * melt_density(ep, P, T_K) + (1 - ϕ) * crystal_density(ep, P, T_K)
 
 """
-    water_gas_partition(P, T_K, ϕ_melt, ep; m_w) -> (m_diss, X_g, ρ_g)
-
-Dissolved (per magma mass) and exsolved H₂O mass fractions and the gas density.
-"""
-function water_gas_partition(P, T_K, ϕ_melt, ep::EruptionParams; m_w = ep.m_w)
-    P >= 0 || throw(DomainError(P, "magma pressure must be nonnegative"))
-    m_eq = first(compute_dissolved(ep.solubility, (; P, T = T_K, X_co2 = 0.0)))
-    ρ_m = melt_density(ep, P, T_K)
-    x_melt = ϕ_melt * ρ_m / (ϕ_melt * ρ_m + (1 - ϕ_melt) * crystal_density(ep, P, T_K))
-    m_diss = clamp(m_eq * x_melt, zero(m_eq), m_w)
-    X_g = m_w - m_diss
-    ρ_g = X_g > 0 ? compute_density(ep.ρ_gas, (; P, T = T_K)) : zero(P)
-    X_g > 0 && !(ρ_g > 0) && throw(DomainError(ρ_g, "gas density law returned a nonpositive density"))
-    return m_diss, X_g, ρ_g
-end
-
-"""
     mixture_density(P, T_K, ϕ_melt, ep; m_w) -> (ρ, ϕ_g)
 
-Three-phase mixture density and gas volume fraction.
+Three-phase mixture density and gas volume fraction; the H₂O that the melt cannot dissolve is exsolved as gas.
 """
 function mixture_density(P, T_K, ϕ_melt, ep::EruptionParams; m_w = ep.m_w)
+    P >= 0 || throw(DomainError(P, "magma pressure must be nonnegative"))
     ρ_c = condensed_density(ep, P, T_K, ϕ_melt)
-    _, Xg, ρ_g = water_gas_partition(P, T_K, ϕ_melt, ep; m_w)
+    m_eq = first(compute_dissolved(ep.solubility, (; P, T = T_K, X_co2 = 0.0)))
+    Xg = m_w - clamp(m_eq * (ϕ_melt * melt_density(ep, P, T_K) / ρ_c), zero(m_eq), m_w)     # exsolved H₂O mass fraction
     Xg > 0 || return ρ_c, zero(ρ_c)
+    ρ_g = compute_density(ep.ρ_gas, (; P, T = T_K))
+    ρ_g > 0 || throw(DomainError(ρ_g, "gas density law returned a nonpositive density"))
     Vg = Xg / ρ_g
     Vc = (1 - Xg) / ρ_c
     return 1 / (Vg + Vc), Vg / (Vg + Vc)
@@ -277,7 +258,7 @@ function project_mass_constraint!(state, ep, T_K, ϕ, m_w, inv_βr)
         ρ = first(mixture_density(P, T_K, ϕ, ep; m_w))
         residual = ρ * V - state.M
         if abs(residual) <= 64eps(max(state.M, ρ * V, 1.0))
-            state.P, state.V, state.mass_residual = P, V, residual
+            state.P, state.V = P, V
             return ρ
         end
         if abs(residual) > abs(res_prev) && it > 1     # overshoot: halve the previous step and retry
@@ -298,7 +279,7 @@ end
 """
     pending_withdrawal!(state, h_requested, h_available, Δ; time) -> h_realizable
 
-Queue drained bulk thickness; return zero while the queued amount is at most `2Δ`, else the
+Queue drained bulk thickness; return zero while the queued amount is at most `Δ`, else the
 resolvable thickness bounded by `h_available`. Debit it with [`commit_pending_withdrawal!`](@ref).
 """
 function pending_withdrawal!(state::EruptionState, h_requested, h_available, Δ; time = NaN)
@@ -307,7 +288,7 @@ function pending_withdrawal!(state::EruptionState, h_requested, h_available, Δ;
     end
     state.h_pending += h_requested
     h_realizable = min(state.h_pending, h_available)
-    return h_realizable > 2Δ ? h_realizable : 0.0
+    return h_realizable > Δ ? h_realizable : 0.0
 end
 
 """
@@ -325,6 +306,16 @@ function commit_pending_withdrawal!(state::EruptionState, h_realized)
     return state
 end
 
+# recharge rate, host compliance 1/β_r, relaxation time τ and equilibrium overpressure ΔP_eq at the current state
+function _relaxation(state, ep, T_mush_K, ϕ_mush, m_w, R, ȧ, Δt, η_r)
+    ρ = first(mixture_density(state.P, T_mush_K, ϕ_mush, ep; m_w))
+    ρ_old = first(mixture_density(state.P, state.T_prev, state.ϕ_prev, ep; m_w))
+    Ṁ_in = ȧ * melt_density(ep, state.P, T_mush_K)
+    S = Ṁ_in / (ρ * state.V) - (ρ - ρ_old) / Δt / ρ
+    inv_βr = host_compliance(ep, state.V, R)
+    return Ṁ_in, inv_βr, η_r * (inv_βr + inv_magma_compressibility(state.P, T_mush_K, ϕ_mush, ep, m_w, ρ)), S * η_r
+end
+
 """
     step_overpressure!(state, ep, T_mush_K, ϕ_mush, V_e, R, ȧ, Δt; depth, η_r)
 
@@ -336,7 +327,6 @@ function step_overpressure!(state::EruptionState, ep::EruptionParams, T_mush_K, 
     m_w = chamber_water_fraction(state, ep.m_w)
     ρ, ϕg = mixture_density(state.P, T_mush_K, ϕ_mush, ep; m_w)
     state.ϕ_g = ϕg
-    state.ρ_magma = ρ
     state.η_magma = compute_viscosity_εII(ep.melt_viscosity, 1.0, (; T = T_mush_K))
     state.h_erupt = 0.0
     state.η_r = η_r
@@ -345,8 +335,6 @@ function step_overpressure!(state::EruptionState, ep::EruptionParams, T_mush_K, 
         state.V = state.V_grid_prev = V_e
         state.M = ρ * V_e
         state.M_H2O = ep.m_w * state.M
-        state.M_initial = state.M
-        state.M_in = state.M_out = state.M_boundary = state.mass_residual = 0.0
         state.init = true
         return state
     end
@@ -357,17 +345,10 @@ function step_overpressure!(state::EruptionState, ep::EruptionParams, T_mush_K, 
     state.V += ΔV_grid
     state.M += ΔM
     state.M_H2O += m_w * ΔM
-    state.M_boundary += ΔM
     state.V_grid_prev = V_e
     state.V > 0 || throw(DomainError(state.V, "chamber volume collapsed to zero or below"))
 
-    inv_βm = inv_magma_compressibility(state.P, T_mush_K, ϕ_mush, ep, m_w, ρ)
-    ρ_old = first(mixture_density(state.P, state.T_prev, state.ϕ_prev, ep; m_w))
-    Ṁ_in = ȧ * melt_density(ep, state.P, T_mush_K)
-    S = Ṁ_in / (ρ * state.V) - (ρ - ρ_old) / Δt / ρ
-    invβ = host_compliance(ep, state.V, R) + inv_βm
-    τ = η_r * invβ
-    ΔP_eq = S * η_r
+    _, _, τ, ΔP_eq = _relaxation(state, ep, T_mush_K, ϕ_mush, m_w, R, ȧ, Δt, η_r)
     ΔP_0 = state.P - state.P_lith
     excursion = abs(ΔP_eq - ΔP_0) * (-expm1(-Δt / τ))
     nsub = round(Int, clamp(ceil(excursion / (0.1 * ep.ΔP_crit)), 1.0, 10_000.0))
@@ -376,20 +357,12 @@ function step_overpressure!(state::EruptionState, ep::EruptionParams, T_mush_K, 
     h_out = 0.0
     for _ in 1:nsub
         m_w = chamber_water_fraction(state, ep.m_w)
-        ρ_sub = first(mixture_density(state.P, T_mush_K, ϕ_mush, ep; m_w))
-        inv_βm_sub = inv_magma_compressibility(state.P, T_mush_K, ϕ_mush, ep, m_w, ρ_sub)
-        ρ_old_sub = first(mixture_density(state.P, state.T_prev, state.ϕ_prev, ep; m_w))
-        Ṁ_in_sub = ȧ * melt_density(ep, state.P, T_mush_K)
-        S_sub = Ṁ_in_sub / (ρ_sub * state.V) - (ρ_sub - ρ_old_sub) / Δt / ρ_sub
-        inv_βr = host_compliance(ep, state.V, R)
-        τ_sub = η_r * (inv_βr + inv_βm_sub)
-        ΔP_eq_sub = S_sub * η_r
+        Ṁ_in_sub, inv_βr, τ_sub, ΔP_eq_sub = _relaxation(state, ep, T_mush_K, ϕ_mush, m_w, R, ȧ, Δt, η_r)
         decay = exp(-dt_sub / τ_sub)
 
         M_in = Ṁ_in_sub * dt_sub
         state.M += M_in
         state.M_H2O += ep.m_w * M_in
-        state.M_in += M_in
         ΔP_start = state.P - state.P_lith
         ΔP = ΔP_eq_sub + (ΔP_start - ΔP_eq_sub) * decay
         ∫ΔP_dt = ΔP_eq_sub * dt_sub + (ΔP_start - ΔP_eq_sub) * τ_sub * (1 - decay)
@@ -408,13 +381,11 @@ function step_overpressure!(state::EruptionState, ep::EruptionParams, T_mush_K, 
             h_out += M_out / ρ_sub
             state.M = M_after
             state.M_H2O -= m_w * M_out
-            state.M_out += M_out
         end
     end
 
     m_w = chamber_water_fraction(state, ep.m_w)
-    ρ = project_mass_constraint!(state, ep, T_mush_K, ϕ_mush, m_w, host_compliance(ep, state.V, R))
-    state.ρ_magma = ρ
+    project_mass_constraint!(state, ep, T_mush_K, ϕ_mush, m_w, host_compliance(ep, state.V, R))
     state.ϕ_g = last(mixture_density(state.P, T_mush_K, ϕ_mush, ep; m_w))
     state.h_erupt = h_out
     state.T_prev, state.ϕ_prev = T_mush_K, ϕ_mush
@@ -526,47 +497,14 @@ function chamber_labels!(lab, ϕ::AbstractArray{<:Real, N}, ϕ_erupt; max_iter =
 end
 
 """
-    chamber_geometry(cells, Δ, coords) -> (; V, W, h, R, scale, zc, z_lo, z_hi)
+    chamber_geometry(cells, Δ, coords) -> (; V, W, h, R, zc, z_lo, z_hi)
 
 Equivalent column of a chamber: native volume `V` (m² in 2D, m³ in 3D), footprint `W` (m in 2D, m²
-in 3D), mean thickness `h = V/W`, lateral radius `R`, the factor `scale` converting native volume to
-the 3D-equivalent volume (`π R² h / V`), the volume-weighted centroid depth coordinate `zc` and the
+in 3D), mean thickness `h = V/W`, lateral radius `R`, the volume-weighted centroid depth coordinate `zc` and the
 vertical extent. `Δ` are the cell sizes and `coords` the 1D coordinate vectors (z last). On a refined grid, `Δ`
 holds the vectors of the cell widths per direction ([`cell_widths`](@ref)).
 """
 function chamber_geometry(cells::Vector{CartesianIndex{N}}, Δ, coords) where {N}
-    all(d -> d isa Number, Δ) || return _chamber_geometry_refined(cells, Δ, coords)
-    dV = prod(Δ)
-    V = length(cells) * dV
-    zc = sum(I -> coords[N][I[N]], cells) / length(cells)
-    z_lo = minimum(I -> coords[N][I[N]], cells) - Δ[N] / 2
-    z_hi = maximum(I -> coords[N][I[N]], cells) + Δ[N] / 2
-    if N == 2
-        cols = Set(I[1] for I in cells)
-        W = length(cols) * Δ[1]
-        R = W / 2
-    else
-        cols = Set((I[1], I[2]) for I in cells)
-        W = length(cols) * Δ[1] * Δ[2]
-        R = sqrt(W / π)
-    end
-    h = V / W
-    scale = π * R^2 * h / V
-    return (; V, W, h, R, scale, zc, z_lo, z_hi)
-end
-
-# width of cell `i` along a direction with the widths `w` (a number for constant spacing), and the volume of cell `I`
-@inline _width(w::Number, i) = w
-@inline _width(w::AbstractVector, i) = w[i]
-@inline _cell_volume(Δ, I::CartesianIndex{N}) where {N} = prod(ntuple(k -> _width(Δ[k], I[k]), Val(N)))
-
-# smallest spacing of a coordinate vector, and the index of the point nearest to `x`
-_smallest_spacing(c::AbstractRange) = step(c)
-_smallest_spacing(c::AbstractVector) = minimum(diff(c))
-_nearest_index(c::AbstractRange, x) = clamp(round(Int, (x - first(c)) / step(c)) + 1, 1, length(c))
-_nearest_index(c::AbstractVector, x) = round(Int, _fractional_index(c, x))
-
-function _chamber_geometry_refined(cells::Vector{CartesianIndex{N}}, Δ, coords) where {N}
     z, wz = coords[N], Δ[N]
     V = sum(I -> _cell_volume(Δ, I), cells)
     zc = sum(I -> z[I[N]] * _cell_volume(Δ, I), cells) / V
@@ -579,10 +517,17 @@ function _chamber_geometry_refined(cells::Vector{CartesianIndex{N}}, Δ, coords)
         W = sum(c -> _width(Δ[1], c[1]) * _width(Δ[2], c[2]), Set((I[1], I[2]) for I in cells))
         R = sqrt(W / π)
     end
-    h = V / W
-    scale = π * R^2 * h / V
-    return (; V, W, h, R, scale, zc, z_lo, z_hi)
+    return (; V, W, h = V / W, R, zc, z_lo, z_hi)
 end
+
+# width of cell `i` along a direction with the widths `w` (a number for constant spacing), and the volume of cell `I`
+@inline _width(w::Number, i) = w
+@inline _width(w::AbstractVector, i) = w[i]
+@inline _cell_volume(Δ, I::CartesianIndex{N}) where {N} = prod(ntuple(k -> _width(Δ[k], I[k]), Val(N)))
+
+# index of the point of a coordinate vector nearest to `x`
+_nearest_index(c::AbstractRange, x) = clamp(round(Int, (x - first(c)) / step(c)) + 1, 1, length(c))
+_nearest_index(c::AbstractVector, x) = round(Int, _fractional_index(c, x))
 
 # ---------------------------------------------------------------------------------------
 # Host-rock displacement from summed Mogi point sources
@@ -651,30 +596,20 @@ function mogi_displacement!(U, X, centers, ΔV; L = zeros(length(ΔV)), ν = 0.2
     backend = get_backend(X[1])
     FT = eltype(X[1])
     N = length(U)
+    dev(a) = copyto!(KernelAbstractions.allocate(backend, FT, size(a)), FT.(a))
     if halfspace === :mindlin
-        # exact half-space centre of dilatation (Mindlin & Cheng 1950; Okada 1992 inflation source): volume change ΔV in
-        # the bulk and the Mogi displacement at the free surface; 3-D point sources only
         N == 3 || throw(ArgumentError("halfspace = :mindlin is available for 3-D point sources only"))
         all(iszero, L) || throw(ArgumentError("halfspace = :mindlin takes point sources (L = 0)"))
-        c = KernelAbstractions.allocate(backend, FT, size(centers)); copyto!(c, FT.(centers))
-        v = KernelAbstractions.allocate(backend, FT, length(ΔV)); copyto!(v, FT.(ΔV))
-        _mindlin_sum!(backend)(U, X, c, v, FT(ν), FT(z_surface), FT(softening)^2; ndrange = size(X[1]))
-        KernelAbstractions.synchronize(backend)
-        return U
-    end
-    if halfspace === :mogi
-        cen, str, len = centers, (1 - ν) / π .* ΔV, L
+        _mindlin_sum!(backend)(U, X, dev(centers), dev(ΔV), FT(ν), FT(z_surface), FT(softening)^2; ndrange = size(X[1]))
     else
-        # volume-consistent dilatation centres (strength ΔV/4π, so ∇·U integrates to ΔV) plus opposite-sign images above
-        # the free surface: the vertical surface displacement is then twice the full-space value and the horizontal one
-        # vanishes (the exact half-space factor is 4(1 − ν) for the vertical component)
-        img = copy(centers); img[:, N] .= 2 * z_surface .- centers[:, N]
-        cen = vcat(centers, img); str = vcat(ΔV, -ΔV) ./ (4π); len = vcat(L, L)
+        if halfspace === :mogi
+            cen, str, len = centers, (1 - ν) / π .* ΔV, L
+        else                                                            # opposite-sign images mirrored at the free surface
+            img = copy(centers); img[:, N] .= 2 * z_surface .- centers[:, N]
+            cen = vcat(centers, img); str = vcat(ΔV, -ΔV) ./ (4π); len = vcat(L, L)
+        end
+        _mogi_sum!(backend)(U, X, dev(cen), dev(str), dev(len), FT(softening)^2, Val(N); ndrange = size(X[1]))
     end
-    c = KernelAbstractions.allocate(backend, FT, size(cen)); copyto!(c, FT.(cen))
-    s = KernelAbstractions.allocate(backend, FT, length(str)); copyto!(s, FT.(str))
-    l = KernelAbstractions.allocate(backend, FT, length(len)); copyto!(l, FT.(len))
-    _mogi_sum!(backend)(U, X, c, s, l, FT(softening)^2, Val(length(U)); ndrange = size(X[1]))
     KernelAbstractions.synchronize(backend)
     return U
 end
@@ -682,34 +617,11 @@ end
 """
     cell_sources(cells, dV_native, factor, coords; coarsen=1) -> (centers, ΔV)
 
-Point sources for a set of cells: one per cell, volume `factor · dV_native` each (a list of 3D-equivalent
-volume changes can be formed by scaling `factor` with [`chamber_geometry`](@ref)'s `scale` and the
-fractional volume change). With `coarsen > 1`, cells are binned in blocks of `coarsen` cells per direction
-and each bin becomes one source at its volume-weighted centroid (cheaper for large 3D chambers). On a refined grid,
-`dV_native` is a function that returns the volume of cell `I`.
+Point sources for a set of cells: one per cell, volume `factor · dV_native` each, where `dV_native` is the cell volume
+or a function that returns the volume of cell `I` (refined grid). With `coarsen > 1`, cells are binned in blocks of
+`coarsen` cells per direction and each bin becomes one source at its volume-weighted centroid (cheaper for large 3D chambers).
 """
 function cell_sources(cells::Vector{CartesianIndex{N}}, dV_native, factor, coords; coarsen = 1) where {N}
-    if coarsen == 1
-        centers = [coords[k][I[k]] for I in cells, k in 1:N]
-        return centers, fill(factor * dV_native, length(cells))
-    end
-    bins = Dict{NTuple{N, Int}, Tuple{Vector{Float64}, Int}}()
-    for I in cells
-        key = ntuple(k -> (I[k] - 1) ÷ coarsen, Val(N))
-        acc, n = get!(bins, key, (zeros(N), 0))
-        for k in 1:N
-            acc[k] += coords[k][I[k]]
-        end
-        bins[key] = (acc, n + 1)
-    end
-    centers = zeros(length(bins), N); ΔV = zeros(length(bins))
-    for (i, (_, (acc, n))) in enumerate(bins)
-        centers[i, :] .= acc ./ n
-        ΔV[i] = factor * dV_native * n
-    end
-    return centers, ΔV
-end
-function cell_sources(cells::Vector{CartesianIndex{N}}, dV_native::Function, factor, coords; coarsen = 1) where {N}
     if coarsen == 1
         centers = [coords[k][I[k]] for I in cells, k in 1:N]
         return centers, [factor * dV_native(I) for I in cells]
@@ -731,6 +643,7 @@ function cell_sources(cells::Vector{CartesianIndex{N}}, dV_native::Function, fac
     end
     return centers, ΔV
 end
+cell_sources(cells::Vector{CartesianIndex{N}}, dV_native::Number, factor, coords; coarsen = 1) where {N} = cell_sources(cells, _ -> dV_native, factor, coords; coarsen)
 
 """
     displace_temperature!(T, Tbuf, coords, U; maxfrac=0.5) -> nsub
@@ -739,7 +652,7 @@ Advect the temperature field `T` with the displacement field `U` [m] (semi-Lagra
 sub-steps as needed to keep each below `maxfrac` of a cell). `Tbuf` is a work array of the same size.
 """
 function displace_temperature!(T, Tbuf, coords, U; maxfrac = 0.5)
-    Δmin = minimum(_smallest_spacing, Tuple(coords))
+    Δmin = minimum(min_spacing, Tuple(coords))
     umax = maximum(maximum(abs, u) for u in U)
     nsub = max(1, ceil(Int, umax / (maxfrac * Δmin)))
     V = map(u -> u ./ nsub, Tuple(U))
@@ -763,28 +676,16 @@ Advance the chamber of the arrays `ϕ` (melt fraction) and `T` [°C] (host or de
 volume injected into the chamber per second in native units (m²/s in 2D, m³/s in 3D) and
 `T_background(depth)` the undisturbed geotherm [°C] at depth [m].
 
-By default the lithostatic pressure of the chamber is that of its centroid depth below `z = 0`, from the density
-law of `ep` along `T_background`. With topography, pass the lithostatic pressure field `P` [Pa] (averaged over
-the chamber cells), e.g. integrated from the top of the grid with [`lithostatic_pressure!`](@ref) from the density
-with the air cells set to zero density,
-
-    Pmask .= Arrays.Rho .* (Arrays.Phases .!= Num.air_phase)
-    MagmaThermoKinematics.lithostatic_pressure!(Plith, Pmask, g, Δz)
-
-(`Δz = diff(z)` on a refined grid), and the surface elevation `Zsurf` (as moved by [`move_free_surface!`](@ref)), from which the depth of the chamber
-below the surface is measured (used for the dike ascent and for `T_background`).
-
-The relaxation viscosity of the shell around the chamber is taken from the temperature field `T` around it (with `ep.shell_from_T`; see
-[`crustal_relaxation_viscosity_field`](@ref)), or from the steady profile to `T_background` (default). In an axisymmetric model pass `axisymmetric = true`
-(the first coordinate is the radius; the rays of the shell are mirrored at the axis).
-
-A drained thickness is queued until it exceeds `resolve` cells (the grid-resolvable withdrawal; the
-displacement field is continuous, so values below 1 are admissible). On a refined grid (`coords` are vectors) the cell
-size is the mean vertical cell size of the chamber, and the sums over the chamber are weighted with the cell volumes.
+The lithostatic pressure is that of the centroid depth along `T_background`, or the given field `P` [Pa] averaged over
+the chamber cells; with the surface elevation `Zsurf` of [`move_free_surface!`](@ref) depths are measured below the
+free surface, see [Using the model in a simulation](@ref). The viscosity of the shell around the chamber comes from `T`
+(with `ep.shell_from_T`) or from the steady profile to `T_background` (default); pass `axisymmetric = true` in an
+axisymmetric model. A drained thickness is queued until it exceeds `resolve` vertical cells ([Resolvable withdrawal](@ref)).
 
 Returns `nothing` when no eruption is realised, otherwise a named tuple with the bulk thickness
-`h_erupt`, the fractional volume change `f = h_erupt/h` of the chamber, the chamber `cells` and its
-geometry `geo`. Remove the volume with [`erupt_sources`](@ref) and [`mogi_displacement!`](@ref).
+`h_erupt`, the fractional volume change `f = h_erupt/h` of the chamber, the chamber `cells`, its
+geometry `geo`, the generation `chamber`, the Poisson ratio `ν` of `ep`, `trigger_time` and `time`.
+Remove the volume with [`erupt!`](@ref).
 """
 function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; recharge, Δt, time, T_background, margin = 0.0, resolve = 2.0, P = nothing, Zsurf = nothing, axisymmetric = false)
     N = ndims(ϕ)
@@ -809,7 +710,7 @@ function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; 
         csum = A -> (A isa Array || inmask === nothing) ? sum(I -> A[I], cells) : sum(A .* inmask)
         nV, dV = length(cells), prod(Δ)
     else
-        wd = inmask === nothing ? nothing : reduce((a, b) -> a .* b, ntuple(k -> reshape(_on_backend(ϕ, Δ[k]), ntuple(j -> j == k ? length(Δ[k]) : 1, N)), N))
+        wd = inmask === nothing ? nothing : reduce((a, b) -> a .* b, ntuple(k -> _along(ϕ, Δ[k], k), N))
         csum = A -> (A isa Array || inmask === nothing) ? sum(I -> A[I] * _cell_volume(Δ, I), cells) : sum(A .* inmask .* wd)
         nV, dV = geo.V, 1
     end
@@ -854,11 +755,12 @@ function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; 
 
     Δz = uniform ? Δ[N] : sum(I -> Δ[N][I[N]] * _cell_volume(Δ, I), cells) / geo.V     # mean vertical cell size of the chamber
     h_drained = state.h_erupt
-    h_erupt = pending_withdrawal!(state, h_drained, geo.h, resolve * Δz / 2; time)
+    h_erupt = pending_withdrawal!(state, h_drained, geo.h, resolve * Δz; time)
     near_boundary = (geo.z_lo - margin <= coords[N][1]) || (geo.z_hi + margin >= coords[N][end])
     (h_erupt > 0 && !near_boundary) || return nothing
+    trigger_time = state.pending_since     # read before the commit clears it
     commit_pending_withdrawal!(state, h_erupt)
-    return (; h_erupt, f = h_erupt / geo.h, cells, geo, chamber = state.id, trigger_time = state.pending_since, time)
+    return (; h_erupt, f = h_erupt / geo.h, cells, geo, chamber = state.id, ν = ep.ν, trigger_time, time)
 end
 
 # mean surface elevation over the columns of the chamber cells (`NaN` entries: top of the grid)
@@ -867,6 +769,9 @@ function _surface_above(Zsurf, cells::Vector{CartesianIndex{N}}, z) where {N}
     cols = unique(CartesianIndex(ntuple(k -> I[k], N - 1)) for I in cells)
     return sum(c -> (v = Float64(Zs[c]); isnan(v) ? z[end] + _top_half(z) : v), cols) / length(cols)
 end
+
+# the vector `c` (on the backend and with the element type of `A`) shaped to vary along direction `k` of `A`
+_along(A, c, k) = reshape(_on_backend(A, c), ntuple(j -> j == k ? length(c) : 1, ndims(A)))
 
 # half the spacing of the topmost cell
 _top_half(z::AbstractRange) = step(z) / 2
@@ -894,11 +799,10 @@ volume `f · π R² h`. Pass to [`mogi_displacement!`](@ref).
 function erupt_sources(event, coords; coarsen = 1)
     N = length(coords)
     Δ = ntuple(k -> cell_widths(coords[k]), N)
-    uniform = all(d -> d isa Number, Δ)
-    centers, ΔV = cell_sources(event.cells, uniform ? prod(Δ) : (I -> _cell_volume(Δ, I)), -event.f, coords; coarsen)
+    dV = I -> _cell_volume(Δ, I)
+    centers, ΔV = cell_sources(event.cells, dV, -event.f, coords; coarsen)
     N == 3 && return centers, ΔV, zeros(length(ΔV))
-    xc = uniform ? sum(I -> coords[1][I[1]], event.cells) / length(event.cells) :
-        sum(I -> coords[1][I[1]] * _cell_volume(Δ, I), event.cells) / sum(I -> _cell_volume(Δ, I), event.cells)
+    xc = sum(I -> coords[1][I[1]] * dV(I), event.cells) / sum(dV, event.cells)
     R = event.geo.R
     L = [sqrt(max(R^2 - (centers[s, 1] - xc)^2, 0.0)) for s in axes(centers, 1)]
     return centers, ΔV, L
@@ -908,30 +812,18 @@ end
     revolved_sources(event, coords; coarsen=1, nθ=8, symmetric=true) -> (centers, ΔV, x_axis)
 
 Mindlin point sources of an eruption event of a planar 2D section, with the chamber treated as a body of
-revolution about its own vertical axis `x = x_axis` (the mean `x` of its cells). A cell of area `dA` at the
-horizontal distance `a = |x - x_axis|` from the axis is a ring (the cell and its mirror cell share it): it
-loses the volume `f π |a| dA`, which is split over `nθ` point sources at the azimuths
-`ϑ_j = 2π (j - 1/2)/nθ`, `(a cos ϑ_j, a sin ϑ_j, z)`. The total drained volume is `Σ f π |a| dA`, the volume of
-the revolved chamber (`f π R² h` for a chamber of half-width `R` and thickness `h`). The returned `centers`
-(`Ns × 3`, relative to the axis) and `ΔV` (negative, in m³) are to be used with receivers on the section
-through the axis, `(x - x_axis, 0, z)`, and [`mogi_displacement!`](@ref) with `halfspace = :mindlin`.
-
-Because the receivers lie in the plane `y = 0`, the sources at `±ϑ` give the same `(u_x, u_z)`: with
-`symmetric = true` (and an even `nθ`) only the azimuths in `(0, π)` are summed, with twice the volume
-(exact, half the cost). With `coarsen > 1` the cells are binned in blocks of `coarsen × coarsen` cells and every
-block becomes one ring at its weighted centroid.
+revolution about its own vertical axis `x = x_axis` (the area-weighted mean `x` of its cells): every cell, or block of
+`coarsen × coarsen` cells, is a ring of `nθ` point sources, see [Host-rock displacement](@ref). The returned `centers`
+(`Ns × 3`, relative to the axis) and `ΔV` (negative, in m³) are to be used with receivers on the section through the
+axis, `(x - x_axis, 0, z)`, and [`mogi_displacement!`](@ref) with `halfspace = :mindlin`. With `symmetric = true` (and
+an even `nθ`) only the azimuths in `(0, π)` are summed, with twice the volume (exact for receivers on the section).
 """
 function revolved_sources(event, coords; coarsen = 1, nθ = 8, symmetric = true)
     length(coords) == 2 || throw(ArgumentError("revolved sources are for planar 2D sections"))
     cells = event.cells
     widths = map(cell_widths, Tuple(coords))
-    if all(d -> d isa Number, widths)
-        dA = I -> widths[1] * widths[2]
-        xc = sum(I -> coords[1][I[1]], cells) / length(cells)
-    else                                                                # refined grid: cell areas and the area-weighted axis
-        dA = I -> _cell_volume(widths, I)
-        xc = sum(I -> coords[1][I[1]] * dA(I), cells) / sum(dA, cells)
-    end
+    dA = I -> _cell_volume(widths, I)
+    xc = sum(I -> coords[1][I[1]] * dA(I), cells) / sum(dA, cells)        # the area-weighted axis
     bins = Dict{NTuple{2, Int}, NTuple{3, Float64}}()                  # block -> (Σ a w, Σ z w, Σ w) with the weight w = π |a| dA
     for I in cells
         a = abs(coords[1][I[1]] - xc); w = π * a * dA(I)
@@ -959,65 +851,44 @@ end
 # Apply an eruption to the grid and tracers
 # ---------------------------------------------------------------------------------------
 """
-    erupt!(T, Tbuf, Tracers, coords, event; ν=0.25, coarsen=1, softening=min(Δ), rng, halfspace, z_surface=0.0,
+    erupt!(T, Tbuf, Tracers, coords, event; ν=event.ν, coarsen=1, softening=min(Δ), rng, halfspace, z_surface=0.0,
            volume_factor=1.0, revolve=false, nθ=8, symmetric=true, float_type=eltype(T), Zsurf=nothing) -> (U, cargo)
 
-Realise the eruption `event` of [`chamber_step!`](@ref): a Mogi sink of volume `f·dV` in every chamber
-cell (3D-equivalent volumes) gives the host-rock displacement `U`, with which the temperature `T`
-(any backend; `Tbuf` is a work array) and the tracers are advected. Tracers inside the chamber are
-removed with probability `f` and returned as `cargo`. `softening` regularises the point sources; `volume_factor` scales
-the displaced volume (1 = the drained volume). `halfspace` selects the kernel of [`mogi_displacement!`](@ref)
-(default `:mogi`, or `:mindlin` with `revolve`).
-
-With `revolve = true` (planar 2D sections only) the chamber is treated as a body of revolution about its own
-vertical axis, see [`revolved_sources`](@ref): the sources are rings of `nθ` Mindlin point sources and the
-displacement is evaluated on the section through the axis. A planar section with line sources (the default)
-has a different decay and, for the Mindlin solution, a weaker surface response than the 3D chamber it stands for;
-the revolved sink reproduces the axisymmetric response. The sum over the `Ns × Nx × Nz` point-source/node pairs
-can be done in a lower precision with `float_type = Float32`.
-
-The `:image` and `:mindlin` kernels are half-space solutions with a flat free surface at `z = z_surface`; they are
-not valid above that plane (on the axis of a source at depth `c` below it, the vertical displacement changes sign at about
-`c/3` above the plane and diverges at the mirror image, `c` above it). Topography is not part of the elastic problem, so
-`z_surface` must be at or above the highest rock surface of the model and has to be updated when the surface moves
-(for example `z_surface = maximum(Zsurf)` with the `Zsurf` of [`move_free_surface!`](@ref)). If the surface elevation
-array `Zsurf` is passed, a warning is issued when it rises above `z_surface`.
+Realise the eruption `event` of [`chamber_step!`](@ref): the sinks of the drained volume give the host-rock displacement
+`U`, with which the temperature `T` (any backend; `Tbuf` is a work array) and the tracers are advected. Tracers inside
+the chamber are removed with probability `f` and returned as `cargo`. `ν` defaults to `event.ν` (0.25 if the event has
+none). See [Host-rock displacement](@ref) for the kernels (`halfspace`, default `:mogi`, or `:mindlin` with `revolve`),
+`revolve`, `volume_factor` and `float_type`. `z_surface` must be at or above the highest rock surface, for example
+`z_surface = maximum(filter(!isnan, Zsurf))`; a warning is issued if the surface elevation `Zsurf` rises above it.
 """
 function erupt!(
-        T, Tbuf, Tracers, coords, event; ν = 0.25, coarsen = 1, softening = nothing, rng = Random.default_rng(), halfspace = nothing, z_surface = 0.0,
+        T, Tbuf, Tracers, coords, event; ν = get(event, :ν, 0.25), coarsen = 1, softening = nothing, rng = Random.default_rng(), halfspace = nothing, z_surface = 0.0,
         volume_factor = 1.0, revolve = false, nθ = 8, symmetric = true, float_type = eltype(T), Zsurf = nothing
     )
     N = length(coords)
-    softening === nothing && (softening = minimum(_smallest_spacing, Tuple(coords)))
-    halfspace === nothing && (halfspace = revolve ? :mindlin : :mogi)
-    if Zsurf !== nothing && halfspace in (:mindlin, :image) && maximum(Zsurf) > z_surface + 1.0e-6 * abs(z_surface) + 1.0e-9
-        @warn "The free surface (max. elevation $(maximum(Zsurf)) m) lies above the plane `z_surface` = $z_surface m of the half-space kernel; " *
-            "the solution is not valid above that plane. Set `z_surface = maximum(Zsurf)` (and update it as the surface moves)." maxlog = 1
-    end
     backend = get_backend(T)
+    softening === nothing && (softening = minimum(min_spacing, Tuple(coords)))
+    halfspace === nothing && (halfspace = revolve ? :mindlin : :mogi)
+    zmax = Zsurf === nothing ? -Inf : maximum(filter(!isnan, Array(Zsurf)); init = -Inf)     # NaN: not yet initialised
+    if halfspace in (:mindlin, :image) && zmax > z_surface + 1.0e-6 * abs(z_surface) + 1.0e-9
+        @warn "The free surface (max. elevation $zmax m) lies above the plane `z_surface` = $z_surface m of the half-space kernel; " *
+            "the solution is not valid above that plane. Set `z_surface = maximum(filter(!isnan, Zsurf))` (and update it as the surface moves)." maxlog = 1
+    end
+    coordinate_array(FT, c, k) = (A = KernelAbstractions.allocate(backend, FT, size(T)); A .= _along(A, c, k))
     if revolve
         N == 2 || throw(ArgumentError("revolve = true is for planar 2D sections"))
         FT = float_type
         centers, ΔV, xc = revolved_sources(event, coords; coarsen, nθ, symmetric)
         ΔV .*= volume_factor
-        X = ntuple(3) do k                                             # receivers on the section through the chamber axis: (x - xc, 0, z)
-            A = KernelAbstractions.allocate(backend, FT, size(T))
-            k == 1 && (A .= reshape(_on_backend(A, coords[1] .- xc), :, 1))
-            k == 2 && fill!(A, zero(FT))
-            k == 3 && (A .= reshape(_on_backend(A, coords[2]), 1, :))
-            A
-        end
+        # receivers on the section through the chamber axis: (x - xc, 0, z)
+        X = (coordinate_array(FT, coords[1] .- xc, 1), KernelAbstractions.zeros(backend, FT, size(T)), coordinate_array(FT, coords[2], 2))
         U3 = map(similar, X)
         mogi_displacement!(U3, X, centers, ΔV; ν, softening, halfspace, z_surface)
         U = FT === eltype(T) ? (U3[1], U3[3]) : (eltype(T).(U3[1]), eltype(T).(U3[3]))
     else
         centers, ΔV, L = erupt_sources(event, coords; coarsen)
         ΔV .*= volume_factor                                           # e.g. the fraction of a sill's cross-section that its 3-D opening displaces in a 2-D section
-        X = ntuple(N) do k
-            A = KernelAbstractions.allocate(backend, eltype(T), size(T))
-            A .= reshape(_on_backend(A, coords[k]), ntuple(j -> j == k ? length(coords[k]) : 1, N))
-            A
-        end
+        X = ntuple(k -> coordinate_array(eltype(T), coords[k], k), N)
         U = map(similar, X)
         mogi_displacement!(U, X, centers, ΔV; L, ν, softening, halfspace, z_surface)
     end
@@ -1046,26 +917,12 @@ end
         -> (Ux, Uz)
 
 Mean host-rock displacement rate [m/s] on a planar 2D section due to an ensemble of `N` penny-shaped sills
-(`InjectSills.PennyShapedSill`) that are treated as parts of bodies of revolution. Sill `k` has its centre at the
-horizontal distance `offset[k]` from a vertical axis at `x = axis[k]` and at the depth coordinate `zc[k]` (negative
-downward), with radius `radius[k]` and thickness `thickness` (a number or a vector, in m). Its centre is moved around the axis
-through `nθ` azimuths `ϑ = 2π (j - 1/2)/nθ`, `(offset cos ϑ, offset sin ϑ)`, the displacement of the 3D sill is
-evaluated on the section through the axis, `(x - axis[k], 0, z)`, and averaged over the azimuths. `angles` are
-optional `(dip, strike)` pairs (radians) of the sills; the default is horizontal sills.
-
-`X = (x, z)` are the coordinate arrays of the section (on any backend) and `interval` is the time between two
-sills of the ensemble (the mean sill volume divided by the injection rate `Q`, `Δt = V̄/Q`):
-the result is `Σ_k ⟨u_k⟩_ϑ / (N · interval)`. Multiply it by a time step to move the host rock, for example with
-[`displace_temperature!`](@ref) and [`move_free_surface!`](@ref). In a planar section a sill is a plane-strain crack, whose
-displacement decays much more slowly with distance than that of a 3D penny; averaging over azimuths removes that artefact.
-The caller draws the positions, radii and orientations of the sills, which defines where and how the host is inflated.
-`E` [Pa] and `ν` are the elastic parameters of the sills.
-
-The displacement of a `PennyShapedSill` is a full-space solution: the volume of the surface uplift it produces is
-about half of the sill volume `V`, whereas a horizontal crack in a half-space lifts the surface by about `V` and the
-Mindlin point sink of [`erupt!`](@ref) displaces `2(1 − ν) ΔV` (about `1.5 ΔV`) at the surface. Inflation and eruption
-sinks are therefore not volume-consistent at the surface; use `volume_factor` of [`erupt!`](@ref) to scale the sinks if a
-consistent balance is wanted.
+(`InjectSills.PennyShapedSill`) that are treated as parts of bodies of revolution, see [Inflation by sills](@ref).
+Sill `k` has its centre at the horizontal distance `offset[k]` from a vertical axis at `x = axis[k]` and at the depth
+coordinate `zc[k]` (negative downward), radius `radius[k]` and thickness `thickness` (a number or a vector, in m);
+`angles` are optional `(dip, strike)` pairs (radians, default horizontal) and `E` [Pa] and `ν` the elastic parameters
+of the sills. `X = (x, z)` are the coordinate arrays of the section (on any backend) and `interval` is the time between
+two sills of the ensemble (the mean sill volume divided by the injection rate).
 """
 function revolved_inflation_rate(X, axis, offset, zc, radius, interval; thickness, angles = nothing, nθ = 12, E = 1.5e10, ν = 0.3)
     N = length(radius)

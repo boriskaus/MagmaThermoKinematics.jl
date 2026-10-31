@@ -17,7 +17,7 @@
 
 "`true` if `Num.solver` selects the implicit enthalpy step (`:implicit_enthalpy`, alias `:apt`), `false` for the explicit step (`:explicit`, the default)."
 function _use_implicit(Num)
-    solver = hasproperty(Num, :solver) ? Num.solver : :explicit            # lightweight parameter structs have no `solver` field
+    solver = _opt(Num, :solver, :explicit)
     solver === :explicit && return false
     solver in (:implicit_enthalpy, :apt) && return true
     throw(ArgumentError("Num.solver must be :explicit or :implicit_enthalpy, got :$(solver)"))
@@ -37,23 +37,12 @@ end
     b[I] = f * Rho[I] * Hl[I] * (dϕdT[I] * Tit[I] - ϕ[I]) + Rho[I] * (Cp[I] * Told[I] + Hl[I] * ϕold[I]) / dt + Qrelax[I] * Qenth[I] + H[I]
 end
 
-"Coefficient of `T[I]` in `∇⋅(K ∇T)` along the step `e`, i.e. `-∂(∇q)/∂T[I]` for one dimension."
-@inline function _apt_diag(K, I, e, Δ, ::Nothing)
-    return ((K[I] + K[I + e]) + (K[I - e] + K[I])) / (2 * Δ^2)
-end
-@inline function _apt_diag(K, I, e, Δ, R)
-    return inv(R[I]) * ((R[I] + R[I + e]) / 2 * (K[I] + K[I + e]) / 2 + (R[I - e] + R[I]) / 2 * (K[I - e] + K[I]) / 2) / Δ^2
-end
-# refined grid (see `_∂q`)
-@inline function _apt_diag(K, I, e, h::AbstractVector, ::Nothing)
-    i = _along(I, e)
-    hp, hm = h[i], h[i - 1]
-    return ((K[I] + K[I + e]) / (2 * hp) + (K[I - e] + K[I]) / (2 * hm)) / ((hp + hm) / 2)
-end
+"Coefficient of `T[I]` in `∇⋅(K ∇T)` along the step `e`, i.e. `-∂(∇q)/∂T[I]` for one dimension (see `_∂q`)."
+@inline _apt_diag(K, I, e, Δ::Number, R) = _rinv(R, I) * (_rface(R, I, I + e) * (K[I] + K[I + e]) + _rface(R, I - e, I) * (K[I - e] + K[I])) / (2 * Δ^2)
 @inline function _apt_diag(K, I, e, h::AbstractVector, R)
     i = _along(I, e)
     hp, hm = h[i], h[i - 1]
-    return inv(R[I]) * ((R[I] + R[I + e]) / 2 * (K[I] + K[I + e]) / (2 * hp) + (R[I - e] + R[I]) / 2 * (K[I - e] + K[I]) / (2 * hm)) / ((hp + hm) / 2)
+    return _rinv(R, I) * (_rface(R, I, I + e) * (K[I] + K[I + e]) / (2 * hp) + _rface(R, I - e, I) * (K[I - e] + K[I]) / (2 * hm)) / ((hp + hm) / 2)
 end
 
 @inline function _apt_diag_total(K, I, T, Δ, R)
