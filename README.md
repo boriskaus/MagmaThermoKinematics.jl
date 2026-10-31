@@ -1,5 +1,6 @@
 <h1> <img src="docs/src/assets/logo.png" alt="MagmaThermoKinematics.jl" width="50"> MagmaThermoKinematics.jl </h1>
 
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://boriskaus.github.io/MagmaThermoKinematics.jl/stable/)
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://boriskaus.github.io/MagmaThermoKinematics.jl/dev/)
 [![Build Status](https://github.com/boriskaus/MagmaThermoKinematics.jl/workflows/CI/badge.svg)](https://github.com/boriskaus/MagmaThermoKinematics.jl/actions)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18412203.svg)](https://zenodo.org/doi/10.5281/zenodo.18412203)
@@ -7,7 +8,9 @@
 
 Understanding how magmatic systems work is of interest to a wide range of Earth Scientists.
 
-This easy to use and versatile package simulates the thermal evolution of magmatic systems following the intrusion of dikes and sills. It can take 2D, 2D axisymmetric and 3D geometries into account, and works on both parallel CPU's and GPU's. A finite difference discretization is employed for the energy equation, combined with semi-Lagrangian advection and tracers to track the thermal evolution of emplaced magma. Dikes are emplaced kinematically and the host rock is shifted to accommodate space for the intruding dikes/sills, in a number of ways including by using analytical models for penny-shaped cracks in elastic media. Cooling, crystallizing and latent heat effects are taken into account, and the thermal evolution of tracers can be used to simulate zircon age distributions.
+This easy to use and versatile package simulates the thermal evolution of magmatic systems following the intrusion of dikes and sills. It can take 2D, 2D axisymmetric and 3D geometries into account, and works on both parallel CPU's and GPU's. A finite difference discretization is employed for the energy equation (with explicit or implicit time stepping, on uniform or refined grids), combined with semi-Lagrangian advection and tracers to track the thermal evolution of emplaced magma. Dikes are emplaced kinematically and the host rock is shifted to accommodate space for the intruding dikes/sills, in a number of ways including by using analytical models for penny-shaped cracks in elastic media. Cooling, crystallizing and latent heat effects are taken into account, and the thermal evolution of tracers can be used to simulate zircon age distributions.
+
+Beyond the thermal evolution, the package can follow the magma chamber that forms from the intrusions: its overpressure builds up from the injected magma and relaxes viscously into the warm host rock, and it erupts once the overpressure is high enough for a dike to reach the surface. The erupted volume is removed from the chamber, the host rock and the free surface move accordingly, and the resulting volumes, timing and surface deformation can be compared with observations. Convection in melt-rich regions is parameterised through an effective conductivity, heat loss out of the plane can be included in 2D sections, and the model setup (topography, geological units, initial temperature) can be built from geophysical and geological data with GeophysicalModelGenerator.jl.
 
 Below we give a number of example scripts that show how it can be used to simulate a number of scenarios.
 
