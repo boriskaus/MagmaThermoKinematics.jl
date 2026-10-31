@@ -3,7 +3,7 @@ module Grid
 import Base: show
 import GeophysicalModelGenerator: CartData
 
-export GridData, CreateGrid, refined_coordinates, node_spacing, cell_widths, min_spacing
+export GridData, CreateGrid, refined_coordinates, cell_widths, min_spacing
 
 # `R` and `RC` are the concrete types of the coordinate fields: ranges for a grid with
 # constant spacing, `Vector`s for a refined (non-uniform) grid. `StepRangeLen{FT}` alone
@@ -271,28 +271,20 @@ function _nodes_for_spacing(lo, hi, n, a, b, ratio, Lt)
 end
 
 """
-    node_spacing(c)
-
-Distances between neighbouring points of the 1D coordinate vector `c`: a number for a range (constant spacing),
-the vector `diff(c)` otherwise.
-"""
-node_spacing(c::AbstractRange) = step(c)
-node_spacing(c::AbstractVector) = diff(c)
-
-"""
     cell_widths(c)
 
 Width of the control volume of every point of the 1D coordinate vector `c` (half the distance to both neighbours;
 the outermost points take the distance to their only neighbour): a number for a range (constant spacing), a vector otherwise.
 """
 cell_widths(c::AbstractRange) = step(c)
-function cell_widths(c::AbstractVector)
-    h = diff(c)
-    return [i == 1 ? h[1] : i == length(c) ? h[end] : (h[i - 1] + h[i]) / 2 for i in eachindex(c)]
-end
+cell_widths(c::AbstractVector) = (h = diff(c); [_cw(h, k, length(c)) for k in eachindex(c)])
+
+# width of the control volume of point `k` of `n` from the spacing `h` (a number, or the distances between neighbouring points)
+@inline _cw(h::Number, k, n) = h
+@inline _cw(h::AbstractVector, k, n) = k == 1 ? h[1] : k == n ? h[n - 1] : (h[k - 1] + h[k]) / 2
 
 "Smallest distance between neighbouring points of the 1D coordinate vector `c`."
-min_spacing(c::AbstractRange) = c[2] - c[1]
+min_spacing(c::AbstractRange) = step(c)
 min_spacing(c::AbstractVector) = minimum(diff(c))
 
 

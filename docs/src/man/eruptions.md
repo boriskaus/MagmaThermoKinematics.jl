@@ -10,7 +10,7 @@ The chamber is the largest face-connected region of the grid in which the melt f
 h_{melt} = \frac{\sum_i \phi_i\, \Delta V_i}{W}
 ```
 
-is at least `h_melt_min`, where ``W`` is its footprint (the width in 2D, the projected area in 3D). If no region qualifies, or the chamber moves to a different depth range, the state is reset. The chamber is described by an equivalent column (`chamber_geometry`): volume ``V`` (m² in 2D, m³ in 3D), footprint ``W``, mean thickness ``h = V/W``, lateral radius ``R`` (``W/2`` in 2D, ``\sqrt{W/\pi}`` in 3D) and the factor `scale` ``=\pi R^2 h / V`` that converts the native volume into the equivalent 3D volume.
+is at least `h_melt_min`, where ``W`` is its footprint (the width in 2D, the projected area in 3D). If no region qualifies, or the chamber moves to a different depth range, the state is reset. The chamber is described by an equivalent column (`chamber_geometry`): volume ``V`` (m² in 2D, m³ in 3D), footprint ``W``, mean thickness ``h = V/W``, lateral radius ``R`` (``W/2`` in 2D, ``\sqrt{W/\pi}`` in 3D).
 
 ## Overpressure
 
@@ -60,7 +60,7 @@ The chamber then drains to ``\Delta P_{relax}`` (`ΔP_relax`, zero by default); 
 
 On the grid the drained volume can only be removed in whole displacement fields, and a drainage of a small fraction of a cell would otherwise be lost. `chamber_step!` therefore queues the drained thickness (`pending_withdrawal!`) and only realises an eruption when the queue exceeds `resolve` ``\cdot\,\Delta z`` (`resolve = 2` by default; smaller values give more frequent, smaller events and the displacement field is continuous, so values below one are admissible). The queued thickness is debited with `commit_pending_withdrawal!`. Eruptions of chambers closer than `margin` to the top or bottom of the grid are not realised. The size of the smallest event is therefore set by the grid, ``\approx f_{min}\,\pi R^2 h`` with ``f_{min} h = resolve\cdot\Delta z``, and the total erupted volume is controlled by the mass balance of the chamber, not by the resolution.
 
-`chamber_step!` returns `nothing` as long as no eruption is realised, otherwise a named tuple with the drained thickness `h_erupt`, the fraction `f`, the chamber `cells`, its geometry `geo` and the chamber generation `chamber`.
+`chamber_step!` returns `nothing` as long as no eruption is realised, otherwise a named tuple with the drained thickness `h_erupt`, the fraction `f`, the chamber `cells`, its geometry `geo`, the chamber generation `chamber` and the Poisson ratio `ν` of `EruptionParams`, which `erupt!` uses for the displacement field.
 
 ## Host-rock displacement
 
@@ -83,7 +83,7 @@ In a planar 2D section a cell has no extension along the out-of-plane direction.
 split over `nθ` Mindlin point sources at the azimuths ``\vartheta_j = 2\pi (j - 1/2)/n_\vartheta``, ``(a\cos\vartheta_j, a\sin\vartheta_j, z)``. The total drained volume is ``\sum_i f\pi\lvert a_i\rvert dA = f\,\pi R^2 h`` for a chamber of uniform thickness and half-width ``R``. The displacement is evaluated on the section through the axis, ``(x - x_c, 0, z)``; for a symmetric chamber it is the axisymmetric response, and the chamber may sit anywhere in the section. Because the receivers lie in the plane ``y=0``, the sources at ``\pm\vartheta`` give the same ``(u_x, u_z)``, so by default (`symmetric = true`) only half of the azimuths are summed with twice the volume, which is exact. With `coarsen > 1` the cells are binned in blocks of `coarsen` × `coarsen` cells (one ring per block) and with `float_type = Float32` the sum is done in single precision. `halfspace` defaults to `:mindlin` with `revolve = true`.
 
 !!! warning "Flat half-space and the position of the free surface"
-    The `:image` and `:mindlin` kernels are solutions for an elastic half-space with a *flat* free surface at `z_surface` (default 0). Topography is not part of the elastic problem. The solutions are not valid above that plane: on the axis of a source at depth ``c`` below it the vertical displacement changes sign at about ``c/3`` above the plane and diverges at the mirror image, ``c`` above it. `z_surface` must therefore be at or above the highest rock surface of the model and has to be updated when the free surface rises, for example `z_surface = maximum(Zsurf)`. `erupt!` takes the surface-elevation array as `Zsurf` and warns if the free surface is above `z_surface`.
+    The `:image` and `:mindlin` kernels are solutions for an elastic half-space with a *flat* free surface at `z_surface` (default 0). Topography is not part of the elastic problem. The solutions are not valid above that plane: on the axis of a source at depth ``c`` below it the vertical displacement changes sign at about ``c/3`` above the plane and diverges at the mirror image, ``c`` above it. `z_surface` must therefore be at or above the highest rock surface of the model and has to be updated when the free surface rises, for example `z_surface = maximum(filter(!isnan, Zsurf))` (`NaN` marks columns that are not yet initialised). `erupt!` takes the surface-elevation array as `Zsurf` and warns if the free surface is above `z_surface`.
 
 The displacement field is applied with `displace_temperature!` (semi-Lagrangian advection of the temperature in as many sub-steps as needed to keep the displacement per sub-step below half a cell), and the tracers inside the chamber are removed with probability `f` (returned as `cargo`), and the remaining tracers are advected with the displacement. Both are done by `erupt!`, which returns the displacement `U` and the removed tracers.
 
@@ -91,7 +91,7 @@ The displacement field is applied with `displace_temperature!` (semi-Lagrangian 
 
 With `move_free_surface!` the boundary between the air and the rock moves with the vertical displacement at the surface. `Zsurf` holds the surface elevation of every column (one value per horizontal grid node, initialised from the phases when it is `NaN`) and is shifted by the displacement at the surface, so that displacements smaller than a cell accumulate. Cells above the surface become `air`, cells below it that were air become `fill` (the rock phase), and `Phases_init` is updated in the same way so that the reset of the phases after an injection keeps the moved surface. The temperature of the cells that turned into air is that of the air above them.
 
-The simulation does this after every sill injection if `NumParam(move_free_surface = true, air_phase = 0)` is set (the displacement of `inject_sills` is used). The arrays `Arrays.Zsurf`, `Arrays.Phases` and `Arrays.Phases_init` are created by the simulation. To keep the air at the surface temperature, combine it with the sticky-air boundary condition, `NumParam(sticky_air_BC = true, AirPhase = 0, Tsurface_Celsius = ...)`; the air phase then needs `Phases` and material parameters like any other phase.
+The simulation does this after every sill injection if `NumParam(move_free_surface = true, AirPhase = 0)` is set (the displacement of `inject_sills` is used). The arrays `Arrays.Zsurf`, `Arrays.Phases` and `Arrays.Phases_init` are created by the simulation. To keep the air at the surface temperature, combine it with the sticky-air boundary condition, `NumParam(sticky_air_BC = true, AirPhase = 0, Tsurface_Celsius = ...)`; the air phase then needs `Phases` and material parameters like any other phase.
 
 ## Inflation by sills
 
@@ -155,7 +155,7 @@ state = EruptionState()
 function erupt_step(Grid, Arrays, Tracers, Dikes, time_props, Num)
     Tracers = MTK_GMG.MTK_updateTracers(Grid, Arrays, Tracers, Dikes, time_props, Num)    # default behaviour
     coords = Tuple(Grid.coord1D)
-    ρ_rock .= ifelse.(Arrays.Phases .== Num.air_phase, 0.0, Arrays.Rho)          # air has no weight
+    ρ_rock .= ifelse.(Arrays.Phases .== Num.AirPhase, 0.0, Arrays.Rho)          # air has no weight
     MagmaThermoKinematics.lithostatic_pressure!(P_lith, ρ_rock, 9.81, step(coords[end]))
     recharge = state.init ? magma_supply(state) : 0.0                             # [m²/s], from your source of magma
     ev = chamber_step!(state, ep, Arrays.ϕ, Arrays.T, coords; recharge, Δt = Num.dt, time = Num.time,
@@ -164,7 +164,7 @@ function erupt_step(Grid, Arrays, Tracers, Dikes, time_props, Num)
     zs = maximum(filter(!isnan, Array(Arrays.Zsurf)))                          # flat half-space up to the free surface
     U, cargo = erupt!(Arrays.T, similar(Arrays.T), Tracers, coords, ev; revolve = true, nθ = 8, coarsen = 2,
                       z_surface = max(zs, 0.0), Zsurf = Arrays.Zsurf)
-    move_free_surface!(Arrays.Phases, Arrays.Phases_init, Arrays.T, Arrays.Zsurf, coords, U; air = Num.air_phase, fill = 1)
+    move_free_surface!(Arrays.Phases, Arrays.Phases_init, Arrays.T, Arrays.Zsurf, coords, U; air = Num.AirPhase, fill = 1)
     Arrays.Tnew .= Arrays.T
     return Tracers
 end

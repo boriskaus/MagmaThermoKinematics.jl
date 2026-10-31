@@ -36,10 +36,8 @@ Parameters that control the nonlinear diffusion solver.
     out_of_plane_Lmin::Float64 = 1.0e3
 end
 
-_sticky_air(Num) = hasproperty(Num, :sticky_air_BC) ? Num.sticky_air_BC : false       # lightweight parameter structs have no `sticky_air_BC` field
-_convection(Num) = hasproperty(Num, :convection) ? Num.convection : false        # lightweight parameter structs have no `convection` field
-
-_out_of_plane(Num) = hasproperty(Num, :out_of_plane) ? Num.out_of_plane : false        # lightweight parameter structs have no `out_of_plane` field
+# field `s` of the parameters `Num`, or `d` if it has none (lightweight parameter structs lack the optional fields)
+_opt(Num, s, d) = hasproperty(Num, s) ? getproperty(Num, s) : d
 
 "Launch the KernelAbstractions kernel `kernel!` over `ndrange` on the backend of `A`."
 function _launch!(kernel!, A, ndrange, args...)
@@ -85,9 +83,11 @@ end
 @inline _hp(h::Number, i) = h
 @inline _hp(h::AbstractVector, i) = h[i]
 
-# width of the control volume of point `k` of `n` (half the distance to both neighbours; the outermost points take the distance to their only neighbour)
-@inline _cw(h::Number, k, n) = h
-@inline _cw(h::AbstractVector, k, n) = k == 1 ? h[1] : k == n ? h[n - 1] : (h[k - 1] + h[k]) / 2
+# cylindrical factors with the radii `R`: the radius of the face between `I` and `J`, and the inverse radius at `I`; `true` (exact 1) without radii
+@inline _rface(::Nothing, I, J) = true
+@inline _rface(R, I, J) = (R[I] + R[J]) / 2
+@inline _rinv(::Nothing, I) = true
+@inline _rinv(R, I) = inv(R[I])
 
 "Distance between the two lowest points (the spacing used by the bottom flux condition), on the host."
 _bottom_spacing(h::Number) = h
@@ -177,31 +177,16 @@ end
 "Unit step along dimension `d` of `A`."
 @inline _unit(d, A) = CartesianIndex(ntuple(i -> Int(i == d), Val(ndims(A))))
 
-"Contribution of the step `e` to `∇⋅(K ∇T)`; with radii `R`, the cylindrical (1/r) ∂(r K ∂T/∂r)/∂r."
-@inline function _∂q(T, K, I, e, Δ, ::Nothing)
-    qp = (K[I] + K[I + e]) / 2 * (T[I + e] - T[I]) / Δ
-    qm = (K[I - e] + K[I]) / 2 * (T[I] - T[I - e]) / Δ
-    return (qp - qm) / Δ
-end
-@inline function _∂q(T, K, I, e, Δ, R)
-    qp = (R[I] + R[I + e]) / 2 * ((K[I] + K[I + e]) / 2) * (T[I + e] - T[I]) / Δ
-    qm = (R[I - e] + R[I]) / 2 * ((K[I - e] + K[I]) / 2) * (T[I] - T[I - e]) / Δ
-    return inv(R[I]) * (qp - qm) / Δ
-end
-# refined grid: the fluxes through the faces midway between the points, divided by the width of the control volume
-@inline function _∂q(T, K, I, e, h::AbstractVector, ::Nothing)
+"""
+Contribution of the step `e` to `∇⋅(K ∇T)`; with radii `R`, the cylindrical (1/r) ∂(r K ∂T/∂r)/∂r. The fluxes through the
+faces midway between the points are divided by the width of the control volume (`h` for a constant spacing `h`).
+"""
+@inline function _∂q(T, K, I, e, h, R)
     i = _along(I, e)
-    hp, hm = h[i], h[i - 1]
-    qp = (K[I] + K[I + e]) / 2 * (T[I + e] - T[I]) / hp
-    qm = (K[I - e] + K[I]) / 2 * (T[I] - T[I - e]) / hm
-    return (qp - qm) / ((hp + hm) / 2)
-end
-@inline function _∂q(T, K, I, e, h::AbstractVector, R)
-    i = _along(I, e)
-    hp, hm = h[i], h[i - 1]
-    qp = (R[I] + R[I + e]) / 2 * ((K[I] + K[I + e]) / 2) * (T[I + e] - T[I]) / hp
-    qm = (R[I - e] + R[I]) / 2 * ((K[I - e] + K[I]) / 2) * (T[I] - T[I - e]) / hm
-    return inv(R[I]) * (qp - qm) / ((hp + hm) / 2)
+    hp, hm = _hp(h, i), _hp(h, i - 1)
+    qp = _rface(R, I, I + e) * ((K[I] + K[I + e]) / 2) * (T[I + e] - T[I]) / hp
+    qm = _rface(R, I - e, I) * ((K[I - e] + K[I]) / 2) * (T[I] - T[I - e]) / hm
+    return _rinv(R, I) * (qp - qm) / ((hp + hm) / 2)
 end
 
 """
@@ -340,7 +325,6 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
     dt, T₀, ω, flux_bottom = FT(dt), FT(273.15), FT(Num.ω), FT(Num.flux_bottom)
     Δ = _kernel_spacing(Grid, Arrays.T)      # numbers, or vectors of the distances between the points of a refined grid
     N = ndims(Arrays.T)
-    Δbot = _bottom_spacing(Δ[N])
     R = Num.axisymmetric ? Arrays.R : nothing
     g = compute_gravity(Mat_tup[1])
 
@@ -349,7 +333,7 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
     args1 = haskey(Arrays, :index) ? (; T = Arrays.T_K, P = Arrays.P, index = Arrays.index) : (; T = Arrays.T_K, P = Arrays.P)
     compute_phase_param!(Arrays.Hr, radioactive_heat_at_Z, Mat_tup, Phases, (; Z = Arrays.Z))   # independent of T
     haskey(Arrays, :Qsrc) && (Arrays.Hr .+= Arrays.Qsrc)         # volumetric source term [W/m³], set by the user
-    if _convection(Num)                           # Nusselt numbers of the melt-rich regions from the state at the beginning of the step
+    if _opt(Num, :convection, false)                           # Nusselt numbers of the melt-rich regions from the state at the beginning of the step
         _use_implicit(Num) || throw(ArgumentError("convection needs the implicit solver (solver = :implicit_enthalpy): the enhanced conductivity is far above the explicit stability limit"))
         haskey(Arrays, :Nu) || throw(ArgumentError("convection needs the array `Arrays.Nu` (created by `MTK_GeoParams`)"))
         compute_phase_param!(Arrays.ϕ, compute_meltfraction, Mat_tup, Phases, args1)
@@ -358,14 +342,14 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
         compute_phase_param!(Arrays.Kc, compute_conductivity, Mat_tup, Phases, args1)
         compute_convective_nusselt!(
             Arrays.Nu, Arrays.Kc, Arrays.T_K, Arrays.ϕ, Arrays.Rho, Arrays.Cp, Phases, Arrays.Z, Δ[N], something(Num.convection_viscosity, DEFAULT_CONVECTION_VISCOSITY); z_split = Num.convection_z_split, g, ϕ_crit = Num.convection_phi,
-            α = Num.convection_alpha, coeffs = Num.convection_coeffs, Ra_crit = Num.convection_Ra_crit, Nu_max = Num.convection_Nu_max, strainrate = Num.convection_strainrate, boundary_layer = Num.convection_boundary_layer
+            α = Num.convection_alpha, coeffs = Num.convection_coeffs, Ra_crit = Num.convection_Ra_crit, Nu_max = Num.convection_Nu_max, strainrate = Num.convection_strainrate, boundary_layer = Num.convection_boundary_layer, air_phase = _opt(Num, :AirPhase, 0)
         )
     end
-    if _out_of_plane(Num)                                         # out-of-plane heat loss of a 2D section (lagged: T and Kc of the previous step)
+    if _opt(Num, :out_of_plane, false)                                         # out-of-plane heat loss of a 2D section (lagged: T and Kc of the previous step)
         (N == 2 && !Num.axisymmetric) || throw(ArgumentError("out_of_plane is available for planar 2D models only"))
         haskey(Arrays, :Tbg) || throw(ArgumentError("out_of_plane needs the background temperature `Arrays.Tbg`"))
         widths = Grid.ConstantΔ ? (;) : (; dx = cell_widths(Grid.coord1D[1]), dz = cell_widths(Grid.coord1D[2]))     # weights of the moments on a refined grid
-        add_out_of_plane_loss!(Arrays.Hr, Arrays.T, Arrays.Tbg, Arrays.Kc, Arrays.R, Phases; factor = Num.out_of_plane_factor, smooth = Num.out_of_plane_smooth, Lmin = Num.out_of_plane_Lmin, air_phase = hasproperty(Num, :AirPhase) ? Num.AirPhase : 0, widths...)
+        add_out_of_plane_loss!(Arrays.Hr, Arrays.T, Arrays.Tbg, Arrays.Kc, Arrays.R, Phases; factor = Num.out_of_plane_factor, smooth = Num.out_of_plane_smooth, Lmin = Num.out_of_plane_Lmin, air_phase = _opt(Num, :AirPhase, 0), widths...)
     end
     err, iter, apt_iter_total = 1.0, 1, 0
     while err > Num.convergence && iter < Num.max_iter
@@ -376,7 +360,7 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
         lithostatic_pressure!(Arrays.P, Arrays.Rho, g, Δ[N])
         compute_phase_param!(Arrays.Cp, compute_heatcapacity, Mat_tup, Phases, args1)
         compute_phase_param!(Arrays.Kc, compute_conductivity, Mat_tup, Phases, args1)
-        _convection(Num) && (Arrays.Kc .*= Arrays.Nu)         # enhanced conductivity of the melt-rich regions (Nusselt numbers of the beginning of the step)
+        _opt(Num, :convection, false) && (Arrays.Kc .*= Arrays.Nu)         # enhanced conductivity of the melt-rich regions (Nusselt numbers of the beginning of the step)
         compute_phase_param!(Arrays.Hl, compute_latent_heat, Mat_tup, Phases, args1)
 
         if Num.deactivate_La_at_depth       # no latent heat and melt below `deactivationDepth`
@@ -400,7 +384,7 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
                 bc_zero_flux!(Arrays.Tnew, d)
             end
             if Num.flux_bottom_BC
-                bc_z_bottom_flux!(Arrays.Tnew, Arrays.Kc, Δbot, flux_bottom)
+                bc_z_bottom_flux!(Arrays.Tnew, Arrays.Kc, _bottom_spacing(Δ[N]), flux_bottom)
             else
                 bc_T!(Arrays.Tnew, Arrays.T)    # isothermal top and bottom
             end
@@ -417,7 +401,7 @@ function Nonlinear_Diffusion_step!(Arrays, Mat_tup::Tuple, Phases, Grid, dt, Num
     end
     (isfinite(err) && err <= Num.convergence) ||
         error("$(N)D nonlinear diffusion did not converge after $(iter - 1) iterations (error=$(err), tolerance=$(Num.convergence)); reduce Δt or the relaxation parameter Num.ω=$(Num.ω) [0-1]")
-    _sticky_air(Num) && bc_sticky_air!(Arrays.Tnew, Phases, Num.AirPhase, FT(Num.Tsurface_Celsius))     # once per time step
+    _opt(Num, :sticky_air_BC, false) && bc_sticky_air!(Arrays.Tnew, Phases, Num.AirPhase, FT(Num.Tsurface_Celsius))     # once per time step
     Num.verbose && println("  ----  $(iter - 1) nonlinear iterations, $(apt_iter_total) pseudo-transient iterations in total")
     return nothing
 end

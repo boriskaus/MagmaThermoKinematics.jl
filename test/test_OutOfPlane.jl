@@ -85,11 +85,12 @@ const Mat_OOP = (
             Grid, Arrays, Tracers, Dikes, time_props = redirect_stdout(devnull) do
                 MTK_GeoParams(Mat_OOP, Num, Dikes)
             end
-            return Array(Arrays.T), Array(Arrays.Tbg)
+            return Array(Arrays.T), Num.Tsurface_Celsius .- Num.Geotherm .* Array(Arrays.Z), haskey(Arrays, :Tbg) ? Array(Arrays.Tbg) : nothing
         end
-        T0, Tbg0 = run_model(false); T1, Tbg1 = run_model(true)
+        T0, _, Tbg0 = run_model(false); T1, geotherm, Tbg1 = run_model(true)
         @test all(isfinite, T1)
-        @test Tbg1 ≈ Tbg0 && maximum(Tbg1) > 500                              # the background is the initial geotherm
+        @test Tbg0 === nothing                                                 # only allocated with the option
+        @test Tbg1 ≈ geotherm && maximum(Tbg1) > 500                           # the background is the initial geotherm
         @test sum(T1) < sum(T0)                                                # heat is lost along the third dimension
     end
 end

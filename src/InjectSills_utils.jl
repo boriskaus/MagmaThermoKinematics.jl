@@ -137,8 +137,7 @@ function inject_sills(
     # ------------------------------------------------------------------
     # Number of pseudo-time steps (keeps displacement < 0.5 * min_dx)
     # ------------------------------------------------------------------
-    Spacing = [min_spacing(Grid[i]) for i in 1:dim]
-    d = minimum(Spacing) * 0.5
+    d = minimum(min_spacing, Grid) * 0.5
     nsteps = max(ceil(Int, H / d), 2)
     dt = inv(oftype(float(one(eltype(T))), nsteps))
 

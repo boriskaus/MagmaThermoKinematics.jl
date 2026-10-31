@@ -147,6 +147,8 @@ end
         ev === nothing || break
     end
     @test ev !== nothing && ev.f > 0 && length(ev.cells) == 600
+    @test ev.ν == ep.ν                                                           # the Poisson ratio that erupt! uses by default
+    @test ev.trigger_time <= ev.time                                             # the time the withdrawal was first queued
     Tr = StructArray([Tracer{Float32}(num = i, coord = [coords[1][10], coords[2][10], coords[3][10]], Phase = 1) for i in 1:50])
     Tb = similar(T); U, cargo = erupt!(T, Tb, Tr, coords, ev; softening = 100.0, halfspace = :image, volume_factor = 0.5)
     @test length(U) == 3 && all(isfinite, U[3]) && length(cargo) + length(Tr) == 50
@@ -252,7 +254,7 @@ end
         Uh, _ = erupt!(copy(T0), Tb, tr, (x, z), event; revolve = true, nθ = 8, volume_factor = 0.5, rng = MersenneTwister(1))
         @test Uh[2] ≈ 0.5 .* U[2] rtol = 1.0e-9
         # the half-space kernels are valid up to z_surface: a warning if the free surface rose above it
-        @test_logs (:warn, r"lies above the plane") erupt!(copy(T0), Tb, tr, (x, z), event; revolve = true, Zsurf = fill(400.0, length(x)), z_surface = 0.0, rng = MersenneTwister(1))
+        @test_logs (:warn, r"lies above the plane") erupt!(copy(T0), Tb, tr, (x, z), event; revolve = true, Zsurf = [NaN; fill(400.0, length(x) - 1)], z_surface = 0.0, rng = MersenneTwister(1))     # NaN: column not initialised
         @test_logs erupt!(copy(T0), Tb, tr, (x, z), event; revolve = true, Zsurf = fill(400.0, length(x)), z_surface = 400.0, rng = MersenneTwister(1))
         @test_throws ArgumentError erupt!(zeros(5, 5, 5), zeros(5, 5, 5), tr, (1:5, 1:5, 1:5), event; revolve = true)
     end

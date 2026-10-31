@@ -34,7 +34,8 @@ export NumericalParameters, SillParameters, TimeDependentProperties
 
 include("Grid.jl")
 using .Grid
-export GridData, CreateGrid, refined_coordinates, node_spacing, cell_widths, min_spacing
+using .Grid: _cw
+export GridData, CreateGrid, refined_coordinates, cell_widths, min_spacing
 
 # Routines that deal with tracers
 include("Tracers.jl")

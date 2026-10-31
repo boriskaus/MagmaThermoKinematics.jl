@@ -1,5 +1,8 @@
 using GeophysicalModelGenerator
 
+"Stable explicit time step `fac_dt Δmin²/(4 κ)` (one formula, so that `set_grid_spacing!` can recognise a derived time step)."
+_stable_dt(fac_dt, Δmin, κ) = fac_dt * Δmin^2 / κ / 4
+
 """
 This mutable structure represents numerical parameters in the program. It is used to store and manage numerical values that are used throughout the program.
     mutable struct NumParam <: NumericalParameters
@@ -17,7 +20,7 @@ This mutable structure represents numerical parameters in the program. It is use
 - `refine::NamedTuple`: refine the grid in a zone of interest while keeping `Nx`, `Ny`, `Nz` (default `(;)`, constant spacing): an entry per refined direction (`x`, `y`, `z`) with the keyword arguments of `refined_coordinates`, e.g. `refine = (x = (zone = (0.0, 5e3), ratio = 4), z = (zone = (-10e3, -4e3), ratio = 4))`. The spacing in the zones is `ratio` times smaller than outside. The time step is then computed from the smallest spacing (unless `dt` is given explicitly), and `dx`, `dy`, `dz` and `Δ` hold the smallest spacing per direction once `MTK_GeoParams` has created the grid.
 - `Tsurface_Celsius::Float64`: Surface temperature in Celsius.
 - `sticky_air_BC::Bool`: hold every cell of phase `AirPhase` at `Tsurface_Celsius` at the end of each time step (default `false`). The usual alternative, a very large air conductivity, makes the air the fastest-diffusing phase and so shrinks the time step of the whole model (see `bc_sticky_air!`).
-- `AirPhase::Int64`: phase number of the air (default 0), used by `sticky_air_BC`.
+- `AirPhase::Int64`: phase number of the air (default 0), used by `sticky_air_BC`, `move_free_surface`, `convection` and `out_of_plane`.
 - `Geotherm::Float64`: Geothermal gradient in K/m.
 - `maxTime_Myrs::Float64`: Maximum simulation time in Myrs.
 - `maxTime::Float64`: Maximum simulation time in seconds.
@@ -41,7 +44,6 @@ This mutable structure represents numerical parameters in the program. It is use
 - `seed::Union{Nothing, Int64}`: seed of the random number generator at the start of a simulation (reproducible random sills); `nothing` leaves the generator unchanged.
 - `print_injections::Bool`: print a line for every injected dike/sill (default true).
 - `move_free_surface::Bool`: move the free surface (air/rock boundary) with the host-rock displacement of every injection (default false).
-- `air_phase::Int64`: phase index of the air above the free surface (default 0).
 - `Output_VTK::Bool`: write VTK output; the output directory `SimName` is only created if this is true.
 - `solver::Symbol`: `:explicit` (default) keeps the existing explicit step. `:implicit_enthalpy` solves a backward-Euler step of the enthalpy balance, linearised with Newton iterations and solved with an accelerated pseudo-transient iteration (see `apt_diffusion_solve!`); the time step factor `fac_dt` can then be much larger than 1. `:apt` is an alias.
 - `apt_tol`, `apt_max_iter`, `apt_check`: tolerance, iteration limit and check interval of the pseudo-transient iterations (implicit enthalpy solver).
@@ -99,7 +101,7 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     fac_dt::Float64 = 0.4             # prefactor with which dt is multiplied
     Δ::Vector{Float64} = [dx, dy, dz]                    # grid spacing
     Δmin::Float64 = minimum(Δ[Δ .> 0])                # minimum grid spacing
-    dt::Float64 = fac_dt * (Δmin^2) ./ κ_time / 4    # timestep
+    dt::Float64 = _stable_dt(fac_dt, Δmin, κ_time)    # timestep
     time::Float64 = 0.0             # current time
     nt::Int64 = floor(maxTime / dt)
     it::Int64 = 0               # current iteration
@@ -152,7 +154,6 @@ np = NumParam(SimName="MySim", Nx=101, Nz=101, ...)
     seed::Union{Nothing, Int64} = nothing        # seed of the (task-local) random number generator at the start of the simulation (`nothing`: leave it unchanged)
     print_injections::Bool = true        # print a line for every injected dike/sill
     move_free_surface::Bool = false      # move the air/rock boundary with the host-rock displacement of injections
-    air_phase::Int64 = 0                 # phase index of the air above the free surface
     TracerFloatType::DataType = Float32     # float type for Tracer time_vec/T_vec (Float32 saves memory)
 end
 
@@ -258,13 +259,13 @@ derived from the constant spacing). Nothing changes for a grid with constant spa
 """
 function set_grid_spacing!(Num::NumParam, Grid::GridData)
     Grid.ConstantΔ && return Num
-    dt_derived = Num.dt == Num.fac_dt * (Num.Δmin^2) / Num.κ_time / 4
+    dt_derived = Num.dt == _stable_dt(Num.fac_dt, Num.Δmin, Num.κ_time)
     nt_derived = Num.nt == floor(Int, Num.maxTime / Num.dt)
     Num.dx, Num.dz = Grid.Δ[1], Grid.Δ[end]
     Num.dim == 3 && (Num.dy = Grid.Δ[2])
     Num.Δ = [Num.dx, Num.dy, Num.dz]
     Num.Δmin = minimum(Num.Δ[Num.Δ .> 0])
-    dt_derived && (Num.dt = Num.fac_dt * (Num.Δmin^2) / Num.κ_time / 4)
+    dt_derived && (Num.dt = _stable_dt(Num.fac_dt, Num.Δmin, Num.κ_time))
     nt_derived && (Num.nt = floor(Int, Num.maxTime / Num.dt))
     return Num
 end
@@ -292,7 +293,7 @@ function copy_params(Num::NumParam; kwargs...)
         given(:Δ) || (N.Δ = [N.dx, N.dy, N.dz])
         given(:Δmin) || (N.Δmin = minimum(N.Δ[N.Δ .> 0]))
         given(:maxTime) || (N.maxTime = N.maxTime_Myrs * SecYear * 1.0e6)
-        given(:dt) || (N.dt = N.fac_dt * (N.Δmin^2) / N.κ_time / 4)
+        given(:dt) || (N.dt = _stable_dt(N.fac_dt, N.Δmin, N.κ_time))
         given(:nt) || (N.nt = floor(Int, N.maxTime / N.dt))
     end
     return N
