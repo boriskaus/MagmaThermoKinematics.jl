@@ -1,17 +1,29 @@
 using MagmaThermoKinematics
-# using CUDA                        # for an NVIDIA GPU, then: backend = CUDABackend()
-backend = CPU()
+using CUDA
+backend = CUDABackend()                 # runs on an NVIDIA GPU; without one, use backend = CPU() (and drop `using CUDA`)
 using InjectSills
 using WriteVTK
+using GeophysicalModelGenerator                                   # downloads the topography (no GMT needed)
 
 #------------------------------------------------------------------------------------------
 @views function MainCode_3D()
     Nx, Ny, Nz = 250, 250, 250
-    Grid = CreateGrid(size = (Nx, Ny, Nz), extent = (30.0e3, 30.0e3, 30.0e3)) # grid points & domain size
-    Num = Numeric_params(verbose = false)                   # Nonlinear solver options
+    Grid = CreateGrid(size = (Nx, Ny, Nz), x = (-15.0e3, 15.0e3), y = (-15.0e3, 15.0e3), z = (-30.0e3, 4.0e3)) # grid points & domain [m]
+    Num = Numeric_params(verbose = false, sticky_air_BC = true, AirPhase = 0)   # Nonlinear solver options; air (phase 0) is held at 0°C
+
+    # Real topography, interpolated on the x,y grid
+    Topo = import_topo(lon = [-71.9, -71.1], lat = [-39.95, -39.35], res = "03s")
+    X, Y, Z = xyz_grid(Grid.coord1D[1] / 1.0e3, Grid.coord1D[2] / 1.0e3, 0)
+    Surf = project_CartData(CartData(X, Y, Z, (Z = Z,)), Topo, ProjectionPoint(Lat = -39.6375, Lon = -71.5025))
 
     # Set material parameters
     MatParam = (
+        SetMaterialParams(
+            Name = "Air", Phase = 0,
+            Density = ConstantDensity(ρ = 2800kg / m^3),
+            HeatCapacity = ConstantHeatCapacity(Cp = 1050J / kg / K),
+            Conductivity = ConstantConductivity(k = 1.5Watt / K / m)
+        ),
         SetMaterialParams(
             Name = "Rock", Phase = 1,
             Density = ConstantDensity(ρ = 2800kg / m^3),
@@ -28,7 +40,6 @@ using WriteVTK
     InjectionInterval = 0.1kyr                      # Inject a new dike every X kyrs
     maxTime = 15kyr                       # Maximum simulation time in kyrs
     H_ran, W_ran = Grid.L[1] * 0.3, Grid.L[3] * 0.4 # Size of domain in which we randomly place dikes and range of angles
-    DikeType = "ElasticDike"               # Type to be injected ("ElasticDike","SquareDike")
     κ = 1.2 / (2800 * 1050)             # thermal diffusivity
     dt = minimum(Grid.Δ .^ 2) / κ / 10     # stable timestep (required for explicit FD)
     nt = floor(Int64, maxTime / dt)     # number of required timesteps
@@ -39,11 +50,12 @@ using WriteVTK
     # CPU buffers
     Tnew_cpu = zeros(Float64, Grid.N...)
     Phi_melt_cpu = similar(Tnew_cpu)
-    Phases = similar(Arrays.T, Int64); fill!(Phases, 1)
 
     GridArray!(Arrays.X, Arrays.Y, Arrays.Z, Grid)
     Tracers = StructArray{Tracer{Float32}}(undef, 1)                   # Initialize tracers
-    Arrays.T .= -Arrays.Z .* GeoT                                         # Initial (linear) temperature profile
+    Zsurf = copyto!(similar(Arrays.T, Nx, Ny, 1), Surf.z.val .* 1.0e3)   # surface elevation [m]
+    Phases = similar(Arrays.T, Int64); Phases .= ifelse.(Arrays.Z .> Zsurf, 0, 1) # air above the surface, rock below
+    Arrays.T .= max.(Zsurf .- Arrays.Z, 0) .* GeoT                        # Initial (linear) temperature profile below the surface
 
     # Preparation of VTK/Paraview output
     if isdir("viz3D_out") == false
@@ -63,23 +75,7 @@ using WriteVTK
             else
                 Angle_rand = [rand(-10.0:0.1:10.0); rand(0:360)]
             end                    # Sills at shallower depth
-            if DikeType == "CylindricalDike_TopAccretion"
-                sill = InjectSills.CylindricalDikeTopAccretion(
-                    Center = InjectSills.Point3(cen[1], cen[2], cen[3]) * m,
-                    Angle = InjectSills.Vec2(Angle_rand[1], Angle_rand[end]) * NoUnits,
-                    W = W_in * m,
-                    H = H_in * m
-                )
-            elseif DikeType == "EllipticalIntrusion" || DikeType == "ElasticDike"
-                sill = InjectSills.EllipticalIntrusion(
-                    Center = InjectSills.Point3(cen[1], cen[2], cen[3]) * m,
-                    Angle = InjectSills.Vec2(Angle_rand[1], Angle_rand[end]) * NoUnits,
-                    W = W_in * m,
-                    H = H_in * m
-                )
-            else
-                error("Unsupported DikeType for InjectSills in Example3D: $(DikeType)")
-            end
+            sill = InjectSills.EllipticalIntrusion(Center = InjectSills.Point3(cen[1], cen[2], cen[3]) * m, Angle = InjectSills.Vec2(Angle_rand[1], Angle_rand[end]) * NoUnits, W = W_in * m, H = H_in * m)
             Tnew_cpu .= Array(Arrays.T)
             Tracers, Tnew_cpu, Vol, _, _ = inject_sills(Tracers, Tnew_cpu, Grid.coord1D, sill, T_in, 2, nTr_dike)    # Add dike, move hostrocks
             copyto!(Arrays.T, Tnew_cpu)
@@ -98,10 +94,10 @@ using WriteVTK
         Time_vec[it] = time                                            # Vector with time
         println(" Timestep $it = $(round(time / kyr * 100) / 100) kyrs")
 
-        if mod(it, 20) == 0  # Visualisation
+        if mod(it, 4) == 0  # Visualisation
             x, y, z = Grid.coord1D[1], Grid.coord1D[2], Grid.coord1D[3]
             vtkfile = vtk_grid("./viz3D_out/ex3D_$(Int32(it + 1.0e4))", Vector(x / 1.0e3), Vector(y / 1.0e3), Vector(z / 1.0e3)) # 3-D VTK file
-            vtkfile["Temperature"] = Array(Arrays.T); vtkfile["MeltFraction"] = Array(Arrays.ϕ)                  # Store fields in file
+            vtkfile["Temperature"] = Array(Arrays.T); vtkfile["MeltFraction"] = Array(Arrays.ϕ); vtkfile["Phases"] = Array(Phases) # Store fields in file
             outfiles = vtk_save(vtkfile); pvd[time / kyr] = vtkfile                                   # Save file & update pvd file
         end
     end
