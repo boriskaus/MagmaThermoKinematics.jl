@@ -14,7 +14,7 @@ For dedicated walkthrough pages, see:
 ## Main Scripts
 
 - Example2D.jl: 2D thermal evolution with repeated intrusions.
-- Example3D.jl: 3D run with VTK output for ParaView.
+- Example3D.jl: 3D run below real topography, with VTK output for ParaView.
 - Example2D_ZASSy.jl: benchmark-style setup used in published comparisons.
 - MTK_GMG_2D_example1.jl and MTK_GMG_2D_example2.jl: workflows integrating [GeophysicalModelGenerator](https://github.com/JuliaGeodynamics/GeophysicalModelGenerator.jl) input.
 
