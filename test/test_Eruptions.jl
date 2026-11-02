@@ -390,6 +390,17 @@ end
     @test crustal_relaxation_viscosity(epg, Tm, Tf; ΔP = 1.0e7, P = 1.5e8) / crustal_relaxation_viscosity(epg, Tm, Tf; ΔP = 1.0e6, P = 1.5e8) ≈ 10.0^(1 - n) rtol = 1.0e-8
     @test crustal_relaxation_viscosity_field(epg, T2, (x, z), (0.0, -5.0e3), R; ΔP = 0.0) == crustal_relaxation_viscosity_field(epg, T2, (x, z), (0.0, -5.0e3), R; ΔP = epg.shell_ΔP_min)
     @test crustal_relaxation_viscosity_field(epg, T2, (x, z), (0.0, -5.0e3), R; ΔP = -1.0e7, P = 1.5e8) == η10          # an underpressure stresses the shell as much as the same overpressure
+    # a layered host rock: each point of the shell takes the law of its layer
+    lin = LinearViscous(η = 1.0e20Pas)
+    layered(split) = EruptionParams(shell_rheology = (law, lin), shell_z_split = split, η_shell_min = 1.0e5, η_shell_max = 1.0e40)
+    @test crustal_viscosity(layered((-5.0e3,)), 1100.0; τ = 1.0e6, P = 1.5e8, z = -1.0e3) == crustal_viscosity(epg, 1100.0; τ = 1.0e6, P = 1.5e8)
+    @test crustal_viscosity(layered((-5.0e3,)), 1100.0; τ = 1.0e6, P = 1.5e8, z = -6.0e3) ≈ 1.0e20
+    eplin = EruptionParams(shell_rheology = lin, η_shell_min = 1.0e5, η_shell_max = 1.0e40)
+    @test crustal_relaxation_viscosity_field(layered((20.0e3,)), T2, (x, z), (0.0, -5.0e3), R; ΔP = 1.0e7, P = 1.5e8) == crustal_relaxation_viscosity_field(eplin, T2, (x, z), (0.0, -5.0e3), R; ΔP = 1.0e7, P = 1.5e8)
+    @test crustal_relaxation_viscosity_field(layered((-50.0e3,)), T2, (x, z), (0.0, -5.0e3), R; ΔP = 1.0e7, P = 1.5e8) == η10
+    ηmix = crustal_relaxation_viscosity_field(layered((-5.0e3,)), T2, (x, z), (0.0, -5.0e3), R; ΔP = 1.0e7, P = 1.5e8)
+    @test min(η10, 1.0e20) < ηmix < max(η10, 1.0e20)                                 # half of the shell in each layer
+    @test crustal_relaxation_viscosity(layered((-4.0e3,)), Tm, Tf; ΔP = 1.0e7, P = 1.5e8, z = -5.0e3) == crustal_relaxation_viscosity(eplin, Tm, Tf; ΔP = 1.0e7, P = 1.5e8)
 
     # chamber_step!: the shell viscosity of the state comes from the field (shell_from_T) or from the geotherm profile (default)
     epc = EruptionParams(

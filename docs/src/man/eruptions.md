@@ -41,7 +41,7 @@ where ``\tau(s)`` is the deviatoric stress around the pressurised chamber. The i
   ep = EruptionParams(shell_rheology = SetDislocationCreep(GeoParams.Dislocation.granite_Tirel_2008))
   ```
 
-  The law is evaluated as ``\eta = \tau/(2\dot\varepsilon(\tau, T, P))`` at the shell stress ``\tau(s)`` and the lithostatic pressure of the chamber, so nonlinear (power-law) creep, which weakens with increasing overpressure, is taken into account; the overpressure is bounded below by `shell_ΔP_min` (default ``10^4`` Pa) so that the viscosity of a power-law rock stays finite at zero overpressure.
+  The law is evaluated as ``\eta = \tau/(2\dot\varepsilon(\tau, T, P))`` at the shell stress ``\tau(s)`` and the lithostatic pressure of the chamber, so nonlinear (power-law) creep, which weakens with increasing overpressure, is taken into account; the overpressure is bounded below by `shell_ΔP_min` (default ``10^4`` Pa) so that the viscosity of a power-law rock stays finite at zero overpressure. For a layered host rock, `shell_rheology` takes a tuple of laws, from the top down, separated by the depths `shell_z_split`, e.g. `shell_rheology = (granite, anorthite), shell_z_split = (-15.0e3,)`; each point of the shell takes the law of its layer.
 * **Bounds.** ``\eta_r`` is bounded by `η_shell_min` and `η_shell_max` (``10^{17}`` and ``10^{24}`` Pa s).
 
 The relaxation viscosity largely controls how much of the magma that reaches the chamber erupts: a stiff shell stores little volume and nearly all recharge erupts, a soft shell accommodates the recharge by viscous creep and the chamber erupts rarely or not at all. For a hot aureole the Arrhenius default is very soft (about ``10^{14}`` Pa s at 800 °C, so the lower bound applies), whereas laboratory creep laws of crustal rocks give ``10^{19}``–``10^{23}`` Pa s at the same temperature and a stress of 1 MPa (granite: Tirel et al., 2008; diabase: Caristan, 1982; wet quartzite: Hirth et al., 2001); the rheology of the host rock should therefore be chosen for the rock type.
@@ -122,6 +122,7 @@ Multiply it by a time step to get the displacement for `displace_temperature!` a
 | `μ_shear`, `ν` | 1e10, 0.25 | shear modulus [Pa] and Poisson ratio of the host rock |
 | `A_visc`, `G_act` | 4.25e7, 141e3 | Arrhenius constants of the crustal creep law, ``\eta = A\exp(G/RT)`` [Pa s, J/mol] (the values of Degruyter and Huber, 2014) |
 | `shell_rheology` | `nothing` | GeoParams creep law of the host rock (replaces the Arrhenius law), evaluated at the shell stress |
+| `shell_z_split` | `()` | depths z [m] (descending, negative downward) separating the laws of a tuple `shell_rheology` (layered host rock) |
 | `shell_from_T`, `shell_ratio`, `shell_nθ` | `false`, 11, 16 | shell temperature from the temperature field (else the profile to the undisturbed geotherm), outer radius in chamber radii, number of rays |
 | `η_shell_min`, `η_shell_max`, `shell_ΔP_min` | 1e17, 1e24, 1e4 | bounds of the shell viscosity [Pa s]; smallest overpressure used for the shell stress [Pa] |
 | `m_w` | 0 | total H₂O mass fraction of the magma |
