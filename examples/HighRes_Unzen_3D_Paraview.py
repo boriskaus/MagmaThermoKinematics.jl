@@ -1,6 +1,8 @@
 # Renders the frames of the 3D showcase movie from the VTK files written by HighRes_Unzen_3D_vtk.jl.
 #
-# Usage (headless):  pvbatch --force-offscreen-rendering HighRes_Unzen_3D_Paraview.py <dir>/vtk <dir>/frames
+# Usage (headless):  pvbatch --force-offscreen-rendering HighRes_Unzen_3D_Paraview.py <dir>/vtk <dir>/frames [scale] [colormap]
+# (scale: image size relative to 1600 × 860 pixels; a scale other than 1 renders a figure, without the colour bars and the time;
+#  colormap: a text file with one colour per line, r g b in 0–1, for the temperature instead of Inferno)
 #
 # Left: temperature of the rock below the topography, with a corner cut away; on the vertical faces the layers of the crust (lines of equal
 # initial depth: every km in the upper 10 km, every 2 km below), deformed by the sills, dikes and eruptions. Right: the topography, the magma and the sills and dikes (blue, also outlined on the faces on the left).
@@ -11,6 +13,9 @@ from paraview.simple import *
 
 vdir = sys.argv[1] if len(sys.argv) > 1 else "vtk"
 outdir = sys.argv[2] if len(sys.argv) > 2 else "frames"
+scale = float(sys.argv[3]) if len(sys.argv) > 3 else 1.0
+cmap = sys.argv[4] if len(sys.argv) > 4 else None
+figure = scale != 1.0
 os.makedirs(outdir, exist_ok=True)
 
 data = PVDReader(FileName=os.path.join(vdir, "fields.pvd"))
@@ -41,7 +46,11 @@ layout.AssignView(2, right)
 layout.SetSize(1600, 860)
 
 T_lut = GetColorTransferFunction("Temperature")
-T_lut.ApplyPreset("Inferno", True)
+if cmap is None:
+    T_lut.ApplyPreset("Inferno", True)
+else:                                                                          # equally spaced colours over 0–1 (rescaled to 0–1000 °C below)
+    rgb = [[float(v) for v in line.split()] for line in open(cmap) if line.strip()]
+    T_lut.RGBPoints = [c for i, col in enumerate(rgb) for c in [i / (len(rgb) - 1)] + col]
 Z_lut = GetColorTransferFunction("Elevation")                                  # topographic colours [km]: blue sea, a jump at sea level, green to brown to white
 Z_lut.RGBPoints = [-0.5, 0.05, 0.20, 0.45, -0.001, 0.50, 0.75, 0.92, 0.0, 0.20, 0.50, 0.22, 0.3, 0.45, 0.66, 0.30,
                    0.8, 0.82, 0.76, 0.48, 1.2, 0.60, 0.44, 0.30, 1.6, 0.97, 0.97, 0.97]
@@ -92,7 +101,7 @@ for view, lut, title, fmt in ((left, T_lut, "Temperature [°C]", "%.0f"), (right
     bar.WindowLocation = "Lower Center"
     bar.TitleColor = bar.LabelColor = [0.1, 0.1, 0.1]
     bar.ScalarBarLength = 0.6
-    bar.Visibility = 1
+    bar.Visibility = 0 if figure else 1
     view.Background = [1.0, 1.0, 1.0]
     view.UseColorPaletteForBackground = 0
     view.OrientationAxesVisibility = 0
@@ -110,9 +119,10 @@ t = Show(label, right)
 t.WindowLocation = "Upper Right Corner"
 t.Color = [0.1, 0.1, 0.1]
 t.FontSize = 18
+t.Visibility = 0 if figure else 1
 
 for i, time in enumerate(times):
     label.Text = "%.1f kyr before present" % abs(time)
     for view in (left, right):
         view.ViewTime = time
-    SaveScreenshot(os.path.join(outdir, "frame_%04d.png" % i), layout, ImageResolution=[1600, 860])
+    SaveScreenshot(os.path.join(outdir, "frame_%04d.png" % i), layout, ImageResolution=[round(1600 * scale), round(860 * scale)])

@@ -10,6 +10,7 @@ For dedicated walkthrough pages, see:
 - [MTK_GMG Example 1](example_mtk_gmg1.md)
 - [MTK_GMG Example 2 (Unzen)](example_mtk_gmg2.md)
 - [MTK_GMG 3D Examples (Unzen and Lanin)](example_mtk_gmg_3d.md)
+- [High-Resolution Runs (Unzen, 2D and 3D)](highres.md)
 
 ## Main Scripts
 
@@ -33,6 +34,12 @@ MTK_GMG 3D examples:
 ![](../assets/movies/Unzen3D.gif)
 
 ![](../assets/movies/Lanin3D.gif)
+
+High-resolution runs below Unzen (2.5 m grid in 2D, 50 m in 3D, see [High-Resolution Runs](highres.md)):
+
+![](../assets/movies/HighRes2D.gif)
+
+![](../assets/movies/HighRes3D.gif)
 
 ## Running an Example
 
