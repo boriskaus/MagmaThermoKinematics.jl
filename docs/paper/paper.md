@@ -68,9 +68,7 @@ $$\frac{E(T) - E(T^{\text{old}})}{\Delta t} = \nabla \cdot \left(k \nabla T\righ
 
 where $E$ is the enthalpy per unit volume and $T^{\text{old}}$ the temperature after advection. Writing the balance for $E$ conserves energy, and the latent heat released in a step, $\rho L\,[\phi(T) - \phi(T^{\text{old}})]$, is exact for any time step. Each nonlinear iteration linearises $\phi(T)$ around the current iterate (a Newton step for the latent heat), which gives a symmetric positive-definite linear system. This system is solved matrix-free with a Jacobi-preconditioned accelerated pseudo-transient iteration [@Rass2022], which keeps it suitable for GPUs; the iteration parameters follow from spectral bounds computed at every solve [@Duretz2026] and do not have to be set by hand. The time step is then limited by accuracy only (25 years at 2.5 m grid spacing in \autoref{fig:highres}). Grids can be refined independently along each direction to resolve the intrusion zone within a large domain. 
 
-An extensive test suite compares the diffusion solvers and the advection scheme with analytical solutions, covers the other parts of the package (intrusions, eruptions, convection, grid refinement, tracers), and runs the kernels in single precision and on an emulated GPU array type. It runs in GitHub Actions on Linux, macOS and Windows for the long-term-support and current Julia releases, together with Aqua.jl quality checks, code coverage, and a regression test that reproduces the benchmark simulations of @Schmitt2023.
-
-The [documentation](https://boriskaus.github.io/MagmaThermoKinematics.jl/) describes the physics and numerics and contains worked 2D and 3D examples, from scripts of about 100 lines to setups of real volcanoes built with GeophysicalModelGenerator.jl and the high-resolution runs of \autoref{fig:highres}.
+A test suite compares the solvers with analytical solutions and covers the other parts of the package. It runs on GitHub Actions for the long-term-support and current Julia releases, and the package has [online documentation](https://boriskaus.github.io/MagmaThermoKinematics.jl/) with worked examples.
 
 # Research impact statement
 
