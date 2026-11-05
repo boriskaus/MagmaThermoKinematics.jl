@@ -38,11 +38,11 @@ How quickly a magmatic system assembles, cools and erupts is a central question 
 
 The source code of most existing thermal-kinematic models is unavailable or distributed as compiled binaries, and none of them runs in 3D or on GPUs, which limits resolution and domain size. Comparing such models with eruptive histories, erupted volumes or surface uplift also requires a link between the thermal model, the pressure of the chamber and the deformation of the surface. `MagmaThermoKinematics.jl` is open source and modular, runs in 2D and 3D on CPUs and GPUs, and couples the thermal evolution to chamber overpressure, eruptions and surface deformation.
 
-It is intended for volcanologists and petrologists who want to model the thermal history of a particular volcanic system, and for geodynamicists who need a transparent and extensible implementation of the thermal-kinematic approach.
+It is intended for volcanologists, petrologists and geodynamicists who need a transparent and extensible thermal-kinematic model.
 
 # State of the field
 
-@Annen2006 and @Dufek2005 describe widely used thermal-kinematic models, @Caricchi2014 and @Tierney2016 build on similar frameworks, and @Melnik2021 present a more recent 2D model in Julia with an emphasis on eruptions and zircon records. These codes are closed source, distributed as binaries, or restricted to 2D on CPUs. Contributing to one of them was therefore not possible, and we wrote a new package on top of the reusable components of the JuliaGeodynamics organisation.
+@Annen2006 and @Dufek2005 describe widely used thermal-kinematic models, @Caricchi2014 and @Tierney2016 build on similar frameworks, and @Melnik2021 present a more recent 2D model in Julia with an emphasis on eruptions and zircon records. These codes are closed source, distributed as binaries, or restricted to 2D on CPUs. We started `MagmaThermoKinematics.jl` during the workshop that led to @Schmitt2023, to understand why two widely used codes gave quite different results for the same magma flux, and built it on reusable JuliaGeodynamics components.
 
 # Physics
 
