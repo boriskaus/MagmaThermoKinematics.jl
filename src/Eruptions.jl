@@ -31,7 +31,8 @@ Parameters of the chamber/eruption model. Pressures in Pa, lengths in m, times i
 - `μ_shear`: host-rock shear modulus [Pa]; `ν`: Poisson ratio used for the displacement field
 - `A_visc`, `G_act`: prefactor [Pa s] and activation energy [J/mol] of the Arrhenius viscosity `η = A_visc exp(G_act/(R T))` of the host rock
 - `shell_rheology`: `nothing` (default: the Arrhenius law above) or a GeoParams creep law of the host rock (e.g. `SetDislocationCreep(GeoParams.Dislocation.granite_Tirel_2008)`,
-  any law with `compute_εII(law, τ, (; T, P))`), evaluated at the local stress of the shell `τ(s) = 1.5 ΔP / s³` (`s = r/R`, `ΔP` the overpressure, at least `shell_ΔP_min`) and the lithostatic pressure
+  any law with `compute_εII(law, τ, (; T, P))`), evaluated at the local stress of the shell `τ(s) = 1.5 ΔP / s³` (`s = r/R`, `ΔP` the overpressure, at least `shell_ΔP_min`) and the lithostatic pressure;
+  a tuple of laws for a layered host rock, separated by the depths `shell_z_split` (z [m], descending, negative downward; one fewer than laws)
 - `shell_from_T`: take the temperature of the shell around the chamber from the simulated temperature field instead of the steady conduction profile to the undisturbed geotherm (default)
 - `shell_ratio`, `shell_nθ`: outer radius of the shell in chamber radii, and number of rays from the chamber centre along which the shell is sampled (in the section in 2D, over the sphere in 3D)
 - `η_shell_min`, `η_shell_max`: bounds of the relaxation viscosity of the shell [Pa s]
@@ -54,6 +55,7 @@ Base.@kwdef mutable struct EruptionParams
     A_visc::Float64 = 4.25e7
     G_act::Float64 = 141.0e3
     shell_rheology::Any = nothing
+    shell_z_split::Tuple = ()
     shell_from_T::Bool = false
     shell_ratio::Float64 = 11.0
     shell_nθ::Int = 16
@@ -142,13 +144,14 @@ end
 host_compliance(ep::EruptionParams, V, R) = 3 / (4 * ep.μ_shear * min(0.5 * V / R, 1.0))
 
 """
-    crustal_viscosity(ep, T_K; τ = 1.0e6, P = 0.0) -> η
+    crustal_viscosity(ep, T_K; τ = 1.0e6, P = 0.0, z = 0.0) -> η
 
 Viscosity [Pa s] of the host rock at the temperature `T_K` [K]: the Arrhenius law `A_visc exp(G_act/(R T))`, or, with a GeoParams creep law
-`ep.shell_rheology`, `τ / (2 ε̇(τ, T, P))` at the stress `τ` [Pa] and pressure `P` [Pa] (stress dependent for nonlinear laws).
+`ep.shell_rheology`, `τ / (2 ε̇(τ, T, P))` at the stress `τ` [Pa] and pressure `P` [Pa] (stress dependent for nonlinear laws). With a tuple of laws,
+the one of the layer at the height `z` [m] (see `ep.shell_z_split`).
 """
-function crustal_viscosity(ep::EruptionParams, T_K; τ = 1.0e6, P = 0.0)
-    law = ep.shell_rheology
+function crustal_viscosity(ep::EruptionParams, T_K; τ = 1.0e6, P = 0.0, z = 0.0)
+    law = ep.shell_rheology isa Tuple ? ep.shell_rheology[1 + count(>(z), ep.shell_z_split)] : ep.shell_rheology
     law === nothing && return ep.A_visc * exp(ep.G_act / (8.314 * T_K))
     return τ / (2 * compute_εII(law, τ, (; T = T_K, P)))
 end
@@ -157,16 +160,16 @@ end
 _shell_stress(ep, ΔP, s) = 1.5 * max(abs(ΔP), ep.shell_ΔP_min) / s^3      # an underpressured chamber stresses the shell as well
 
 """
-    crustal_relaxation_viscosity(ep, T_mush_K, T_far_K; ΔP = ep.ΔP_crit, P = 0.0, shell_ratio = ep.shell_ratio, n = 64) -> η_r
+    crustal_relaxation_viscosity(ep, T_mush_K, T_far_K; ΔP = ep.ΔP_crit, P = 0.0, z = 0.0, shell_ratio = ep.shell_ratio, n = 64) -> η_r
 
 Effective viscosity of the visco-elastic shell around the chamber, `∫ 3 η(T(s), τ(s)) / s⁴ ds` from `s = 1` to `shell_ratio` (Simpson rule), for the steady spherical conduction
 profile `T(s)` between the chamber wall (`T_mush_K`) and the far field (`T_far_K`), with the shell stress `τ(s) = 1.5 ΔP / s³` and pressure `P` (see [`crustal_viscosity`](@ref)),
-bounded by `ep.η_shell_min` and `ep.η_shell_max`.
+bounded by `ep.η_shell_min` and `ep.η_shell_max`. A layered host rock takes the law of the chamber height `z` [m].
 """
-function crustal_relaxation_viscosity(ep::EruptionParams, T_mush_K, T_far_K; ΔP = ep.ΔP_crit, P = 0.0, shell_ratio = ep.shell_ratio, n = 64)
+function crustal_relaxation_viscosity(ep::EruptionParams, T_mush_K, T_far_K; ΔP = ep.ΔP_crit, P = 0.0, z = 0.0, shell_ratio = ep.shell_ratio, n = 64)
     T_far_K = min(T_far_K, T_mush_K)
     T_shell(s) = (T_mush_K * (shell_ratio - s) + shell_ratio * T_far_K * (s - 1)) / ((shell_ratio - 1) * s)
-    integrand(s) = 3 * crustal_viscosity(ep, T_shell(s); τ = _shell_stress(ep, ΔP, s), P) / s^4
+    integrand(s) = 3 * crustal_viscosity(ep, T_shell(s); τ = _shell_stress(ep, ΔP, s), P, z) / s^4
     h = (shell_ratio - 1) / n
     total = integrand(1.0) + integrand(shell_ratio)
     for i in 1:(n - 1)
@@ -188,7 +191,7 @@ end
 Effective viscosity of the visco-elastic shell around a chamber of radius `R` centred at `center`, from the simulated temperature `T` [°C] (any backend) on the grid `coords`
 (constant spacing or refined). The shell integral of [`crustal_relaxation_viscosity`](@ref) is evaluated along `nθ` rays from the chamber centre (in the section in 2D, over
 the sphere in 3D; positions outside the grid take the nearest grid point; in an axisymmetric model the rays are mirrored at the axis), so that it sees the heated aureole of the
-chamber instead of the undisturbed geotherm. The sectors relax in parallel: the result is the harmonic mean over the rays, bounded by `ep.η_shell_min` and `ep.η_shell_max`.
+chamber instead of the undisturbed geotherm (in a layered host rock, each sample takes the law of its layer). The sectors relax in parallel: the result is the harmonic mean over the rays, bounded by `ep.η_shell_min` and `ep.η_shell_max`.
 """
 function crustal_relaxation_viscosity_field(
         ep::EruptionParams, T::AbstractArray{<:Any, N}, coords, center, R; ΔP = ep.ΔP_crit, P = 0.0, axisymmetric = false,
@@ -211,7 +214,8 @@ function crustal_relaxation_viscosity_field(
         for i in 0:n
             s = 1 + i * h
             w = (i == 0 || i == n) ? 1.0 : (isodd(i) ? 4.0 : 2.0)
-            total += w * 3 * crustal_viscosity(ep, Float64(Ts[(j - 1) * (n + 1) + i + 1]) + 273.15; τ = _shell_stress(ep, ΔP, s), P) / s^4
+            z = center[N] + s * R * dirs[j][N]
+            total += w * 3 * crustal_viscosity(ep, Float64(Ts[(j - 1) * (n + 1) + i + 1]) + 273.15; τ = _shell_stress(ep, ΔP, s), P, z) / s^4
         end
         inv_sum += 1 / max(total * h / 3, floatmin(Float64))
     end
@@ -749,7 +753,7 @@ function chamber_step!(state::EruptionState, ep::EruptionParams, ϕ, T, coords; 
         axisymmetric && (center = (0.0, Base.tail(center)...))      # the chamber is a body of revolution about the axis, with radius W
         η_r = crustal_relaxation_viscosity_field(ep, T, coords, center, axisymmetric ? geo.W : geo.R; ΔP = ΔP_now, P = P_lith, axisymmetric)
     else                                                  # steady conduction profile to the undisturbed geotherm
-        η_r = crustal_relaxation_viscosity(ep, T_mush_K, T_background(depth) + 273.15; ΔP = ΔP_now, P = P_lith)
+        η_r = crustal_relaxation_viscosity(ep, T_mush_K, T_background(depth) + 273.15; ΔP = ΔP_now, P = P_lith, z = geo.zc)
     end
     step_overpressure!(state, ep, T_mush_K, ϕ_mush, geo.h, geo.R, recharge / geo.W, Δt; depth, η_r)
 

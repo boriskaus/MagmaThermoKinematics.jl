@@ -209,6 +209,11 @@ import MagmaThermoKinematics.MTK_GMG
     MTK_GMG.MTK_update_ArraysStructs!(Arrays, Grid, Dikes, Num, MatParam)
     @test abs(Dikes.sill.Angle[1].val - 90) <= Dikes.Dip_ran / 2
 
+    # the background temperature of the out-of-plane loss can be given as the field :Tbg (default: the initial temperature)
+    Num_oop = NumParam(SimName = mktempdir(), maxTime_Myrs = 0.0005, fac_dt = 0.2, ω = 0.5, verbose = false, Output_VTK = false, out_of_plane = true)
+    _, Arrays_oop, = MTK_GeoParams(MatParam, Num_oop, Sill_params, CartData_input = addfield(Data_2D, "Tbg", fill(123.0, size(Data_2D.x.val))))
+    @test all(==(123.0), Array(Arrays_oop.Tbg))
+
     # input checks
     @test_throws "You should add a Field :FlatCrossSection" MTK_GeoParams(MatParam, NumParam(SimName = mktempdir()), Sill_params, CartData_input = Data_2D_noflat)
     @test_throws "Properties for Phase 0 are not specified in Mat_tup" MTK_GeoParams(

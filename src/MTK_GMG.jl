@@ -161,13 +161,11 @@ Initialize temperature and phases
 """
 function MTK_initialize!(Arrays::NamedTuple, Grid::GridData, Num::NumericalParameters, Tracers::StructArray, Dikes::SillParameters, CartData_input::Union{Nothing, CartData})
     # Initialize T and phases from the CartData set
-    if Num.dim == 2
-        Temp, Phases = CartData_input.fields.Temp[:, :, 1], CartData_input.fields.Phases[:, :, 1]
-    else
-        Temp, Phases = CartData_input.fields.Temp, CartData_input.fields.Phases
-    end
+    f = CartData_input.fields
+    Tbg = haskey(f, :Tbg) ? f.Tbg : f.Temp                                   # background temperature of the out-of-plane loss (2D models): the initial T unless given
+    Temp, Phases, Tbg = Num.dim == 2 ? (f.Temp[:, :, 1], f.Phases[:, :, 1], Tbg[:, :, 1]) : (f.Temp, f.Phases, Tbg)
     copy_to_device!(Arrays.T_init, Temp)
-    haskey(Arrays, :Tbg) && copy_to_device!(Arrays.Tbg, Temp)               # background temperature of the out-of-plane loss (2D models)
+    haskey(Arrays, :Tbg) && copy_to_device!(Arrays.Tbg, Tbg)
     copy_to_device!(Arrays.Phases, Phases)
     copy_to_device!(Arrays.Phases_init, Phases)
 
