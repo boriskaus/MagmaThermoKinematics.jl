@@ -42,7 +42,7 @@ It is intended for volcanologists, petrologists, and geodynamicists who need a t
 
 # State of the field
 
-@Annen2006 and @Dufek2005 describe widely used thermal-kinematic models, @Caricchi2014 and @Tierney2016 build on similar frameworks, and @Melnik2021 present a more recent 2D model in Julia with an emphasis on eruptions and zircon records. These codes are closed source, distributed as binaries, or restricted to 2D on CPUs. We started `MagmaThermoKinematics.jl` during the workshop that led to @Schmitt2023, to understand why two widely used codes gave quite different results for the same magma flux, and built it on reusable JuliaGeodynamics components.
+@Annen2006 and @Dufek2005 describe widely used thermal-kinematic models, @Caricchi2014 and @Tierney2016 build on similar frameworks, and @Melnik2021 present a more recent 2D model in Julia with an emphasis on eruptions and zircon records. These codes are closed source, distributed as binaries, or restricted to 2D on CPUs. We started `MagmaThermoKinematics.jl` during the workshop that led to @Schmitt2023, to understand why two widely used codes gave quite different results for the same magma flux, and built it on reusable [JuliaGeodynamics](https://github.com/JuliaGeodynamics) components.
 
 # Physics
 
