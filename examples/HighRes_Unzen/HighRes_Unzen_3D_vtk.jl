@@ -1,5 +1,5 @@
 # Converts the snapshots of the 3D showcase (HighRes_Unzen_3D.jl) to VTK files for ParaView, and renders the movie with
-# HighRes_Unzen_3D_Paraview.py if `pvbatch` is found.
+# HighRes_Unzen_3D_Paraview.py if ParaView's `pvbatch` is found.
 #
 # Usage:  julia --project HighRes_Unzen_3D_vtk.jl HighRes3D_200m          (the output directory of the run)
 # Writes <dir>/vtk/{fields,surface}.pvd (unless they exist: delete <dir>/vtk to write them again) and, with ParaView, <dir>/frames/,
@@ -23,7 +23,7 @@ isfile(joinpath(vdir, "fields.pvd")) || let fields = paraview_collection(joinpat
     end
     vtk_save(fields); vtk_save(surface)
 end
-pvbatch = get(ENV, "PVBATCH", Sys.which("pvbatch"))
+pvbatch = Sys.which("pvbatch")                                                     # or the path to pvbatch, if it is not on the PATH
 if pvbatch !== nothing
     using CairoMakie                                                                   # for its ffmpeg and the colour map
     cmap = joinpath(vdir, "lajolla.txt")                                               # temperature in LaJolla (F. Crameri), as in 2D

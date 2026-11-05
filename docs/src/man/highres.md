@@ -30,12 +30,18 @@ The runs start from the temperature field and the surface of a lower-resolution 
 
 ## Running them
 
-```bash
-cd examples
-RES=2.5 Q_KM3=2.36 GPU=1 julia --project HighRes_Unzen_2D.jl   # 2D, 2.5 m grid spacing
-RES=50 julia --project HighRes_Unzen_3D.jl                      # 3D, 50 m grid spacing (GPU=0 runs on the CPU)
-julia --project HighRes_Unzen_plots.jl HighRes2D_2m             # 2D movie and zircon ages
-PVBATCH=/path/to/pvbatch julia --project HighRes_Unzen_3D_vtk.jl HighRes3D_50m   # 3D: VTK files and the movie with ParaView
+The scripts are in `examples/HighRes_Unzen`. Each run takes the grid spacing [m], the magma flux [km³/kyr] and `gpu` as arguments:
+
+```julia
+julia --project HighRes_Unzen_2D.jl 2.5 2.36 gpu   # 2D: 2.5 m grid spacing, 2.36 km³/kyr, on a GPU
+julia --project HighRes_Unzen_3D.jl 50 2.36 gpu    # 3D: 50 m grid spacing
 ```
 
-`RES` sets the grid spacing [m]; coarser values (e.g. `RES=50` in 2D, `RES=200` in 3D) run in minutes on a single GPU. The memory needed is about 450 bytes per cell in 2D and 430 in 3D, so the 144 GB of a GH200 fit 2.5 m in 2D and 50 m in 3D, and an 80 GB GPU about 3 m in 2D and 60 m in 3D. `DT_YR` sets the time step, `SNAP_KYR` the interval of the snapshots and `SNAP_STRIDE` thins them out for large grids.
+Without arguments, they run at a coarse grid spacing on the CPU (100 m in 2D, 200 m in 3D). The output goes to `HighRes2D_2.5m` and `HighRes3D_50m`. Two more scripts make the movies:
+
+```julia
+julia --project HighRes_Unzen_plots.jl HighRes2D_2.5m     # 2D movie and zircon ages
+julia --project HighRes_Unzen_3D_vtk.jl HighRes3D_50m     # 3D: VTK files, and the movie if ParaView's pvbatch is on the PATH
+```
+
+`gpu` needs [CUDA.jl](https://github.com/JuliaGPU/CUDA.jl) in the environment, and the plotting scripts need CairoMakie, ZirconGrowth and WriteVTK. Coarser grids (e.g. 50 m in 2D, 200 m in 3D) run in minutes on a single GPU. The memory needed is about 450 bytes per cell in 2D and 430 in 3D. The 144 GB of a GH200 therefore fit 2.5 m in 2D and 50 m in 3D, and an 80 GB GPU fits about 3 m in 2D and 60 m in 3D. The time step, the interval of the snapshots and their grid are set at the top of the scripts.

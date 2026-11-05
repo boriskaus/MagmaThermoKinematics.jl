@@ -28,7 +28,7 @@ fig = Figure(size = (1600, 900))
 title = @lift(@sprintf("%.1f kyr before present", abs($snap["time_kyr"])))
 ax = Axis(fig[1, 1], xlabel = "Distance W–E [km]", ylabel = "Height [km]", title = title, aspect = DataAspect())
 axz = Axis(fig[1, 2], xlabel = "Distance W–E [km]", title = "Shallow intrusion zone", aspect = DataAspect())
-const ZOOM = ((0.5, 9.5), (-8.0, -2.0))                                               # [km]
+zoom = ((0.5, 9.5), (-8.0, -2.0))                                                     # the shallow intrusion zone [km]
 for a in (ax, axz)
     global hm = heatmap!(a, x, z, Tplot, colormap = :lajolla, colorrange = (0, 1000))
     heatmap!(a, x, z, bands, colormap = [(:white, 0.0), (:white, 0.12)], colorrange = (0, 1))    # the layering of the crust, deformed by sills and eruptions
@@ -37,8 +37,8 @@ for a in (ax, axz)
     contour!(a, x, z, ϕplot, levels = [0.5], color = :white, linewidth = 2)
     lines!(a, x, @lift($snap["Zsurf"] ./ 1.0e3), color = :black, linewidth = 2)
 end
-ylims!(ax, -20, 4); limits!(axz, ZOOM...)
-poly!(ax, Rect(ZOOM[1][1], ZOOM[2][1], ZOOM[1][2] - ZOOM[1][1], ZOOM[2][2] - ZOOM[2][1]), color = :transparent, strokecolor = :white, strokewidth = 1.5, linestyle = :dash)
+ylims!(ax, -20, 4); limits!(axz, zoom...)
+poly!(ax, Rect(zoom[1][1], zoom[2][1], zoom[1][2] - zoom[1][1], zoom[2][2] - zoom[2][1]), color = :transparent, strokecolor = :white, strokewidth = 1.5, linestyle = :dash)
 Colorbar(fig[1, 3], hm, label = "Temperature [°C]")
 axe = Axis(fig[2, 1], xlabel = "Time before present [kyr]", ylabel = "Erupted [km³/kyr]", height = 180)
 tb, vb = per_kyr(ev_all)
