@@ -72,7 +72,7 @@ A test suite compares the solvers with analytical solutions and covers the other
 
 # Research impact statement
 
-The package was benchmarked against the codes of the UCLA and Geneva groups in @Schmitt2023. The codes agree closely for the same emplacement assumptions, and the differences between emplacement modes are larger than those between codes. It has since been used to study volcano deformation [@Biggs2024; @Weber2025], the thermogenic decarbonation during the emplacement of large igneous provinces [@Wang2026], and the sensitivity of magnetotelluric data to the melt fraction of a magma reservoir [@Qiao2026], and in several manuscripts in preparation. The ZirconGrowth.jl extension allows modelled zircon age spectra to be compared with measured ones.
+The package was benchmarked against the codes of the UCLA and Geneva groups in @Schmitt2023. The codes agree closely for the same emplacement assumptions, and the differences between emplacement modes are larger than those between codes. It has since been used to study volcano deformation [@Biggs2024; @Weber2025], the thermogenic decarbonation during the emplacement of large igneous provinces [@Wang2026], the sensitivity of magnetotelluric data to the melt fraction of a magma reservoir [@Qiao2026], and magma fluxes inferred from zircon petrochronology [@Lewis2026]; several further manuscripts are in preparation. The ZirconGrowth.jl extension allows modelled zircon age spectra to be compared with measured ones.
 
 # Example Applications
 
