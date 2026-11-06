@@ -1,0 +1,64 @@
+{
+  "DOI": "10.5194/egusphere-2025-5641",
+  "type": "posted-content",
+  "title": "Automatic tuning of iterative pseudo-transient solvers for modelling the deformation of heterogeneous media",
+  "author": [
+    {
+      "given": "Thibault",
+      "family": "Duretz"
+    },
+    {
+      "given": "Albert",
+      "family": "de Monserrat"
+    },
+    {
+      "given": "Rubén",
+      "family": "Sevilla"
+    },
+    {
+      "given": "Ludovic",
+      "family": "Räss"
+    },
+    {
+      "given": "Ivan",
+      "family": "Utkin"
+    },
+    {
+      "given": "Arne",
+      "family": "Spang"
+    }
+  ],
+  "container-title": [],
+  "container-title-short": null,
+  "publisher": "Copernicus GmbH",
+  "institution": null,
+  "volume": null,
+  "issue": null,
+  "page": null,
+  "article-number": null,
+  "number": null,
+  "issued": {
+    "date-parts": [
+      [
+        2025,
+        12,
+        9
+      ]
+    ]
+  },
+  "published-online": null,
+  "relation": {
+    "is-preprint-of": [
+      {
+        "id-type": "doi",
+        "id": "10.5194/gmd-19-5343-2026",
+        "asserted-by": "subject"
+      },
+      {
+        "id-type": "doi",
+        "id": "10.5194/gmd-19-5343-2026",
+        "asserted-by": "object"
+      }
+    ]
+  }
+}

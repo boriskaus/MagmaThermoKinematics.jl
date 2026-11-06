@@ -1,0 +1,39 @@
+{
+  "DOI": "10.21105/jcon.00137",
+  "type": "journal-article",
+  "title": "Distributed Parallelization of xPU Stencil Computations in Julia",
+  "author": [
+    {
+      "given": "Samuel",
+      "family": "Omlin"
+    },
+    {
+      "given": "Ludovic",
+      "family": "Räss"
+    },
+    {
+      "given": "Ivan",
+      "family": "Utkin"
+    }
+  ],
+  "container-title": "JuliaCon Proceedings",
+  "container-title-short": "JCON",
+  "publisher": "The Open Journal",
+  "institution": null,
+  "volume": "6",
+  "issue": "65",
+  "page": "137",
+  "article-number": null,
+  "number": null,
+  "issued": {
+    "date-parts": [
+      [
+        2024,
+        11,
+        21
+      ]
+    ]
+  },
+  "published-online": null,
+  "relation": {}
+}

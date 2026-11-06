@@ -1,0 +1,157 @@
+# Publication bot settings.
+
+[scan]
+# How far back each scan looks. DOIs already on the page or in seen_dois.txt
+# are skipped, so a generous window only costs API calls.
+lookback_months = 18
+# OpenAlex work types considered publications.
+types = ["article", "preprint", "conference-paper", "book-chapter", "review", "letter"]
+# Also look for papers by authors outside the team that cite a core stack package (always "needs review").
+citing_core = true
+# Repository copies and data deposits of papers, never listed.
+ignore_doi_prefixes = [
+    "10.5281/",   # Zenodo
+    "10.3929/",   # ETH Research Collection
+    "10.17863/",  # Cambridge Apollo
+    "10.14459/",  # mediaTUM
+    "10.6084/",   # figshare
+]
+# Titles never listed (regular expressions, case-insensitive).
+ignore_titles = ['^thank you to our', '^comment on ', '^reply to ', '^correction to ', '^erratum']
+
+# Preprint servers: DOI prefix => name used in the entry ("<name> (preprint)").
+[preprint_servers]
+"10.5194/egusphere-" = "EGUsphere"
+"10.48550/arxiv." = "arXiv"
+"10.22541/essoar." = "ESS Open Archive"
+"10.1002/essoar." = "ESS Open Archive"
+"10.21203/rs." = "Research Square"
+"10.31223/" = "EarthArXiv"
+"10.2139/ssrn." = "SSRN"
+
+# Papers whose only team authors are marked `requires_acknowledgment` in people.toml count
+# only when they thank the project. Matching is case-insensitive and on whole words.
+[acknowledgment]
+# Distinctive terms, searched in the whole text.
+anywhere = ["GPU4GEO", "∂GPU4GEO", "dGPU4GEO"]
+# Generic terms, searched only in the acknowledgments/funding section: "C44" is also an
+# elastic constant and "PASC" a conference series.
+in_section = ["PASC", "c44"]
+# Terms that satisfy the requirement above but are not proof of this project on their own:
+# they never promote a paper by themselves (PASC funds many projects).
+weak = ["PASC"]
+
+# Misspelled author names found in publisher metadata: wrong => right.
+[author_fixes]
+"de Monserrat" = "de Montserrat"
+"Frasukiewicz" = "Frasunkiewicz"
+
+# Julia stack packages. A paper "uses the stack" when its full text, title or abstract
+# mentions one of `match` (case-sensitive, whole word), or when it cites one of `dois`.
+#
+# tier = "core"     developed within GPU4GEO
+# tier = "generic"  general Julia GPU packages: also counted, but a hit in OpenAlex's full-text
+#                   index is only worth a review ("CUDA.jl" may match plain "CUDA" there)
+# gpu = true        additionally requires GPU work (GPU mentioned in the paper)
+
+[[package]]
+name = "ParallelStencil.jl"
+tier = "core"
+match = ["ParallelStencil"]
+dois = ["10.21105/jcon.00138"]
+
+[[package]]
+name = "ImplicitGlobalGrid.jl"
+tier = "core"
+match = ["ImplicitGlobalGrid"]
+dois = ["10.21105/jcon.00137"]
+
+[[package]]
+name = "JustRelax.jl"
+tier = "core"
+match = ["JustRelax"]
+dois = ["10.21105/joss.09365"]
+
+[[package]]
+name = "JustPIC.jl"
+tier = "core"
+match = ["JustPIC"]
+
+[[package]]
+name = "GeoParams.jl"
+tier = "core"
+match = ["GeoParams"]
+
+[[package]]
+name = "GeophysicalModelGenerator.jl"
+tier = "core"
+match = ["GeophysicalModelGenerator"]
+dois = ["10.21105/joss.06763"]
+
+[[package]]
+name = "FastIce.jl"
+tier = "core"
+match = ["FastIce"]
+
+[[package]]
+name = "Chmy.jl"
+tier = "core"
+match = ["Chmy"]
+
+[[package]]
+name = "GeoDataPicker.jl"
+tier = "core"
+match = ["GeoDataPicker"]
+
+[[package]]
+name = "InteractiveGeodynamics.jl"
+tier = "core"
+match = ["InteractiveGeodynamics"]
+
+[[package]]
+name = "LaMEM.jl"
+tier = "core"
+match = ["LaMEM.jl"]
+
+[[package]]
+name = "CompGrids.jl"
+tier = "core"
+match = ["CompGrids"]
+
+[[package]]
+name = "MagmaThermoKinematics.jl"
+tier = "core"
+match = ["MagmaThermoKinematics"]
+
+[[package]]
+name = "PTsolvers / JuliaGeodynamics code"
+tier = "core"
+match = ["github.com/PTsolvers", "github.com/JuliaGeodynamics"]
+
+[[package]]
+name = "CUDA.jl"
+tier = "generic"
+match = ["CUDA.jl"]
+dois = ["10.1109/tpds.2018.2872064"]
+
+[[package]]
+name = "AMDGPU.jl"
+tier = "generic"
+match = ["AMDGPU"]
+
+[[package]]
+name = "KernelAbstractions.jl"
+tier = "generic"
+match = ["KernelAbstractions"]
+
+[[package]]
+name = "Enzyme.jl"
+tier = "generic"
+match = ["Enzyme.jl"]
+
+[[package]]
+name = "Trixi.jl"
+tier = "generic"
+gpu = true
+match = ["Trixi.jl"]
+dois = ["10.1016/j.jcp.2021.110467", "10.21105/jcon.00077"]

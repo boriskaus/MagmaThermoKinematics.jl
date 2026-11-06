@@ -1,0 +1,63 @@
+{
+  "DOI": "10.1029/2025jb031240",
+  "type": "journal-article",
+  "title": "Transient Propagation of Ductile Ruptures by Thermal Runaway",
+  "author": [
+    {
+      "given": "A.",
+      "family": "Spang"
+    },
+    {
+      "given": "M.",
+      "family": "Thielmann"
+    },
+    {
+      "given": "A.",
+      "family": "de Montserrat"
+    },
+    {
+      "given": "T.",
+      "family": "Duretz"
+    }
+  ],
+  "container-title": "Journal of Geophysical Research: Solid Earth",
+  "container-title-short": "JGR Solid Earth",
+  "publisher": "American Geophysical Union (AGU)",
+  "institution": null,
+  "volume": "130",
+  "issue": "6",
+  "page": null,
+  "article-number": "e2025JB031240",
+  "number": null,
+  "issued": {
+    "date-parts": [
+      [
+        2025,
+        6
+      ]
+    ]
+  },
+  "published-online": {
+    "date-parts": [
+      [
+        2025,
+        6,
+        21
+      ]
+    ]
+  },
+  "relation": {
+    "has-preprint": [
+      {
+        "id-type": "doi",
+        "id": "10.22541/essoar.173884466.65638309/v2",
+        "asserted-by": "object"
+      },
+      {
+        "id-type": "doi",
+        "id": "10.22541/essoar.173884466.65638309/v1",
+        "asserted-by": "object"
+      }
+    ]
+  }
+}

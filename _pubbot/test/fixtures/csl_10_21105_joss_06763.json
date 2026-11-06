@@ -1,0 +1,79 @@
+{
+  "DOI": "10.21105/joss.06763",
+  "type": "journal-article",
+  "title": "GeophysicalModelGenerator.jl: A Julia package to visualise geoscientific data and create numerical model setups",
+  "author": [
+    {
+      "given": "Boris J. P.",
+      "family": "Kaus"
+    },
+    {
+      "given": "Marcel",
+      "family": "Thielmann"
+    },
+    {
+      "given": "Pascal",
+      "family": "Aellig"
+    },
+    {
+      "given": "Albert",
+      "family": "de Montserrat"
+    },
+    {
+      "given": "Luca",
+      "family": "de Siena"
+    },
+    {
+      "given": "Jacob",
+      "family": "Frasukiewicz"
+    },
+    {
+      "given": "Lukas",
+      "family": "Fuchs"
+    },
+    {
+      "given": "Andrea",
+      "family": "Piccolo"
+    },
+    {
+      "given": "Hendrik",
+      "family": "Ranocha"
+    },
+    {
+      "given": "Nicolas",
+      "family": "Riel"
+    },
+    {
+      "given": "Christian",
+      "family": "Schuler"
+    },
+    {
+      "given": "Arne",
+      "family": "Spang"
+    },
+    {
+      "given": "Tatjana",
+      "family": "Weiler"
+    }
+  ],
+  "container-title": "Journal of Open Source Software",
+  "container-title-short": "JOSS",
+  "publisher": "The Open Journal",
+  "institution": null,
+  "volume": "9",
+  "issue": "103",
+  "page": "6763",
+  "article-number": null,
+  "number": null,
+  "issued": {
+    "date-parts": [
+      [
+        2024,
+        11,
+        4
+      ]
+    ]
+  },
+  "published-online": null,
+  "relation": {}
+}

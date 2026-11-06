@@ -1,0 +1,73 @@
+{
+  "DOI": "10.48550/ARXIV.2211.02740",
+  "type": "article",
+  "title": "Bridging HPC Communities through the Julia Programming Language",
+  "author": [
+    {
+      "family": "Churavy",
+      "given": "Valentin"
+    },
+    {
+      "family": "Godoy",
+      "given": "William F"
+    },
+    {
+      "family": "Bauer",
+      "given": "Carsten"
+    },
+    {
+      "family": "Ranocha",
+      "given": "Hendrik"
+    },
+    {
+      "family": "Schlottke-Lakemper",
+      "given": "Michael"
+    },
+    {
+      "family": "Räss",
+      "given": "Ludovic"
+    },
+    {
+      "family": "Blaschke",
+      "given": "Johannes"
+    },
+    {
+      "family": "Giordano",
+      "given": "Mosè"
+    },
+    {
+      "family": "Schnetter",
+      "given": "Erik"
+    },
+    {
+      "family": "Omlin",
+      "given": "Samuel"
+    },
+    {
+      "family": "Vetter",
+      "given": "Jeffrey S."
+    },
+    {
+      "family": "Edelman",
+      "given": "Alan"
+    }
+  ],
+  "container-title": null,
+  "container-title-short": null,
+  "publisher": "arXiv",
+  "institution": null,
+  "volume": null,
+  "issue": null,
+  "page": null,
+  "article-number": null,
+  "number": null,
+  "issued": {
+    "date-parts": [
+      [
+        2022
+      ]
+    ]
+  },
+  "published-online": null,
+  "relation": {}
+}

@@ -1,0 +1,54 @@
+{
+  "DOI": "10.1016/j.compgeo.2025.107189",
+  "type": "journal-article",
+  "title": "A high-performance backend-agnostic Material Point Method solver in Julia",
+  "author": [
+    {
+      "given": "Zenan",
+      "family": "Huo"
+    },
+    {
+      "given": "Yury",
+      "family": "Alkhimenkov"
+    },
+    {
+      "given": "Michel",
+      "family": "Jaboyedoff"
+    },
+    {
+      "given": "Yury",
+      "family": "Podladchikov"
+    },
+    {
+      "given": "Ludovic",
+      "family": "Räss"
+    },
+    {
+      "given": "Emmanuel",
+      "family": "Wyser"
+    },
+    {
+      "given": "Gang",
+      "family": "Mei"
+    }
+  ],
+  "container-title": "Computers and Geotechnics",
+  "container-title-short": "Computers and Geotechnics",
+  "publisher": "Elsevier BV",
+  "institution": null,
+  "volume": "183",
+  "issue": null,
+  "page": "107189",
+  "article-number": "107189",
+  "number": null,
+  "issued": {
+    "date-parts": [
+      [
+        2025,
+        7
+      ]
+    ]
+  },
+  "published-online": null,
+  "relation": {}
+}
