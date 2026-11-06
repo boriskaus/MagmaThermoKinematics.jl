@@ -19,4 +19,3 @@ Papers that use MagmaThermoKinematics.jl, newest first. The list is kept up to d
 ### 2023
 
 - Schmitt, A. K., Sliwinski, J., Caricchi, L., Bachmann, O., Riel, N., Kaus, B. J. P., Cisneros de Léon, A., Cornet, J., Friedrichs, B., Lovera, O., Sheldrake, T., and Weber, G. (2023). **Zircon age spectra to quantify magma evolution.** Geosphere, 19(4), 1006–1031. [https://doi.org/10.1130/ges02563.1](https://doi.org/10.1130/ges02563.1)
-
