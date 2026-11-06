@@ -53,7 +53,7 @@ jobs:
           SINCE: ${{ inputs.since }}
           OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
         run: |
-          julia --project=_pubbot -e 'using Pkg; Pkg.instantiate()'
+          julia --project=_pubbot -e 'using Pkg; Pkg.instantiate(); Pkg.test()'
           args=(--report "$RUNNER_TEMP/report.md")
           [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
           [ -n "$SINCE" ] && args+=(--since "$SINCE")

@@ -22,20 +22,6 @@ function author_name(a)
     return given isa AbstractString && !isempty(given) ? "$family, $(initials(given))" : String(family)
 end
 
-const PARTICLES = Set(["de", "del", "della", "der", "di", "du", "da", "dos", "la", "le", "van", "von", "ten", "ter"])
-
-"Citation name from a display name: \"Albert de Montserrat\" → \"de Montserrat, A.\"."
-function display_name_citation(name::AbstractString)
-    parts = split(strip(name))
-    isempty(parts) && return ""
-    k = length(parts)
-    while k > 1 && lowercase(parts[k - 1]) in PARTICLES
-        k -= 1
-    end
-    family, given = join(parts[k:end], " "), join(parts[1:(k - 1)], " ")
-    return isempty(given) ? family : "$family, $(initials(given))"
-end
-
 function join_authors(names::AbstractVector)
     length(names) <= 1 && return join(names)
     return join(names[1:(end - 1)], ", ") * ", and " * names[end]
@@ -69,17 +55,11 @@ function venue(csl, doi::AbstractString, cfg::Config)
     return v
 end
 
-has_authors(csl) = !isempty(something(get(csl, "author", nothing), []))
-
-"""
-Markdown list entry for the publication described by CSL-JSON `csl`. Some records lack authors
-(e.g. early JuliaCon proceedings); `author_names` (display names) are used then.
-"""
-function entry_line(csl, cfg::Config; author_names::AbstractVector{<:AbstractString} = String[])
+"Markdown list entry for the publication described by CSL-JSON `csl`."
+function entry_line(csl, cfg::Config)
     doi = String(strip(first_string(get(csl, "DOI", ""))))
     fix(name) = isempty(cfg.author_fixes) ? name : replace(name, cfg.author_fixes...)
-    names = has_authors(csl) ? [author_name(a) for a in csl["author"]] : display_name_citation.(author_names)
-    names = fix.(String.(clean_text.(names)))
+    names = [fix(String(clean_text(author_name(a)))) for a in csl["author"]]
     authors = join_authors(names)
     year = something(csl_year(csl), "n.d.")
     title = clean_text(first_string(get(csl, "title", "")))

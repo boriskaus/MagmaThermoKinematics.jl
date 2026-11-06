@@ -1,28 +1,14 @@
-#=
-The publication list is the part of publications.md between the front matter and the first
-level-2 heading (`## Conferences & Events`, which has its own `### YYYY` headings).
-Entries are `- ` lines under `### YYYY` headings, newest year first.
-=#
+# Entries of publications.md are `- ` lines under `### YYYY` headings, newest year first.
 
-mutable struct Page
+struct Page
     path::String
     lines::Vector{String}
 end
 
 load_page(path::AbstractString = PAGE) = Page(path, readlines(path))
-save_page(p::Page) = write(p.path, join(p.lines, "\n") * "\n")
+save_page(p::Page) = write(p.path, rstrip(join(p.lines, "\n")) * "\n")
 
-function list_range(p::Page)
-    start = 1
-    if !isempty(p.lines) && p.lines[1] == "+++"
-        close = findnext(==("+++"), p.lines, 2)
-        close === nothing || (start = close + 1)
-    end
-    stop = findnext(l -> startswith(l, "## "), p.lines, start)
-    return start:(stop === nothing ? length(p.lines) : stop - 1)
-end
-
-page_dois(p::Page) = Set(extract_dois(join(p.lines[list_range(p)], "\n")))
+page_dois(p::Page) = Set(extract_dois(join(p.lines, "\n")))
 
 function year_heading(line::AbstractString)
     m = match(r"^###\s+(\d{4})\s*$", line)
@@ -33,7 +19,7 @@ is_entry(line::AbstractString) = startswith(line, "- ")
 
 "Insert `entry` at the top of the `### year` section, creating the section if needed."
 function insert_entry!(p::Page, year::Integer, entry::AbstractString)
-    r = list_range(p)
+    r = eachindex(p.lines)
     for i in r
         y = year_heading(p.lines[i])
         y === nothing && continue
@@ -58,16 +44,15 @@ end
 
 "Remove the entry citing `doi`, and its year heading if the section becomes empty."
 function remove_entry!(p::Page, doi::AbstractString)
-    r = list_range(p)
-    i = findfirst(k -> is_entry(p.lines[k]) && doi in extract_dois(p.lines[k]), collect(r))
+    i = findfirst(l -> is_entry(l) && doi in extract_dois(l), p.lines)
     i === nothing && return false
-    deleteat!(p.lines, r[i])
+    deleteat!(p.lines, i)
     remove_empty_sections!(p)
     return true
 end
 
 function remove_empty_sections!(p::Page)
-    r = list_range(p)
+    r = eachindex(p.lines)
     heads = [i for i in r if year_heading(p.lines[i]) !== nothing]
     for (n, h) in Iterators.reverse(collect(enumerate(heads)))
         stop = n < length(heads) ? heads[n + 1] - 1 : last(r)

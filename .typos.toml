@@ -3,8 +3,6 @@ iy = "iy"
 iz = "iz"
 Aso = "Aso"            # Aso volcano (reference list of the eruption docs)
 Monserrat = "Monserrat" # misspelling corrected by _pubbot (author_fixes)
-rocessing = "rocessing" # regex "[Pp]rocessing" in _pubbot
-DED = "DED"             # DEDLoc, in the _pubbot test fixtures
 
 [files]
 extend-exclude = ["*.pvsm"]

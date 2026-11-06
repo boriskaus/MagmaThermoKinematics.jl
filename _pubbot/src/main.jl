@@ -19,14 +19,10 @@ function add_entry!(a::Assessment, cfg::Config)
         a.bucket == :strong && (a.bucket = :review)
         return a
     end
-    a.entry = entry_line(csl, cfg; author_names = first.(a.work.authors))
+    a.entry = entry_line(csl, cfg)
     a.year = something(csl_year(csl), year(a.work.date))
     return a
 end
-
-"Entry for `doi`, taking authors from OpenAlex when the DOI metadata has none."
-entry_for(csl, doi, cfg::Config) =
-    entry_line(csl, cfg; author_names = has_authors(csl) ? String[] : openalex_author_names(doi))
 
 """
     weekly(; since, dry_run, report_path, page_path, seen_path)
@@ -45,16 +41,13 @@ function weekly(;
     on_page = page_dois(page)
     seen = load_seen(seen_path)
 
-    stack = load_stack(cfg)
-    works = fetch_works(cfg, stack; since)
+    refs = package_ids(cfg)
+    works, mentions = fetch_works(cfg, refs; since)
     candidates = select_candidates(works, cfg; on_page, seen)
     @info "Fetched works" since records = length(works) candidates = length(candidates)
 
-    texts = fulltexts(candidates)
-    unindexed = [w.id for (w, t) in zip(candidates, texts) if t === nothing && w.has_fulltext]
-    probes = fulltext_probes(stack, unindexed)
-    @info "Full text" pdf = count(!isnothing, texts) index = length(unindexed)
-    assessments = [assess(w, cfg, stack, t, probes) for (w, t) in zip(candidates, texts)]
+    texts = asyncmap(fulltext, candidates; ntasks = 6)
+    assessments = [assess(w, cfg, refs, t, mentions) for (w, t) in zip(candidates, texts)]
     drop_published_preprints!(assessments, cfg; on_page, seen)
     sort!(assessments; by = a -> a.work.date, rev = true)
     foreach(a -> a.bucket == :none || add_entry!(a, cfg), assessments)
@@ -63,18 +56,13 @@ function weekly(;
     for (old, new) in published_versions(on_page, seen, cfg, works)
         csl = get_csl(new)
         csl === nothing && continue
-        push!(
-            swaps, (;
-                old, new, title = clean_text(first_string(get(csl, "title", ""))),
-                entry = entry_for(csl, new, cfg), year = something(csl_year(csl), year(today())),
-            )
-        )
+        title = clean_text(first_string(get(csl, "title", "")))
+        push!(swaps, (; old, new, title, entry = entry_line(csl, cfg), year = something(csl_year(csl), year(today()))))
     end
 
-    strong = filter(a -> a.bucket == :strong, assessments)
     # Oldest first, so the newest paper ends up at the top of its year.
-    for a in Iterators.reverse(strong)
-        insert_entry!(page, a.year, a.entry)
+    for a in Iterators.reverse(assessments)
+        a.bucket == :strong && insert_entry!(page, a.year, a.entry)
     end
     for s in swaps
         remove_entry!(page, s.old)
@@ -91,7 +79,7 @@ function weekly(;
         foreach(s -> push!(seen, s.new), swaps)
         save_seen(seen_path, seen)
     end
-    report = weekly_report(assessments, swaps, cfg; since, nworks = length(works))
+    report = weekly_report(assessments, swaps; since, nworks = length(works))
     report_path === nothing ? print(report) : write(report_path, report)
     set_output("changed", changed && !dry_run)
     return (; assessments, swaps, changed)
@@ -119,10 +107,10 @@ function add_dois(
         end
         csl = get_csl(doi)
         if csl === nothing
-            push!(skipped, (doi, "DOI does not resolve"))
+            push!(skipped, (doi, "no DOI metadata with authors"))
             continue
         end
-        entry = entry_for(csl, doi, cfg)
+        entry = entry_line(csl, cfg)
         insert_entry!(page, something(csl_year(csl), year(today())), entry)
         push!(on_page, doi)
         push!(seen, doi)
@@ -137,4 +125,73 @@ function add_dois(
     report_path === nothing ? print(report) : write(report_path, report)
     set_output("changed", changed)
     return (; added, skipped, changed)
+end
+
+# Pull request descriptions
+
+link(doi) = "[$doi]($(doi_url(doi)))"
+escape_md(s) = replace(s, r"([*_`\[\]<>])" => s"\\\1")
+
+function summary_line(a::Assessment)
+    evidence = isempty(a.evidence) ? "none" : join(a.evidence, "; ")
+    return "**$(escape_md(a.work.title))** · $(link(a.work.doi))  \n  evidence: $evidence · " *
+        (a.pdf ? "PDF checked" : "no PDF")
+end
+
+details(io, summary, body) = println(io, "<details><summary>$summary</summary>\n\n", body, "\n</details>\n")
+
+# shortcut: no truncation to GitHub's 65536-character PR body limit; add one if a scan's ❌ list ever hits it.
+function weekly_report(assessments::Vector{Assessment}, swaps; since::Date, nworks::Int)
+    strong = filter(a -> a.bucket == :strong, assessments)
+    review = filter(a -> a.bucket == :review, assessments)
+    none = filter(a -> a.bucket == :none, assessments)
+    io = IOBuffer()
+    println(io, "## Publication scan ($(today()))\n")
+    println(
+        io, "Works published since $since by the developers, citing the package paper or naming the package: ",
+        "$nworks records, $(length(assessments)) new papers after removing duplicates and already evaluated DOIs.\n"
+    )
+
+    println(io, "### ✅ Added to publications.md ($(length(strong)))\n")
+    isempty(strong) || println(io, "To drop an entry, delete its line in `publications.md` before merging; it will not be proposed again.\n")
+    foreach(a -> println(io, "- ", summary_line(a)), strong)
+    println(io)
+
+    if !isempty(swaps)
+        println(io, "### 🔁 Preprints replaced by their published version ($(length(swaps)))\n")
+        foreach(s -> println(io, "- $(link(s.old)) → $(link(s.new)): $(escape_md(s.title))"), swaps)
+        println(io)
+    end
+
+    println(io, "### 🟡 Needs review ($(length(review)))\n")
+    if !isempty(review)
+        println(io, "To add one, paste its line into `publications.md` on this branch.\n")
+        body = join(
+            ("- " * summary_line(a) * "\n" * (a.entry === nothing ? "  _$(a.note)_" : "  ```md\n  $(a.entry)\n  ```") for a in review),
+            "\n"
+        )
+        details(io, "Show $(length(review)) papers", body)
+    end
+
+    println(io, "### ❌ No signal ($(length(none)))\n")
+    if !isempty(none)
+        body = join(("- " * summary_line(a) * (isempty(a.note) ? "" : " · $(a.note)") for a in none), "\n")
+        details(io, "Show $(length(none)) papers", body)
+    end
+    print(io, "---\nMerging records every DOI above in `_pubbot/seen_dois.txt`. Generated by `_pubbot/weekly.jl`.\n")
+    return String(take!(io))
+end
+
+function add_report(added, skipped; issue = nothing)
+    io = IOBuffer()
+    println(io, "## Add publications\n")
+    for (doi, entry) in added
+        println(io, "- ✅ $(link(doi))\n  ```md\n  $entry\n  ```")
+    end
+    for (doi, reason) in skipped
+        println(io, "- ⏭️ $(link(doi)): $reason")
+    end
+    isempty(added) && isempty(skipped) && println(io, "No DOI found in the request.")
+    issue === nothing || println(io, "\nCloses #$issue")
+    return String(take!(io))
 end

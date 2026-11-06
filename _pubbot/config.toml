@@ -1,19 +1,23 @@
-# Publication bot settings for MagmaThermoKinematics.jl (see README.md).
+# Publication bot settings (see README.md).
 
-[scan]
-# How far back each scan looks. DOIs already on the page or in seen_dois.txt
-# are skipped, so a generous window only costs API calls.
+# A paper names the package when its title, abstract or full text contains `match` as a whole
+# word (case-sensitive). Citing one of `dois` alone only puts it up for review: Schmitt et al.
+# (2023) is also cited for its zircon age spectra.
+match = "MagmaThermoKinematics"
+dois = [
+    "10.1130/ges02563.1",   # Schmitt et al. (2023), the reference given in the README
+]
+# Developers, by ORCID: their recent papers are checked too.
+developers = [
+    "0000-0002-0247-8660",  # Boris Kaus
+    "0009-0008-9039-5646",  # Pascal Aellig
+    "0000-0003-1694-3735",  # Albert de Montserrat
+]
+
+# How far back each scan looks. DOIs already on the page or in seen_dois.txt are skipped.
 lookback_months = 18
 # OpenAlex work types considered publications.
 types = ["article", "preprint", "conference-paper", "book-chapter", "review", "letter"]
-# Also look at papers by anyone that cite a package paper (`dois` below). Citing alone is
-# only worth a review: Schmitt et al. (2023) is also cited for its zircon age spectra.
-citing_core = true
-# Also look at papers by anyone whose full text (OpenAlex index) names a package.
-search_mentions = true
-# Most users of MagmaThermoKinematics are not its developers: a paper that names the package
-# is listed whoever wrote it.
-require_team = false
 # Repository copies and data deposits of papers, never listed.
 ignore_doi_prefixes = [
     "10.5281/",   # Zenodo
@@ -38,13 +42,3 @@ ignore_titles = ['^thank you to our', '^comment on ', '^reply to ', '^correction
 # Misspelled author names found in publisher metadata: wrong => right.
 [author_fixes]
 "de Monserrat" = "de Montserrat"
-
-# A paper "uses" a package when its full text, title or abstract mentions one of `match`
-# (case-sensitive, whole word), or when it cites one of `dois` (then only for review).
-[[package]]
-name = "MagmaThermoKinematics.jl"
-tier = "core"
-match = ["MagmaThermoKinematics"]
-dois = [
-    "10.1130/ges02563.1",   # Schmitt et al. (2023), the reference given in the README
-]
