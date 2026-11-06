@@ -1,7 +1,9 @@
 # Publication bot
 
 Keeps the [Publications](../docs/src/man/publications.md) page of the documentation up to date with
-papers that use MagmaThermoKinematics.jl. Two GitHub workflows use it:
+papers that use MagmaThermoKinematics.jl. Adapted from the publication bot of
+[GPU4GEO](https://github.com/PTsolvers/GPU4GEO) (MIT license, see [LICENSE](LICENSE)). Two GitHub
+workflows use it:
 
 - **Scan** ([PubScan.yml](../.github/workflows/PubScan.yml)): on the 1st and 15th of each month,
   finds recent papers that use the package and opens a pull request that adds them. A scan is
