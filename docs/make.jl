@@ -131,6 +131,7 @@ makedocs(;
         ],
         "References" => Any[
             "Benchmarking" => "man/benchmarking.md",
+            "Publications" => "man/publications.md",
             "Related Work" => "man/related_work.md",
             "Citing" => "man/citing.md",
         ],

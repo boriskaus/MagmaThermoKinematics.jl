@@ -28,3 +28,8 @@ package-lock.json
 
 # Julia
 Manifest.toml
+
+# Publication bot
+_pubbot/.cache
+_pubbot/Manifest.toml
+!_pubbot/seen_dois.txt

@@ -1,0 +1,9 @@
+# DOIs already evaluated by the publication bot (_pubbot); they are not proposed again.
+# Delete a line to have that DOI evaluated again by the next scan.
+10.1016/j.chemgeo.2026.123445
+10.1016/j.jvolgeores.2024.108129
+10.1016/j.tecto.2026.231315
+10.1029/2026gc013028
+10.1038/s41467-024-55443-z
+10.1130/ges02563.1
+10.31223/x5474k

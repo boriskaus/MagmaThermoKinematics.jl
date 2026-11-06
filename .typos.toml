@@ -2,6 +2,7 @@
 iy = "iy"
 iz = "iz"
 Aso = "Aso"            # Aso volcano (reference list of the eruption docs)
+Monserrat = "Monserrat" # misspelling corrected by _pubbot (author_fixes)
 
 [files]
 extend-exclude = ["*.pvsm"]
